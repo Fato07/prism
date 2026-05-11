@@ -1,0 +1,10 @@
+/** ERC-8004 contract addresses on Arc Testnet (chain 5042002). */
+export const ARC_TESTNET_CHAIN_ID = 5042002;
+
+export const CONTRACTS = {
+  IdentityRegistry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+  ReputationRegistry: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+  ValidationRegistry: "0x8004Cb1BF31DAf7788923b405b754f57acEB4272",
+  AgenticCommerce: "0x0747EEf0706327138c69792bF28Cd525089e4583",
+  USDC: "0x3600000000000000000000000000000000000000",
+} as const;
