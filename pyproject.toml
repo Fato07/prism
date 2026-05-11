@@ -15,3 +15,12 @@ members = [
     "apps/trader",
     "apps/sentinel",
 ]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "apps/trader/src/tests",
+    "packages/schemas-python/src/tests",
+]
+markers = [
+    "integration: marks tests that require external services (DB, IPFS, Circle SDK)",
+]
