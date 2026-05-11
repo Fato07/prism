@@ -39,19 +39,41 @@ def _model_name_short() -> str:
 class TraceAdversary(dspy.Signature):
     """You are an adversarial validator for AI-generated trading reasoning traces.
 
-    Your job is NOT to be agreeable. Your job is to find the WEAKEST evidence
-    claim, the MOST SUSPECT reasoning step, and the WORST-CALIBRATED probability
-    in the trader's trace. Even excellent traces have weaknesses — find them.
+    You have TWO independent responsibilities:
+    1. CHALLENGE: Find the WEAKEST evidence claim, the MOST SUSPECT reasoning
+       step, and the WORST-CALIBRATED probability. Even excellent traces have
+       weaknesses — you must always find ≥3 evidence challenges.
+    2. SCORE: Honestly assess the OVERALL quality of the trace. Finding
+       challenges does NOT mean the trace is low quality. A trace with minor
+       issues that are clearly acknowledged in risk factors still deserves a
+       high score. The score reflects overall reasoning quality, NOT the
+       severity of the challenges you found.
 
-    SCORING GUIDE:
-    - REJECT (0-25): Fundamentally flawed reasoning, fabricated evidence,
-      or dangerous action recommendations.
-    - WARN (26-50): Significant gaps in reasoning, weak evidence, or
-      miscalibrated probabilities.
-    - PASS (51-75): Sound reasoning with minor weaknesses or modest
-      evidence concerns.
-    - ENDORSE (76-100): Strong, well-calibrated reasoning with solid
-      evidence. Still must identify ≥3 areas for improvement.
+    These two responsibilities are INDEPENDENT. A trace can have a score of
+    85 (ENDORSE) AND still have 3+ valid challenges — because no trace is
+    perfect. Conversely, a trace with only 1 obvious flaw might still score
+    20 (REJECT) if the reasoning is fundamentally broken.
+
+    SCORING GUIDE (applied to OVERALL quality, not challenge severity):
+    - REJECT (0-25): Fundamentally flawed reasoning, fabricated/unsupported
+      evidence, contradictory claims, or dangerous action recommendations.
+      Key signal: the trace would lead to a bad trading decision.
+    - WARN (26-50): Significant gaps in reasoning, weak/unreliable evidence
+      sources, or miscalibrated probabilities. Key signal: the trace has
+      real issues but isn't dangerously wrong.
+    - PASS (51-75): Sound reasoning with minor weaknesses or modest evidence
+      concerns. Key signal: the trace would likely lead to a reasonable
+      trading decision despite some imperfections.
+    - ENDORSE (76-100): Strong, well-calibrated reasoning with solid evidence
+      from reputable sources, logical thesis chain, and properly justified
+      probability adjustments. Key signal: the trace demonstrates high-quality
+      reasoning and would support a well-informed trading decision.
+
+    IMPORTANT: When a trace has multiple reputable evidence sources, a clear
+    thesis chain, well-justified probability adjustments, and explicit risk
+    factors — that is a STRONG trace, even if you can find challenges.
+    Score it PASS or ENDORSE. Do not downgrade a score just because you
+    found weaknesses — your job is to always find weaknesses.
 
     CRITICAL RULES:
     - You MUST produce AT LEAST 3 evidence_challenges — NEVER rubber-stamp.
@@ -218,12 +240,29 @@ class TraceAdversaryModule(dspy.Module):
         """Run adversarial validation on a trace."""
         return self.predict(trace_json=trace_json)
 
+    def __call__(self, trace_json: str) -> dspy.Prediction:  # type: ignore[misc]
+        """Run adversarial validation on a trace (preferred entry point)."""
+        return self.forward(trace_json=trace_json)
+
 
 def configure_dspy() -> None:
-    """Configure DSPy with the sentinel's GPT model."""
+    """Configure DSPy with the sentinel's GPT model.
+
+    Safe to call multiple times — subsequent calls are no-ops if the
+    model is already configured.  When running inside an async task
+    that did not originally call ``dspy.configure``, the function
+    falls back to ``dspy.context()`` which provides a thread-local
+    override instead of mutating global state.
+    """
     model_id = _model_id()
     lm = dspy.LM(model_id)
-    dspy.configure(lm=lm)
+    try:
+        dspy.configure(lm=lm)
+    except RuntimeError:
+        # Called from a different async task — use dspy.context instead.
+        # This is expected when multiple async tests each invoke
+        # generate_verdict() in their own async task.
+        dspy.context(lm=lm).__enter__()
     logger.info("dspy_configured", model=model_id)
 
 
@@ -261,7 +300,7 @@ async def generate_verdict(
     module = TraceAdversaryModule()
 
     # DSPy is synchronous — wrap in asyncio.to_thread()
-    prediction: dspy.Prediction = await asyncio.to_thread(module.forward, trace_json=trace_json)
+    prediction: dspy.Prediction = await asyncio.to_thread(module, trace_json=trace_json)
 
     # Extract raw outputs from DSPy prediction
     raw_score = prediction.verdict_score
