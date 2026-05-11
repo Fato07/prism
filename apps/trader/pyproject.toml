@@ -13,6 +13,8 @@ dependencies = [
     "prism-schemas",
     "opentelemetry-api",
     "opentelemetry-sdk",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]

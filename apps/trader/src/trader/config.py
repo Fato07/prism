@@ -45,42 +45,44 @@ REQUIRED_ORACLE = REQUIRED_COMMON + [
     "CIRCLE_WALLET_ORACLE_ADDRESS",
 ]
 
-# Polymarket's restricted countries (33 total).
+# Polymarket's restricted countries (33 total, as of April 2026).
+# Source: https://help.polymarket.com/en/articles/13364163-geographic-restrictions
 # Estonia (EE) is NOT in this list — it is explicitly allowed per MISSION.md.
 POLYMARKET_RESTRICTED_COUNTRIES = frozenset(
     {
-        "US",
-        "AG",
-        "AT",
-        "AU",
-        "BE",
-        "BG",
-        "BM",
-        "CA",
-        "CY",
-        "CZ",
-        "DE",
-        "DK",
-        "ES",
-        "FI",
-        "FR",
-        "GB",
-        "GR",
-        "HR",
-        "HU",
-        "IE",
-        "IT",
-        "LT",
-        "LU",
-        "LV",
-        "MT",
-        "NL",
-        "PL",
-        "PT",
-        "RO",
-        "SE",
-        "SI",
-        "SK",
+        "AU",  # Australia
+        "BE",  # Belgium
+        "BY",  # Belarus
+        "BI",  # Burundi
+        "CF",  # Central African Republic
+        "CD",  # Congo (Kinshasa)
+        "CU",  # Cuba
+        "DE",  # Germany
+        "ET",  # Ethiopia
+        "FR",  # France
+        "GB",  # United Kingdom
+        "IR",  # Iran
+        "IQ",  # Iraq
+        "IT",  # Italy
+        "JP",  # Japan
+        "KP",  # North Korea
+        "LB",  # Lebanon
+        "LY",  # Libya
+        "MM",  # Myanmar
+        "NI",  # Nicaragua
+        "PL",  # Poland
+        "RU",  # Russia
+        "SG",  # Singapore
+        "SO",  # Somalia
+        "SS",  # South Sudan
+        "SD",  # Sudan
+        "SY",  # Syria
+        "TH",  # Thailand
+        "TW",  # Taiwan
+        "US",  # United States
+        "VE",  # Venezuela
+        "YE",  # Yemen
+        "ZW",  # Zimbabwe
     }
 )
 
