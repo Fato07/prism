@@ -1,1 +1,1 @@
-"""Prism sentinel agent - GPT family, adversarial validation."""
+"""Prism sentinel agent — GPT family, adversarial validation via DSPy."""

@@ -27,6 +27,7 @@ members = [
 [tool.pytest.ini_options]
 testpaths = [
     "apps/trader/src/tests",
+    "apps/sentinel/src/tests",
     "packages/schemas-python/src/tests",
 ]
 markers = [

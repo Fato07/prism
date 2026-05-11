@@ -1454,6 +1454,7 @@ source = { editable = "apps/sentinel" }
 dependencies = [
     { name = "circle-developer-controlled-wallets" },
     { name = "dspy" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
@@ -1461,6 +1462,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "structlog" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
@@ -1475,6 +1477,7 @@ dev = [
 requires-dist = [
     { name = "circle-developer-controlled-wallets" },
     { name = "dspy" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "opentelemetry-api" },
@@ -1486,6 +1489,7 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "structlog" },
+    { name = "uvicorn", extras = ["standard"] },
 ]
 provides-extras = ["dev"]
 
