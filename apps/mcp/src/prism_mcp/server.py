@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 import structlog
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_request
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
@@ -39,11 +40,33 @@ logger = structlog.get_logger("prism.mcp")
 MCP_SERVER_NAME = "prism-sentinel"
 
 
+def _payment_tx_hash_from_http_context() -> str | None:
+    """Return the x402 settlement tx hash stashed on the current HTTP request.
+
+    The sentinel ``x402_middleware`` stores the settled Base tx hash on
+    ``request.state.x402_payment_tx_hash`` before dispatching to the MCP
+    sub-app. We surface it on the tool result so MCP callers receive the
+    same ``payment_tx_hash`` field the HTTP ``/validate`` endpoint emits.
+
+    Returns ``None`` for in-process MCP clients (e.g. unit tests using
+    ``fastmcp.Client(server)``) where no HTTP request exists.
+    """
+    try:
+        req = get_http_request()
+    except RuntimeError:
+        return None
+    tx = getattr(req.state, "x402_payment_tx_hash", None)
+    return tx if isinstance(tx, str) else None
+
+
 class ValidateMcpResult(BaseModel):
     """Output schema for the MCP ``validate`` tool.
 
     Mirrors the sentinel ``ValidateResponse`` so external agents see the
     same surface whether they call the HTTP endpoint or the MCP tool.
+    ``payment_tx_hash`` is populated by the x402 middleware on the
+    underlying HTTP request and is ``None`` for in-process invocations
+    that bypass the HTTP layer.
     """
 
     request_hash: str
@@ -57,6 +80,7 @@ class ValidateMcpResult(BaseModel):
     ipfs_cid: str
     content_hash_hex: str
     tx_hash: str | None = None
+    payment_tx_hash: str | None = None
 
 
 def _is_onchain_enabled() -> bool:
@@ -177,6 +201,8 @@ async def _run_validation(
                 error=str(exc),
             )
 
+    payment_tx_hash = _payment_tx_hash_from_http_context()
+
     logger.info(
         "mcp_validate_complete",
         trace_id=verdict.trace_id,
@@ -184,6 +210,7 @@ async def _run_validation(
         verdict_label=verdict.verdict_label,
         ipfs_cid=ipfs_cid,
         tx_hash=tx_hash,
+        payment_tx_hash=payment_tx_hash,
     )
 
     return ValidateMcpResult(
@@ -198,6 +225,7 @@ async def _run_validation(
         ipfs_cid=ipfs_cid,
         content_hash_hex=content_hash_hex,
         tx_hash=tx_hash,
+        payment_tx_hash=payment_tx_hash,
     )
 
 

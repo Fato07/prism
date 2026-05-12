@@ -404,7 +404,13 @@ class TestOnChainFlag:
 
 
 def _patch_sentinel_main() -> tuple[object, ...]:
-    """Mock out the heavy sentinel startup machinery (DB, IPFS, LLM)."""
+    """Mock out the heavy sentinel startup machinery (DB, IPFS, LLM).
+
+    Patches both the ``sentinel.main`` aliases used by the HTTP ``/validate``
+    handler and the source modules imported by the MCP tool's
+    ``_run_validation`` function, so paid MCP ``tools/call`` traffic doesn't
+    hit real Pinata / OpenAI / Neon.
+    """
     pinata_patch = patch("sentinel.main.PinataClient")
     gen_patch = patch("sentinel.main.generate_verdict")
     persist_patch = patch("sentinel.main.persist_verdict")
@@ -412,6 +418,12 @@ def _patch_sentinel_main() -> tuple[object, ...]:
     migration_patch = patch("sentinel.main.run_migration")
     agent_row_patch = patch("sentinel.main.ensure_agent_row")
     startup_patch = patch("sentinel.main._run_startup_gates")
+
+    ipfs_patch = patch("sentinel.ipfs.PinataClient")
+    adversarial_patch = patch("sentinel.adversarial.generate_verdict")
+    persistence_persist_patch = patch("sentinel.persistence.persist_verdict")
+    persistence_uri_patch = patch("sentinel.persistence.update_verdict_response_uri")
+    persistence_tx_patch = patch("sentinel.persistence.update_validation_tx_hash")
 
     pinata_cls = pinata_patch.start()
     gen_fn = gen_patch.start()
@@ -421,13 +433,22 @@ def _patch_sentinel_main() -> tuple[object, ...]:
     agent_row_patch.start()
     startup_patch.start()
 
+    ipfs_cls = ipfs_patch.start()
+    adversarial_fn = adversarial_patch.start()
+    persistence_persist_patch.start()
+    persistence_uri_patch.start()
+    persistence_tx_patch.start()
+
     pinata_instance = AsyncMock()
     pinata_instance.fetch_json.return_value = _make_trace().model_dump(mode="json")
     pinata_instance.pin_json.return_value = "QmTestVerdictCIDmcp"
     pinata_instance.close = AsyncMock()
     pinata_cls.return_value = pinata_instance
+    ipfs_cls.return_value = pinata_instance
 
-    gen_fn.return_value = _make_verdict()
+    verdict = _make_verdict()
+    gen_fn.return_value = verdict
+    adversarial_fn.return_value = verdict
 
     return (
         pinata_patch,
@@ -437,6 +458,11 @@ def _patch_sentinel_main() -> tuple[object, ...]:
         migration_patch,
         agent_row_patch,
         startup_patch,
+        ipfs_patch,
+        adversarial_patch,
+        persistence_persist_patch,
+        persistence_uri_patch,
+        persistence_tx_patch,
     )
 
 
@@ -490,8 +516,13 @@ class TestMcpHttpMount:
         body = resp.json()
         assert "verdict_score" in body
 
-    def test_mcp_post_without_payment_returns_402(self) -> None:
-        """VAL-MCP-003: MCP POST without x402 payment returns 402."""
+    def test_mcp_post_without_payment_returns_jsonrpc_error_envelope(self) -> None:
+        """VAL-MCP-003: MCP POST without x402 payment returns a JSON-RPC error envelope.
+
+        The body MUST be MCP-compatible (jsonrpc/id/error shape) and carry the
+        payment requirement details inside ``error.data`` so a JSON-RPC client
+        can surface them as a structured error rather than a raw HTTP failure.
+        """
         patches = _patch_sentinel_main()
         try:
             with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
@@ -502,7 +533,7 @@ class TestMcpHttpMount:
                         "/mcp/",
                         json={
                             "jsonrpc": "2.0",
-                            "id": 1,
+                            "id": 7,
                             "method": "tools/call",
                             "params": {
                                 "name": "validate",
@@ -520,6 +551,77 @@ class TestMcpHttpMount:
 
         assert resp.status_code == 402, resp.text
         body = resp.json()
+        assert body.get("jsonrpc") == "2.0"
+        assert body.get("id") == 7
+        assert "error" in body
+        error = body["error"]
+        assert isinstance(error.get("code"), int)
+        assert isinstance(error.get("message"), str) and error["message"]
+        data = error.get("data") or {}
+        assert data.get("asset") == "USDC"
+        assert data.get("amount")
+        assert data.get("facilitator") == "x402"
+        assert data.get("network") == "base"
+
+    def test_mcp_post_malformed_payment_returns_jsonrpc_error_envelope(self) -> None:
+        """Malformed payment header on /mcp/ → JSON-RPC error with specific error code."""
+        patches = _patch_sentinel_main()
+        try:
+            with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+                from sentinel.main import app
+
+                with TestClient(app) as client:
+                    resp = client.post(
+                        "/mcp/",
+                        json={
+                            "jsonrpc": "2.0",
+                            "id": "abc-123",
+                            "method": "tools/call",
+                            "params": {
+                                "name": "validate",
+                                "arguments": {
+                                    "trace_uri": "ipfs://QmGood",
+                                    "trace_hash": "0xabc",
+                                },
+                            },
+                        },
+                        headers={
+                            "Accept": "application/json, text/event-stream",
+                            "x402-payment": "invalid",
+                        },
+                    )
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert resp.status_code == 402, resp.text
+        body = resp.json()
+        assert body.get("jsonrpc") == "2.0"
+        assert body.get("id") == "abc-123"
+        data = body["error"]["data"]
+        assert data.get("error") == "invalid_payment_token"
+        assert data.get("asset") == "USDC"
+        assert data.get("amount")
+
+    def test_validate_post_without_payment_keeps_flat_402_body(self) -> None:
+        """HTTP /validate keeps the legacy flat 402 body — not JSON-RPC wrapping."""
+        patches = _patch_sentinel_main()
+        try:
+            with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+                from sentinel.main import app
+
+                with TestClient(app) as client:
+                    resp = client.post(
+                        "/validate",
+                        json={"trace_uri": "ipfs://QmGood", "trace_hash": "0xabc"},
+                    )
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert resp.status_code == 402, resp.text
+        body = resp.json()
+        assert "jsonrpc" not in body
         assert body["asset"] == "USDC"
         assert body["amount"]
         assert body["facilitator"] == "x402"
@@ -590,3 +692,117 @@ class TestMcpWithPayment:
                 p.stop()
         assert resp.status_code == 200, resp.text
         assert "jsonrpc" in resp.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-009: ValidateMcpResult includes payment_tx_hash to match HTTP schema
+# ---------------------------------------------------------------------------
+
+
+class TestPaymentTxHashSchemaParity:
+    def test_validate_mcp_result_model_has_payment_tx_hash_field(self) -> None:
+        from prism_mcp.server import ValidateMcpResult
+
+        assert "payment_tx_hash" in ValidateMcpResult.model_fields
+        field = ValidateMcpResult.model_fields["payment_tx_hash"]
+        assert field.default is None
+
+    @pytest.mark.asyncio
+    async def test_validate_tool_output_schema_includes_payment_tx_hash(self) -> None:
+        """tools/list outputSchema must expose payment_tx_hash to MCP clients."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        validate = next(t for t in tools if t.name == "validate")
+        output_schema = getattr(validate, "outputSchema", None)
+        assert output_schema is not None, "validate tool must expose an output schema"
+
+        props = output_schema.get("properties") or {}
+        nested = (output_schema.get("$defs") or {}).get("ValidateMcpResult", {}).get(
+            "properties",
+            {},
+        )
+
+        assert "payment_tx_hash" in props or "payment_tx_hash" in nested, (
+            "outputSchema must include payment_tx_hash field "
+            f"(top-level={list(props)[:6]} nested={list(nested)[:6]})"
+        )
+
+    def test_mcp_validate_through_http_with_payment_returns_payment_tx_hash(self) -> None:
+        """Paid MCP tools/call must return payment_tx_hash sourced from middleware."""
+        patches = _patch_sentinel_main()
+        try:
+            with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+                from sentinel.main import app
+
+                with TestClient(app) as client:
+                    init_resp = client.post(
+                        "/mcp/",
+                        json={
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "initialize",
+                            "params": {
+                                "protocolVersion": "2025-03-26",
+                                "capabilities": {},
+                                "clientInfo": {"name": "tx-hash-tester", "version": "1.0"},
+                            },
+                        },
+                        headers={
+                            "Accept": "application/json, text/event-stream",
+                            "x402-payment": "payment-tx-hash-test-token-init-001",
+                        },
+                    )
+                    assert init_resp.status_code == 200, init_resp.text
+                    session_id = init_resp.headers.get("mcp-session-id") or ""
+
+                    notif_headers = {
+                        "Accept": "application/json, text/event-stream",
+                        "x402-payment": "payment-tx-hash-test-token-init-001-notif",
+                    }
+                    if session_id:
+                        notif_headers["mcp-session-id"] = session_id
+                    client.post(
+                        "/mcp/",
+                        json={
+                            "jsonrpc": "2.0",
+                            "method": "notifications/initialized",
+                            "params": {},
+                        },
+                        headers=notif_headers,
+                    )
+
+                    call_headers = {
+                        "Accept": "application/json, text/event-stream",
+                        "x402-payment": "payment-tx-hash-test-token-call-002",
+                    }
+                    if session_id:
+                        call_headers["mcp-session-id"] = session_id
+                    call_resp = client.post(
+                        "/mcp/",
+                        json={
+                            "jsonrpc": "2.0",
+                            "id": 2,
+                            "method": "tools/call",
+                            "params": {
+                                "name": "validate",
+                                "arguments": {
+                                    "trace_uri": "ipfs://QmPaymentTxHashTest",
+                                    "trace_hash": "0xdeadbeef",
+                                },
+                            },
+                        },
+                        headers=call_headers,
+                    )
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert call_resp.status_code == 200, call_resp.text
+        text = call_resp.text
+        assert "payment_tx_hash" in text, (
+            "MCP tools/call result should expose payment_tx_hash, body=" + text[:1000]
+        )
+        assert "0x" in text

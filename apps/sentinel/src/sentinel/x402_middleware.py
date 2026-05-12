@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import sys
 from collections.abc import Awaitable, Callable
@@ -55,6 +56,9 @@ X402_DEFAULT_FACILITATOR_NAME = "x402"
 X402_DEFAULT_SETTLEMENT_TIMEOUT_S = 10.0
 
 MCP_PROTECTED_PREFIX = "/mcp"
+
+JSONRPC_PAYMENT_REQUIRED_CODE = -32002
+JSONRPC_PAYMENT_TIMEOUT_CODE = -32004
 
 _consumed_payment_tokens: set[str] = set()
 _consumed_lock = asyncio.Lock()
@@ -264,6 +268,97 @@ def _is_protected_path(path: str, method: str) -> bool:
     return path == MCP_PROTECTED_PREFIX or path.startswith(MCP_PROTECTED_PREFIX + "/")
 
 
+def _is_mcp_path(path: str) -> bool:
+    """Whether the request targets the FastMCP ASGI sub-app at /mcp."""
+    return path == MCP_PROTECTED_PREFIX or path.startswith(MCP_PROTECTED_PREFIX + "/")
+
+
+async def _read_mcp_request_id(request: Request) -> Any:
+    """Best-effort extraction of the JSON-RPC ``id`` from an MCP request body.
+
+    The MCP streamable HTTP transport carries each request as a JSON-RPC 2.0
+    payload in the POST body. We need the ``id`` so the 402/504 error envelope
+    can echo it back, letting JSON-RPC clients correlate the failure with the
+    originating call. Returns ``None`` (which renders as JSON ``null``) when
+    the body is missing, non-JSON, batched, or otherwise unparseable — the
+    error envelope is still valid JSON-RPC in that case.
+    """
+    if request.method.upper() != "POST":
+        return None
+    try:
+        raw = await request.body()
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(payload, dict):
+        rpc_id = payload.get("id")
+        if isinstance(rpc_id, str | int) or rpc_id is None:
+            return rpc_id
+    return None
+
+
+def _jsonrpc_error_envelope(
+    *,
+    request_id: Any,
+    code: int,
+    message: str,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a JSON-RPC 2.0 error response body.
+
+    MCP clients parse server failures from this shape rather than the raw
+    HTTP body, so the payment requirement details live under ``error.data``.
+    """
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {
+            "code": code,
+            "message": message,
+            "data": data,
+        },
+    }
+
+
+async def _payment_required_response(
+    request: Request,
+    *,
+    status_code: int,
+    detail: str,
+    error: str | None = None,
+    body_override: dict[str, Any] | None = None,
+) -> JSONResponse:
+    """Return a payment-required JSONResponse, MCP-aware.
+
+    For ``/mcp`` requests the body is wrapped in a JSON-RPC 2.0 error envelope
+    carrying the payment details under ``error.data``. For any other protected
+    route (currently just ``/validate``) the body keeps the legacy flat shape
+    so existing REST clients continue to read ``body["amount"]`` etc.
+    """
+    flat_body = body_override or _payment_required_body(detail, error=error)
+    if not _is_mcp_path(request.url.path):
+        return JSONResponse(status_code=status_code, content=flat_body)
+
+    request_id = await _read_mcp_request_id(request)
+    rpc_code = (
+        JSONRPC_PAYMENT_TIMEOUT_CODE
+        if error == "payment_settlement_timeout"
+        else JSONRPC_PAYMENT_REQUIRED_CODE
+    )
+    envelope = _jsonrpc_error_envelope(
+        request_id=request_id,
+        code=rpc_code,
+        message=detail,
+        data=flat_body,
+    )
+    return JSONResponse(status_code=status_code, content=envelope)
+
+
 async def x402_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
@@ -302,28 +397,30 @@ async def x402_middleware(
 
     if not payment_token:
         logger.info("x402_payment_required", path=request.url.path)
-        return JSONResponse(
+        return await _payment_required_response(
+            request,
             status_code=402,
-            content=_payment_required_body("Payment required"),
+            detail="Payment required",
         )
 
     malformed = _malformed_reason(payment_token)
     if malformed is not None:
         logger.info("x402_payment_malformed", path=request.url.path, error=malformed)
-        return JSONResponse(
+        return await _payment_required_response(
+            request,
             status_code=402,
-            content=_payment_required_body("Payment invalid", error=malformed),
+            detail="Payment invalid",
+            error=malformed,
         )
 
     async with _consumed_lock:
         if payment_token in _consumed_payment_tokens:
             logger.info("x402_payment_already_consumed", path=request.url.path)
-            return JSONResponse(
+            return await _payment_required_response(
+                request,
                 status_code=402,
-                content=_payment_required_body(
-                    "Payment already consumed",
-                    error="payment_already_consumed",
-                ),
+                detail="Payment already consumed",
+                error="payment_already_consumed",
             )
 
     timeout_s = get_x402_settlement_timeout_s()
@@ -337,9 +434,12 @@ async def x402_middleware(
         )
     except TimeoutError:
         logger.warning("x402_settlement_timeout_outer", timeout_s=timeout_s)
-        return JSONResponse(
+        return await _payment_required_response(
+            request,
             status_code=504,
-            content={
+            detail="Payment settlement timeout",
+            error="payment_settlement_timeout",
+            body_override={
                 "detail": "Payment settlement timeout",
                 "error": "payment_settlement_timeout",
                 "amount": get_x402_price_usdc(),
@@ -349,21 +449,23 @@ async def x402_middleware(
 
     if not success:
         if settle_error == "payment_settlement_timeout":
-            return JSONResponse(
+            return await _payment_required_response(
+                request,
                 status_code=504,
-                content={
+                detail="Payment settlement timeout",
+                error="payment_settlement_timeout",
+                body_override={
                     "detail": "Payment settlement timeout",
                     "error": "payment_settlement_timeout",
                     "amount": get_x402_price_usdc(),
                     "asset": X402_ASSET,
                 },
             )
-        return JSONResponse(
+        return await _payment_required_response(
+            request,
             status_code=402,
-            content=_payment_required_body(
-                "Settlement failed",
-                error=settle_error or "settlement_failed",
-            ),
+            detail="Settlement failed",
+            error=settle_error or "settlement_failed",
         )
 
     async with _consumed_lock:
