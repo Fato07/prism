@@ -3,29 +3,28 @@
 # so that pnpm workspace packages (@prism/schemas, @prism/arc-contracts) resolve.
 
 FROM node:22-slim AS base
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
 # --- Dependencies ---
 FROM base AS deps
-# Copy root files needed for pnpm workspace resolution
+# Copy all workspace configuration files
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 # Copy workspace packages needed by dashboard
 COPY packages/schemas-typescript/package.json packages/schemas-typescript/
 COPY packages/schemas-typescript/src/ packages/schemas-typescript/src/
 COPY packages/arc-contracts/package.json packages/arc-contracts/
 COPY packages/arc-contracts/src/ packages/arc-contracts/src/
-# Copy dashboard package files
+# Copy dashboard package files (includes pnpm.onlyBuiltDependencies)
 COPY apps/dashboard/package.json apps/dashboard/
-# Create .npmrc to approve esbuild and sharp builds for pnpm v10+
-RUN printf 'ignore-scripts=false\n' > .npmrc
-# Install dependencies from root (resolves workspace:*)
-RUN pnpm install --filter=prism-dashboard... --frozen-lockfile || pnpm install --filter=prism-dashboard...
+# Install ALL workspace dependencies (not filtered, to ensure root config is applied)
+# The root package.json has pnpm.onlyBuiltDependencies for esbuild and sharp
+RUN pnpm install --frozen-lockfile || pnpm install
 
 # --- Build ---
 FROM base AS builder
 COPY --from=deps /app/ ./
-# Copy dashboard source
+# Copy dashboard source only (other apps not needed)
 COPY apps/dashboard/ apps/dashboard/
 # Build from the dashboard directory (outputFileTracingRoot = monorepo root)
 WORKDIR /app/apps/dashboard
