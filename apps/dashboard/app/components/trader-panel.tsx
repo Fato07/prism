@@ -6,6 +6,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatRelativeTime } from "@/lib/utils";
 import type { TradingR1Trace } from "@/lib/schemas";
 
 interface TraderPanelProps {
@@ -97,6 +98,16 @@ export function TraderPanel({ trace, ipfsCid, contentHash }: TraderPanelProps) {
                   <span className="mr-1 font-mono text-xs text-gray-500">Step {i + 1}:</span>
                   {step.proposition}
                 </p>
+                {step.supporting_evidence_ids.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span className="text-xs text-gray-500">Evidence:</span>
+                    {step.supporting_evidence_ids.map((eid) => (
+                      <Badge key={eid} variant="default" className="bg-blue-900/40 text-blue-300 text-[10px] px-1.5 py-0">
+                        E-{eid}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
                 {step.risk_factors.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {step.risk_factors.map((rf, j) => (
@@ -124,9 +135,16 @@ export function TraderPanel({ trace, ipfsCid, contentHash }: TraderPanelProps) {
                     <p className="text-sm text-gray-200">{ev.claim}</p>
                     <p className="mt-0.5 text-xs text-gray-500">Source: {ev.source}</p>
                   </div>
-                  <span className="ml-2 text-xs font-mono text-gray-400">
-                    {(ev.confidence * 100).toFixed(0)}%
-                  </span>
+                  <div className="ml-2 flex flex-col items-end gap-0.5">
+                    <span className="text-xs font-mono text-gray-400">
+                      {(ev.confidence * 100).toFixed(0)}%
+                    </span>
+                    {ev.timestamp && (
+                      <span className="text-[10px] text-gray-500" title={new Date(ev.timestamp).toLocaleString()}>
+                        {formatRelativeTime(ev.timestamp)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

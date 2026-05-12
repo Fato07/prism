@@ -5,7 +5,7 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
-const ARC_EXPLORER = "https://explorer.testnet.arc.thecanteenapp.com";
+const ARC_EXPLORER = "https://testnet.arcscan.app";
 
 interface ReceiptLinksProps {
   registrationTxHash: string | null;
