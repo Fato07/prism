@@ -15,6 +15,7 @@ dependencies = [
     "opentelemetry-sdk",
     "fastapi",
     "uvicorn[standard]",
+    "x402[fastapi]>=2.9",
 ]
 
 [project.optional-dependencies]

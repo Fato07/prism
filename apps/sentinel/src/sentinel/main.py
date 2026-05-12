@@ -7,11 +7,13 @@ Endpoints:
 Startup gates (all must pass before the service accepts requests):
   1. Environment variable validation
   2. LLM family validation (must be openai-gpt)
+  3. x402 bypass production safety gate
 
 x402 middleware:
-  The /validate endpoint returns HTTP 402 to callers without a valid
-  x402 payment header. This enforces sentinel-as-a-service economics
-  even in Phase 0.
+  The /validate endpoint is paywalled — callers must include a valid
+  x402 payment header authorizing $0.01 USDC settlement on Base via
+  the configured x402 facilitator (Circle Gateway). See
+  `sentinel.x402_middleware` for the full pipeline.
 
 When PRISM_ONCHAIN=true and on_chain_request_hash is provided,
 /validate also submits the validation response on-chain and persists
@@ -24,7 +26,7 @@ import hashlib
 import os
 
 import structlog
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from prism_schemas.db import run_migration
 from prism_schemas.verdict import SentinelVerdict
 from pydantic import BaseModel, Field
@@ -39,6 +41,11 @@ from sentinel.persistence import (
     persist_verdict,
     update_validation_tx_hash,
     update_verdict_response_uri,
+)
+from sentinel.x402_middleware import (
+    assert_bypass_safe_at_startup,
+    is_x402_bypass_enabled,
+    x402_middleware,
 )
 
 structlog.configure(
@@ -58,46 +65,17 @@ def _is_onchain() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# x402 Payment Middleware
+# x402 Payment Middleware (configuration retained at module level)
 # ---------------------------------------------------------------------------
-
-# Header name for x402 payment verification.
-X402_PAYMENT_HEADER = "x402-payment"
-X402_AMOUNT = "0.01"  # USDC per validation
 
 
 def _is_x402_bypass() -> bool:
-    """Check if x402 payment check is bypassed (for testing)."""
-    return os.environ.get("X402_BYPASS", "").strip() in ("1", "true", "yes")
+    """Back-compat shim used by existing tests.
 
-
-async def x402_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
-    """Middleware that checks x402 payment headers on /validate endpoint.
-
-    Returns HTTP 402 (Payment Required) to callers without valid payment.
-    In Phase 0, the check is a header presence check — full USDC settlement
-    is a Phase 1 concern.
+    Real bypass logic lives in `sentinel.x402_middleware`. Keep this for
+    tests that import `_is_x402_bypass` directly.
     """
-    if request.url.path == "/validate" and request.method == "POST":
-        if _is_x402_bypass():
-            return await call_next(request)
-
-        payment_header = request.headers.get(X402_PAYMENT_HEADER, "")
-        if not payment_header:
-            logger.info("x402_payment_required", path=request.url.path)
-            return Response(
-                content='{"detail":"Payment required","amount":"'
-                + X402_AMOUNT
-                + '","asset":"USDC","facilitator":"x402"}',
-                status_code=402,
-                media_type="application/json",
-            )
-
-        # In Phase 0, any non-empty header value is accepted.
-        # Phase 1 will verify on-chain settlement.
-        logger.info("x402_payment_accepted", path=request.url.path)
-
-    return await call_next(request)
+    return is_x402_bypass_enabled()
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +87,9 @@ def _run_startup_gates() -> None:
     """Execute all startup validation gates. Exits on failure."""
     # Gate 1: Environment variables + LLM family validation
     startup_check("sentinel")
+
+    # Gate 2: x402 bypass safety (refuse to start with bypass in production)
+    assert_bypass_safe_at_startup()
 
     logger.info("startup_gates_passed")
 
@@ -162,6 +143,7 @@ class ValidateResponse(BaseModel):
     ipfs_cid: str
     content_hash_hex: str
     tx_hash: str | None = None
+    payment_tx_hash: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -176,20 +158,23 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/validate", response_model=ValidateResponse)
-async def validate(request: ValidateRequest) -> ValidateResponse:
+async def validate(body: ValidateRequest, http_request: Request) -> ValidateResponse:
     """Adversarially validate a trader's reasoning trace.
 
     Flow: Fetch trace from IPFS → DSPy adversarial validation → IPFS pin →
     DB persist → (on-chain validationResponse if PRISM_ONCHAIN=true and
     on_chain_request_hash provided) → return verdict metadata.
     """
-    logger.info("validate_received", trace_uri=request.trace_uri)
+    logger.info("validate_received", trace_uri=body.trace_uri)
+
+    # Pull the x402 settlement tx hash that the middleware stashed on state.
+    payment_tx_hash: str | None = getattr(http_request.state, "x402_payment_tx_hash", None)
 
     # Compute request_hash from the trace_uri and trace_hash
-    request_hash = hashlib.sha256(f"{request.trace_uri}:{request.trace_hash}".encode()).hexdigest()
+    request_hash = hashlib.sha256(f"{body.trace_uri}:{body.trace_hash}".encode()).hexdigest()
 
     # Extract CID from trace_uri (ipfs://CID format)
-    trace_cid = request.trace_uri
+    trace_cid = body.trace_uri
     if trace_cid.startswith("ipfs://"):
         trace_cid = trace_cid[7:]
 
@@ -206,7 +191,7 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
         trace_id = trace_data.get("trace_id", "")
         await pinata.close()
     except Exception as exc:
-        logger.error("trace_fetch_failed", trace_uri=request.trace_uri, error=str(exc))
+        logger.error("trace_fetch_failed", trace_uri=body.trace_uri, error=str(exc))
         raise HTTPException(
             status_code=400,
             detail=f"Cannot fetch trace from IPFS: {exc}",
@@ -251,13 +236,13 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
     # On-chain validation response (optional, controlled by PRISM_ONCHAIN env var)
     tx_hash: str | None = None
 
-    if _is_onchain() and request.on_chain_request_hash:
+    if _is_onchain() and body.on_chain_request_hash:
         try:
             from sentinel.chain import submit_validation_response_from_env
 
             verdict_uri = f"ipfs://{ipfs_cid}"
             result = await submit_validation_response_from_env(
-                request_hash=request.on_chain_request_hash,
+                request_hash=body.on_chain_request_hash,
                 verdict_score=verdict.verdict_score,
                 verdict_uri=verdict_uri,
                 verdict_hash=f"0x{content_hash_hex}",
@@ -272,7 +257,7 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
                 "on_chain_validation_response_submitted",
                 trace_id=verdict.trace_id,
                 tx_hash=tx_hash,
-                request_hash=request.on_chain_request_hash,
+                request_hash=body.on_chain_request_hash,
             )
         except Exception as exc:
             # On-chain step failed — verdict is still valid, just no tx_hash
@@ -289,6 +274,7 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
         verdict_label=verdict.verdict_label,
         ipfs_cid=ipfs_cid,
         tx_hash=tx_hash,
+        payment_tx_hash=payment_tx_hash,
     )
 
     return ValidateResponse(
@@ -303,4 +289,5 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
         ipfs_cid=ipfs_cid,
         content_hash_hex=content_hash_hex,
         tx_hash=tx_hash,
+        payment_tx_hash=payment_tx_hash,
     )
