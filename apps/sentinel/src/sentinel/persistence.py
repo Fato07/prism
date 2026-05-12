@@ -44,13 +44,15 @@ def _wallet_address() -> str:
 def ensure_agent_row(dsn: str | None = None) -> None:
     """Ensure the sentinel agent row exists in the agents table."""
     dsn = dsn or _dsn()
+    agent_card_cid = os.environ.get("SENTINEL_AGENT_CARD_CID", "")
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO agents (agent_id, role, wallet_address) "
-            "VALUES (%s, %s, %s) "
+            "INSERT INTO agents (agent_id, role, wallet_address, agent_card_cid) "
+            "VALUES (%s, %s, %s, %s) "
             "ON CONFLICT (agent_id) DO UPDATE "
-            "SET wallet_address = EXCLUDED.wallet_address",
-            (_agent_id(), "sentinel", _wallet_address()),
+            "SET wallet_address = EXCLUDED.wallet_address, "
+            "    agent_card_cid = COALESCE(EXCLUDED.agent_card_cid, agents.agent_card_cid)",
+            (_agent_id(), "sentinel", _wallet_address(), agent_card_cid or None),
         )
         conn.commit()
     logger.info("agent_row_ensured", agent_id=_agent_id())
