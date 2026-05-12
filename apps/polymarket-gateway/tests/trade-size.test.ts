@@ -85,8 +85,8 @@ describe("VAL-POLY-005: Trade size enforcement", () => {
   });
 
   describe("placePrismOrder with size enforcement", () => {
-    it("25 USDC order succeeds with default (100 USDC) balance", () => {
-      const receipt = placePrismOrder({
+    it("25 USDC order succeeds with default (100 USDC) balance", async () => {
+      const receipt = await placePrismOrder({
         agentId: 1,
         traceId: "test-trace-id",
         marketId: "test-market",
@@ -97,8 +97,8 @@ describe("VAL-POLY-005: Trade size enforcement", () => {
       expect(receipt.size).toBe(25);
     });
 
-    it("26 USDC order throws with default (100 USDC) balance", () => {
-      expect(() =>
+    it("26 USDC order throws with default (100 USDC) balance", async () => {
+      await expect(
         placePrismOrder({
           agentId: 1,
           traceId: "test-trace-id",
@@ -106,11 +106,11 @@ describe("VAL-POLY-005: Trade size enforcement", () => {
           side: "BUY",
           sizeUsdc: 26,
         }),
-      ).toThrow(/exceeds/);
+      ).rejects.toThrow(/exceeds/);
     });
 
-    it("10 USDC order succeeds with 40 USDC balance", () => {
-      const receipt = placePrismOrder(
+    it("10 USDC order succeeds with 40 USDC balance", async () => {
+      const receipt = await placePrismOrder(
         {
           agentId: 1,
           traceId: "test-trace-id",
@@ -123,8 +123,8 @@ describe("VAL-POLY-005: Trade size enforcement", () => {
       expect(receipt.status).toBe("paper_filled");
     });
 
-    it("15 USDC order rejected with 40 USDC balance", () => {
-      expect(() =>
+    it("15 USDC order rejected with 40 USDC balance", async () => {
+      await expect(
         placePrismOrder(
           {
             agentId: 1,
@@ -135,7 +135,7 @@ describe("VAL-POLY-005: Trade size enforcement", () => {
           },
           40,
         ),
-      ).toThrow(/exceeds/);
+      ).rejects.toThrow(/exceeds/);
     });
   });
 });

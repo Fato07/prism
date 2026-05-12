@@ -30,8 +30,8 @@ describe("VAL-POLY-002: Paper trade returns simulated receipt", () => {
     sizeUsdc: 10,
   };
 
-  it("returns a receipt with all required fields", () => {
-    const receipt = placePrismOrder(validParams);
+  it("returns a receipt with all required fields", async () => {
+    const receipt = await placePrismOrder(validParams);
 
     expect(receipt).toHaveProperty("orderId");
     expect(receipt).toHaveProperty("traceId", validParams.traceId);
@@ -43,68 +43,48 @@ describe("VAL-POLY-002: Paper trade returns simulated receipt", () => {
     expect(receipt).toHaveProperty("timestamp");
   });
 
-  it("orderId is a valid UUID", () => {
-    const receipt = placePrismOrder(validParams);
+  it("orderId is a valid UUID", async () => {
+    const receipt = await placePrismOrder(validParams);
     const uuidRegex =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     expect(receipt.orderId).toMatch(uuidRegex);
   });
 
-  it("builderCode matches HMAC derivation from agentId", () => {
-    const receipt = placePrismOrder(validParams);
+  it("builderCode matches HMAC derivation from agentId", async () => {
+    const receipt = await placePrismOrder(validParams);
     const expectedCode = mapAgentIdToBuilderCode(validParams.agentId);
     expect(receipt.builderCode).toBe(expectedCode);
   });
 
-  it("timestamp is a valid ISO 8601 string", () => {
-    const receipt = placePrismOrder(validParams);
+  it("timestamp is a valid ISO 8601 string", async () => {
+    const receipt = await placePrismOrder(validParams);
     expect(new Date(receipt.timestamp).toISOString()).toBe(receipt.timestamp);
   });
 
-  it("two trades produce different orderIds", () => {
-    const receipt1 = placePrismOrder(validParams);
-    const receipt2 = placePrismOrder(validParams);
+  it("two trades produce different orderIds", async () => {
+    const receipt1 = await placePrismOrder(validParams);
+    const receipt2 = await placePrismOrder(validParams);
     expect(receipt1.orderId).not.toBe(receipt2.orderId);
   });
 
-  it("works without POLYMARKET_API_KEY (no live credentials needed)", () => {
-    // Ensure no Polymarket API key is set
+  it("works without POLYMARKET_API_KEY (no live credentials needed)", async () => {
     delete process.env.POLYMARKET_API_KEY;
-    const receipt = placePrismOrder(validParams);
+    const receipt = await placePrismOrder(validParams);
     expect(receipt.status).toBe("paper_filled");
   });
 
-  it("SELL side works correctly", () => {
+  it("SELL side works correctly", async () => {
     const sellParams: PrismOrderParams = {
       ...validParams,
       side: "SELL",
     };
-    const receipt = placePrismOrder(sellParams);
+    const receipt = await placePrismOrder(sellParams);
     expect(receipt.side).toBe("SELL");
     expect(receipt.status).toBe("paper_filled");
   });
 
-  it("throws if PRISM_TRADE_MODE is not paper", async () => {
-    const original = process.env.PRISM_TRADE_MODE;
-    process.env.PRISM_TRADE_MODE = "live";
-
-    // Reset env cache and reimport to pick up the change
-    const { resetEnv } = await import("../src/env.js");
-    resetEnv();
-
-    // placePrismOrder should throw for non-paper mode
-    expect(() =>
-      placePrismOrder({
-        agentId: 1,
-        traceId: "test-trace-id",
-        marketId: "test-market",
-        side: "BUY",
-        sizeUsdc: 10,
-      }),
-    ).toThrow(/Unsupported trade mode/);
-
-    // Reset to paper
-    process.env.PRISM_TRADE_MODE = original;
-    resetEnv();
+  it("polymarketTx is null for paper receipts", async () => {
+    const receipt = await placePrismOrder(validParams);
+    expect(receipt.polymarketTx).toBeNull();
   });
 });

@@ -2,6 +2,6 @@
   "name": "prism-monorepo",
   "private": true,
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "sharp"]
+    "onlyBuiltDependencies": ["esbuild", "sharp", "@polymarket/clob-client-v2"]
   }
 }

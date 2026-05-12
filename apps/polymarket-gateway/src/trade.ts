@@ -1,8 +1,16 @@
-/** Paper trade execution with size enforcement and simulated receipts.
+/** Trade execution: paper (simulated) or live (real Polymarket V2 CLOB).
 
-Phase 0: No real Polymarket orders. Returns simulated receipt.
-Trade size enforced at 25% of capped wallet balance (100 USDC cap).
-Builder code deterministically derived from agentId via HMAC.
+PRISM_TRADE_MODE controls dispatch:
+- `paper` → simulated receipt with status:`paper_filled` and `orderId` UUID
+- `live`  → real createAndPostOrder via @polymarket/clob-client-v2 with builderCode,
+            real `orderId` from Polymarket, `status:'open'` until fill polling
+            updates it to `filled` with a real polymarket_tx hash
+
+Size guards:
+- Both modes: ≤ 25% of capped wallet balance (Phase 0 invariant)
+- Live mode also: LIVE_TRADE_MIN_USDC (5) ≤ size ≤ LIVE_TRADE_MAX_USDC (10)
+
+Builder code is deterministically derived from agentId via HMAC.
 */
 
 import { randomUUID } from "node:crypto";
@@ -10,17 +18,25 @@ import { randomUUID } from "node:crypto";
 import pino from "pino";
 
 import { mapAgentIdToBuilderCode } from "./builder.js";
+import { submitLiveOrder } from "./clob.js";
+import type { LiveOrderResponse } from "./clob.js";
 import { getEnv } from "./env.js";
+import { checkGeofence } from "./geofence.js";
 
 const logger = pino({ name: "prism.trade" });
 
-/** Wallet balance cap in USDC. Never allow trades exceeding 25% of this. */
 const DEFAULT_WALLET_CAP_USDC = 100;
+const DEFAULT_LIVE_PRICE = 0.5;
 
-/** Side of a trade order. */
 export type TradeSide = "BUY" | "SELL";
 
-/** Parameters for placing a Prism order. */
+export type TradeStatus =
+  | "paper_filled"
+  | "open"
+  | "filled"
+  | "failed"
+  | "expired";
+
 export interface PrismOrderParams {
   agentId: number;
   traceId: string;
@@ -28,9 +44,10 @@ export interface PrismOrderParams {
   side: TradeSide;
   sizeUsdc: number;
   priceLimit?: number;
+  /** Polymarket conditional token ID. Required for live mode; defaults to marketId in paper mode. */
+  tokenId?: string;
 }
 
-/** Simulated paper trade receipt. */
 export interface TradeReceipt {
   orderId: string;
   traceId: string;
@@ -38,11 +55,12 @@ export interface TradeReceipt {
   side: TradeSide;
   size: number;
   builderCode: string;
-  status: "paper_filled";
+  status: TradeStatus;
   timestamp: string;
+  polymarketTx?: string | null;
+  errorMsg?: string;
 }
 
-/** Trade size validation result. */
 export interface SizeValidation {
   allowed: boolean;
   maxSize: number;
@@ -50,17 +68,14 @@ export interface SizeValidation {
   reason?: string;
 }
 
-/** Validate that a trade size is within allowed bounds.
+/** Validate that a trade size is within the balance-percentage cap.
 
 Rules:
-- Max trade size = 25% of wallet balance
+- Max trade size = 25% of effective wallet balance
 - Wallet balance is capped at WALLET_BALANCE_CAP_USDC (default 100 USDC)
-- So max trade size = min(25, 0.25 * actualBalance)
-- If balance > cap, still max 25 USDC and a warning is logged
 
 @param sizeUsdc - Requested trade size in USDC
 @param walletBalanceUsdc - Current wallet balance in USDC (defaults to cap)
-@returns Validation result with allowed flag and max size
 */
 export function validateTradeSize(
   sizeUsdc: number,
@@ -104,39 +119,32 @@ export function validateTradeSize(
   };
 }
 
-/** Execute a paper trade (simulated, no real Polymarket orders).
-
-In PRISM_TRADE_MODE=paper:
-- No HTTP requests to Polymarket CLOB
-- Returns a simulated receipt with all required fields
-- Builder code derived from agentId via HMAC
-
-@param params - Order parameters
-@param walletBalanceUsdc - Current wallet balance (for size validation)
-@returns Simulated trade receipt
-@throws Error if agentId is not configured or trade size exceeds limit
-*/
-export function placePrismOrder(
-  params: PrismOrderParams,
-  walletBalanceUsdc: number = DEFAULT_WALLET_CAP_USDC,
-): TradeReceipt {
+/** Extra live-mode constraint: size must be within [LIVE_TRADE_MIN_USDC, LIVE_TRADE_MAX_USDC]. */
+export function validateLiveTradeSize(sizeUsdc: number): SizeValidation {
   const env = getEnv();
-
-  if (env.PRISM_TRADE_MODE !== "paper") {
-    throw new Error(
-      `Unsupported trade mode: ${env.PRISM_TRADE_MODE}. Only 'paper' is supported in Phase 0.`,
-    );
+  if (sizeUsdc < env.LIVE_TRADE_MIN_USDC) {
+    return {
+      allowed: false,
+      maxSize: env.LIVE_TRADE_MAX_USDC,
+      requestedSize: sizeUsdc,
+      reason: `Live trade size ${sizeUsdc} USDC below minimum ${env.LIVE_TRADE_MIN_USDC} USDC`,
+    };
   }
-
-  // Validate trade size
-  const sizeCheck = validateTradeSize(params.sizeUsdc, walletBalanceUsdc);
-  if (!sizeCheck.allowed) {
-    throw new Error(sizeCheck.reason ?? "Trade size exceeds limit");
+  if (sizeUsdc > env.LIVE_TRADE_MAX_USDC) {
+    return {
+      allowed: false,
+      maxSize: env.LIVE_TRADE_MAX_USDC,
+      requestedSize: sizeUsdc,
+      reason: `Live trade size ${sizeUsdc} USDC exceeds live cap ${env.LIVE_TRADE_MAX_USDC} USDC`,
+    };
   }
+  return { allowed: true, maxSize: env.LIVE_TRADE_MAX_USDC, requestedSize: sizeUsdc };
+}
 
-  // Derive builder code from agentId
-  const builderCode = mapAgentIdToBuilderCode(params.agentId);
-
+function buildPaperReceipt(
+  params: PrismOrderParams,
+  builderCode: string,
+): TradeReceipt {
   const receipt: TradeReceipt = {
     orderId: randomUUID(),
     traceId: params.traceId,
@@ -146,8 +154,8 @@ export function placePrismOrder(
     builderCode,
     status: "paper_filled",
     timestamp: new Date().toISOString(),
+    polymarketTx: null,
   };
-
   logger.info(
     {
       orderId: receipt.orderId,
@@ -158,6 +166,130 @@ export function placePrismOrder(
     },
     "Paper trade executed",
   );
+  return receipt;
+}
+
+async function buildLiveReceipt(
+  params: PrismOrderParams,
+  builderCode: string,
+): Promise<TradeReceipt> {
+  const env = getEnv();
+  const geo = checkGeofence(env.LOCALE);
+  if (!geo.allowed) {
+    throw new Error(geo.reason ?? "geofence_restricted");
+  }
+
+  const sizeCheck = validateLiveTradeSize(params.sizeUsdc);
+  if (!sizeCheck.allowed) {
+    throw new Error(sizeCheck.reason ?? "live size invalid");
+  }
+
+  const tokenId = params.tokenId ?? params.marketId;
+  if (!tokenId) {
+    throw new Error("tokenId (or marketId fallback) required for live order");
+  }
+
+  let response: LiveOrderResponse;
+  try {
+    response = await submitLiveOrder({
+      tokenId,
+      marketId: params.marketId,
+      side: params.side,
+      sizeUsdc: params.sizeUsdc,
+      price: params.priceLimit ?? DEFAULT_LIVE_PRICE,
+      builderCode,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "polymarket order submission failed";
+    logger.error({ err: message, marketId: params.marketId }, "Live order threw");
+    return {
+      orderId: randomUUID(),
+      traceId: params.traceId,
+      marketId: params.marketId,
+      side: params.side,
+      size: params.sizeUsdc,
+      builderCode,
+      status: "failed",
+      timestamp: new Date().toISOString(),
+      polymarketTx: null,
+      errorMsg: message,
+    };
+  }
+
+  if (!response.success || !response.orderID) {
+    const errorMsg = response.errorMsg ?? "polymarket order rejected";
+    logger.warn(
+      { errorMsg, marketId: params.marketId, status: response.status },
+      "Live order rejected",
+    );
+    return {
+      orderId: response.orderID || randomUUID(),
+      traceId: params.traceId,
+      marketId: params.marketId,
+      side: params.side,
+      size: params.sizeUsdc,
+      builderCode,
+      status: "failed",
+      timestamp: new Date().toISOString(),
+      polymarketTx: null,
+      errorMsg,
+    };
+  }
+
+  const firstTx = response.transactionsHashes?.[0] ?? null;
+  const status: TradeStatus = firstTx ? "filled" : "open";
+
+  const receipt: TradeReceipt = {
+    orderId: response.orderID,
+    traceId: params.traceId,
+    marketId: params.marketId,
+    side: params.side,
+    size: params.sizeUsdc,
+    builderCode,
+    status,
+    timestamp: new Date().toISOString(),
+    polymarketTx: firstTx,
+  };
+
+  logger.info(
+    {
+      orderId: receipt.orderId,
+      marketId: params.marketId,
+      side: params.side,
+      size: params.sizeUsdc,
+      builderCode,
+      polymarketTx: firstTx,
+      status,
+    },
+    "Live order submitted to Polymarket CLOB",
+  );
 
   return receipt;
+}
+
+/** Execute a Prism order. Dispatches to paper or live based on PRISM_TRADE_MODE. */
+export async function placePrismOrder(
+  params: PrismOrderParams,
+  walletBalanceUsdc: number = DEFAULT_WALLET_CAP_USDC,
+): Promise<TradeReceipt> {
+  const env = getEnv();
+
+  const sizeCheck = validateTradeSize(params.sizeUsdc, walletBalanceUsdc);
+  if (!sizeCheck.allowed) {
+    throw new Error(sizeCheck.reason ?? "Trade size exceeds limit");
+  }
+
+  const builderCode = mapAgentIdToBuilderCode(params.agentId);
+
+  if (env.PRISM_TRADE_MODE === "paper") {
+    return buildPaperReceipt(params, builderCode);
+  }
+
+  if (env.PRISM_TRADE_MODE === "live") {
+    return buildLiveReceipt(params, builderCode);
+  }
+
+  throw new Error(
+    `Unsupported trade mode: ${env.PRISM_TRADE_MODE}. Expected 'paper' or 'live'.`,
+  );
 }

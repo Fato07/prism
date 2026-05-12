@@ -6,28 +6,28 @@ Separates app creation from server startup for testability.
 import { Hono } from "hono";
 import pino from "pino";
 
+import { persistTrade } from "./db.js";
+import { getEnv } from "./env.js";
+import { checkGeofence } from "./geofence.js";
 import { fetchMarkets } from "./markets.js";
 import { placePrismOrder } from "./trade.js";
 import type { TradeSide } from "./trade.js";
-import { persistTrade } from "./db.js";
-import { getEnv } from "./env.js";
 
 const logger = pino({ name: "prism.gateway" });
 
-/** Create and configure the Hono app. */
 export function createApp(): Hono {
   const app = new Hono();
 
-  /** GET /health — Health check. */
   app.get("/health", (c) => {
+    const env = getEnv();
     return c.json({
       status: "ok",
       service: "prism-polymarket-gateway",
+      mode: env.PRISM_TRADE_MODE,
       timestamp: new Date().toISOString(),
     });
   });
 
-  /** GET /markets — Fetch cached market data. */
   app.get("/markets", async (c) => {
     try {
       const markets = await fetchMarkets();
@@ -38,12 +38,17 @@ export function createApp(): Hono {
     }
   });
 
-  /** POST /trade — Execute a paper trade. */
   app.post("/trade", async (c) => {
     const env = getEnv();
 
-    if (env.PRISM_TRADE_MODE !== "paper") {
-      return c.json({ error: "Only paper trading supported in Phase 0" }, 400);
+    if (env.PRISM_TRADE_MODE === "live") {
+      const geo = checkGeofence(env.LOCALE);
+      if (!geo.allowed) {
+        return c.json(
+          { error: geo.reason ?? "geofence_restricted", locale: geo.locale },
+          403,
+        );
+      }
     }
 
     let body: Record<string, unknown>;
@@ -53,12 +58,13 @@ export function createApp(): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    // Validate required fields
     const agentId = body.agentId;
     const traceId = body.traceId;
     const marketId = body.marketId;
     const side = body.side as string;
     const sizeUsdc = body.sizeUsdc as number;
+    const tokenId = body.tokenId as string | undefined;
+    const priceLimit = body.priceLimit as number | undefined;
 
     if (!agentId || !traceId || !marketId || !side || sizeUsdc === undefined) {
       return c.json(
@@ -79,15 +85,16 @@ export function createApp(): Hono {
     }
 
     try {
-      const receipt = placePrismOrder({
+      const receipt = await placePrismOrder({
         agentId: Number(agentId),
         traceId: String(traceId),
         marketId: String(marketId),
         side: side as TradeSide,
         sizeUsdc,
+        tokenId,
+        priceLimit,
       });
 
-      // Persist to Neon (best-effort, don't fail the response)
       const persisted = await persistTrade(receipt);
       if (!persisted) {
         logger.warn(
@@ -96,10 +103,13 @@ export function createApp(): Hono {
         );
       }
 
-      return c.json({ receipt, persisted }, 200);
+      const httpStatus = receipt.status === "failed" ? 502 : 200;
+      return c.json({ receipt, persisted }, httpStatus);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Trade failed";
-      const status = message.includes("exceeds") ? 422 : 500;
+      let status: 422 | 403 | 500 = 500;
+      if (message.includes("exceeds") || message.includes("below")) status = 422;
+      else if (message.includes("geofence")) status = 403;
       return c.json({ error: message }, status);
     }
   });

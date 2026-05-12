@@ -12,6 +12,24 @@ const envSchema = z.object({
   BUILDER_HMAC_SECRET: z.string().default("prism-default-hmac-secret"),
   WALLET_BALANCE_CAP_USDC: z.coerce.number().default(100),
   MARKET_CACHE_TTL_SECONDS: z.coerce.number().default(45),
+
+  LOCALE: z.string().default("EE"),
+
+  LIVE_TRADE_MIN_USDC: z.coerce.number().default(5),
+  LIVE_TRADE_MAX_USDC: z.coerce.number().default(10),
+
+  POLY_CLOB_HOST: z.string().default("https://clob.polymarket.com"),
+  POLY_FUNDER_SECRET: z.string().optional(),
+  POLY_FUNDER_ADDRESS: z.string().optional(),
+  POLY_CLOB_API_KEY: z.string().optional(),
+  POLY_CLOB_SECRET: z.string().optional(),
+  POLY_CLOB_PASSPHRASE: z.string().optional(),
+  POLY_CHAIN_ID: z.coerce.number().default(137),
+  POLY_BUILDER_POLL_SECONDS: z.coerce.number().default(60),
+  POLY_BUILDER_POLL_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;
