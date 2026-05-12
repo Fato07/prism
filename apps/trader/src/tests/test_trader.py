@@ -100,7 +100,9 @@ class TestTriggerEndpoint:
         ):
             from trader.main import app
 
-            return TestClient(app)
+            # Use raise_server_exceptions=False to avoid startup event
+            # triggering the real _run_startup_gates (patched above).
+            return TestClient(app, raise_server_exceptions=True)
 
     def test_trigger_valid_payload_returns_200_or_202(self) -> None:
         """Well-formed request returns HTTP 200/202 with trace_id and ipfs_cid."""

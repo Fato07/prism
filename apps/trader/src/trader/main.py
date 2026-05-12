@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import AsyncIterator
 
 import structlog
 from fastapi import FastAPI, HTTPException
@@ -75,19 +76,21 @@ def _run_startup_gates() -> None:
     logger.info("startup_gates_passed")
 
 
-# Run gates at module import time (uvicorn loads this module on start).
-_run_startup_gates()
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Execute startup gates and DB setup when the app starts (not at import time)."""
+    _run_startup_gates()
 
-# Run DB migration and ensure agent row after gates pass.
-_dsn = os.environ.get("DATABASE_URL", "")
-if _dsn:
-    try:
-        run_migration(_dsn)
-        ensure_agent_row(_dsn)
-    except Exception as exc:
-        logger.error("db_setup_failed", error=str(exc))
+    _dsn = os.environ.get("DATABASE_URL", "")
+    if _dsn:
+        try:
+            run_migration(_dsn)
+            ensure_agent_row(_dsn)
+        except Exception as exc:
+            logger.error("db_setup_failed", error=str(exc))
+    yield
 
-app = FastAPI(title="Prism Trader", version="0.1.0")
+
+app = FastAPI(title="Prism Trader", version="0.1.0", lifespan=_lifespan)
 
 
 # ---------------------------------------------------------------------------
