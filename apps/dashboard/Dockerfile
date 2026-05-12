@@ -10,9 +10,6 @@ WORKDIR /app
 FROM base AS deps
 # Copy workspace config and lockfile from root
 COPY pnpm-workspace.yaml pnpm-lock.yaml ./
-# Create a minimal root package.json with pnpm.onlyBuiltDependencies
-# to allow esbuild and sharp build scripts (required by pnpm v10+)
-RUN echo '{"pnpm":{"onlyBuiltDependencies":["esbuild","sharp"]}}' > package.json
 # Copy workspace packages needed by dashboard
 COPY packages/schemas-typescript/package.json packages/schemas-typescript/
 COPY packages/schemas-typescript/src/ packages/schemas-typescript/src/
@@ -21,7 +18,9 @@ COPY packages/arc-contracts/src/ packages/arc-contracts/src/
 # Copy dashboard package files
 COPY apps/dashboard/package.json apps/dashboard/
 # Install dependencies from root (resolves workspace:*)
-RUN pnpm install --filter=prism-dashboard... --frozen-lockfile || pnpm install --filter=prism-dashboard...
+# Allow esbuild and sharp build scripts via CLI config
+RUN pnpm install --filter=prism-dashboard... --config.onlyBuiltDependencies="esbuild,sharp" --frozen-lockfile || \
+    pnpm install --filter=prism-dashboard... --config.onlyBuiltDependencies="esbuild,sharp"
 
 # --- Build ---
 FROM base AS builder
