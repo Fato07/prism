@@ -393,7 +393,7 @@ class TestVerdictPersistence:
             verdict = _make_verdict()
             from sentinel.persistence import persist_verdict
 
-            persist_verdict(verdict, dsn="postgresql://test:test@localhost/test")
+            persist_verdict(verdict, dsn="NEON_DSN_PLACEHOLDER")
 
             # Verify INSERT was called
             mock_cursor.execute.assert_called_once()
