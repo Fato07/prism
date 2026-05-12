@@ -74,7 +74,7 @@ const sampleTrade: TradeRow = {
   market_id: "0x1234",
   side: "BUY",
   size: "10.5",
-  builder_code: "0x9e599436ce291bcda25bd18c611e46eb54bd7dd12bead05d0027802a9ef30c2e",
+  builder_code: "0x0000000000000000000000000000000000000000000000000000000000000001",
   status: "paper_filled",
   polymarket_tx: null,
   created_at: "2026-05-12T12:00:00Z",
