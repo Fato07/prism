@@ -8,6 +8,8 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import json
 import os
 import subprocess
@@ -615,6 +617,6 @@ class TestCircleChainExtensions:
         """parse_agent_id_from_receipt raises ValueError when no Transfer event found."""
         chain = CircleChain.__new__(CircleChain)
 
-        receipt = {"logs": []}
+        receipt: dict[str, Any] = {"logs": []}
         with pytest.raises(ValueError, match="No Transfer mint event"):
             chain.parse_agent_id_from_receipt(receipt, "0xdeadbeef")

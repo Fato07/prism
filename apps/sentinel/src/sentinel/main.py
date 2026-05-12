@@ -178,7 +178,6 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
     try:
         pinata = PinataClient()
         trace_data = await pinata.fetch_json(trace_cid)
-        trace_json_str = pinata._http._content  # type: ignore[attr-defined]
         # Use the fetched data directly as JSON string
         import json
 

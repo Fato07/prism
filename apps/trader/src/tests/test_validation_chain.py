@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Any
 import os
 import subprocess
 from datetime import UTC, datetime
@@ -190,7 +191,7 @@ class TestValidationRequestHashParsing:
 
     def test_parse_request_hash_raises_on_no_event(self) -> None:
         """parse_request_hash_from_receipt raises ValueError when no event found."""
-        receipt = {"logs": []}
+        receipt: dict[str, Any] = {"logs": []}
         with pytest.raises(ValueError, match="No ValidationRequest event"):
             parse_request_hash_from_receipt(receipt)
 
