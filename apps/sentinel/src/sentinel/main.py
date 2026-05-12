@@ -141,7 +141,10 @@ class ValidateRequest(BaseModel):
     trace_hash: str = Field(..., min_length=1, description="Hex hash of the trace content")
     on_chain_request_hash: str | None = Field(
         None,
-        description="On-chain request hash from validationRequest (for on-chain response submission)",
+        description=(
+            "On-chain request hash from validationRequest"
+            " (for on-chain response submission)"
+        ),
     )
 
 

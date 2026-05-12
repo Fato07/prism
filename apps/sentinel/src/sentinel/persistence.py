@@ -80,7 +80,11 @@ def persist_verdict(verdict: SentinelVerdict, dsn: str | None = None) -> None:
     agent_id = _agent_id()
 
     # Use the verdict's request_hash as the primary key (bytes32 on-chain).
-    request_hash = verdict.request_hash.encode("utf-8") if verdict.request_hash else b""
+    # Try hex decode first (32 bytes for a 64-char hex), fall back to UTF-8.
+    try:
+        request_hash = bytes.fromhex(verdict.request_hash) if verdict.request_hash else b""
+    except ValueError:
+        request_hash = verdict.request_hash.encode("utf-8") if verdict.request_hash else b""
 
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(

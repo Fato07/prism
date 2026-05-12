@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
 import os
 import subprocess
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace

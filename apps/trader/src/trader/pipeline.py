@@ -52,7 +52,12 @@ DEFAULT_MARKET_ID = "0x1234567890abcdef1234567890abcdef1234567890abcdef123456789
 DEFAULT_MARKET_QUESTION = "Will the US Federal Reserve cut interest rates by July 2026?"
 
 
-async def wait_for_service(url: str, name: str, timeout: int = 30, health_path: str = "/health") -> bool:
+async def wait_for_service(
+    url: str,
+    name: str,
+    timeout: int = 30,
+    health_path: str = "/health",
+) -> bool:
     """Wait for a service to become healthy."""
     start = time.time()
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -106,7 +111,10 @@ async def run_pipeline(
             },
         )
         if trigger_resp.status_code not in (200, 202):
-            raise RuntimeError(f"Trader /trigger failed: {trigger_resp.status_code} {trigger_resp.text}")
+            raise RuntimeError(
+                f"Trader /trigger failed:"
+                f" {trigger_resp.status_code} {trigger_resp.text}"
+            )
 
         trigger_data = trigger_resp.json()
         result["steps"]["trigger"] = trigger_data
@@ -180,7 +188,11 @@ async def run_pipeline(
             },
         )
         if trade_resp.status_code not in (200, 202):
-            logger.warning("paper_trade_failed", status=trade_resp.status_code, body=trade_resp.text)
+            logger.warning(
+                "paper_trade_failed",
+                status=trade_resp.status_code,
+                body=trade_resp.text,
+            )
             result["steps"]["trade"] = {"error": f"Trade failed: {trade_resp.status_code}"}
         else:
             trade_data = trade_resp.json()
@@ -229,7 +241,9 @@ async def run_pipeline(
                     ipfs_data = ipfs_resp.json()
                     ipfs_verdict_score = ipfs_data.get("verdict_score")
                     result["consistency"]["ipfs_verdict_cid_resolves"] = True
-                    result["consistency"]["ipfs_verdict_score_match"] = ipfs_verdict_score == verdict_score
+                    result["consistency"]["ipfs_verdict_score_match"] = (
+                        ipfs_verdict_score == verdict_score
+                    )
                 else:
                     result["consistency"]["ipfs_verdict_cid_resolves"] = False
             except Exception as exc:
@@ -315,11 +329,11 @@ async def main() -> None:
     # Check data consistency
     issues = verify_data_consistency(result)
     if issues:
-        print(f"\n  ⚠️  Issues found:")
+        print("\n  ⚠️  Issues found:")
         for issue in issues:
             print(f"    - {issue}")
     else:
-        print(f"\n  ✅ All data consistency checks passed")
+        print("\n  ✅ All data consistency checks passed")
 
     # Write full result to JSON
     output_path = os.environ.get("PIPELINE_OUTPUT", "/tmp/prism_pipeline_result.json")
