@@ -15,3 +15,6 @@ uv.lock.bak
 .ruff_cache/
 .mypy_cache/
 next-env.d.ts
+
+# Remotion rendered output (regenerate with pnpm render)
+apps/pitch-video/out/
