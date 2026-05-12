@@ -1,141 +1,193 @@
 /**
- * Prism Dashboard — Main Page
+ * Prism Landing Page — Root route (/)
  *
- * Split-screen layout: trader reasoning (left), sentinel challenges (right).
- * Server components fetch from Neon DB + IPFS.
- * Bottom panel: on-chain receipt links + trade attribution.
+ * Waitlist landing page with pitch section, email signup, waitlist count,
+ * and link to live dashboard. Mobile-responsive. SEO meta tags in layout.
  */
 
-import {
-  getLatestTrace,
-  getLatestValidation,
-  getLatestTrade,
-  fetchTraceFromIPFS,
-  fetchVerdictFromIPFS,
-  getAgents,
-} from "@/lib/db";
-import { TraderPanel } from "@/components/trader-panel";
-import { SentinelPanel } from "@/components/sentinel-panel";
-import { ReceiptLinks } from "@/components/receipt-links";
-import { TradeAttribution } from "@/components/trade-attribution";
-import type { TradingR1Trace } from "@/lib/schemas";
-import type { SentinelVerdict } from "@/lib/schemas";
+import type { Metadata } from "next";
+import { getWaitlistCount, ensureWaitlistTable } from "@/lib/db";
+import { WaitlistSignupForm } from "@/components/waitlist-form";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0; // always fetch fresh data
 
-export default async function HomePage() {
-  // Fetch DB rows
-  const traceRow = await getLatestTrace();
-  const validationRow = traceRow
-    ? await getLatestValidation(traceRow.trace_id)
-    : await getLatestValidation();
-  const tradeRow = await getLatestTrade();
+export const metadata: Metadata = {
+  title: "Prism — The First Adversarial AI Validator on ERC-8004",
+  description:
+    "Prism is the first adversarial AI validator on ERC-8004. Two agents — a trader and a sentinel — challenge each other's reasoning with on-chain proof on Arc. Join the waitlist.",
+  openGraph: {
+    title: "Prism — Adversarial AI Validator on ERC-8004",
+    description:
+      "Two agents challenge each other's reasoning. On-chain proof on Arc. Join the waitlist for early access.",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Prism — Adversarial AI Validator on ERC-8004",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Prism — Adversarial AI Validator on ERC-8004",
+    description:
+      "Two agents challenge each other's reasoning. On-chain proof on Arc.",
+    images: ["/og-image.png"],
+  },
+};
 
-  // Fetch full trace content from IPFS if available
-  let traceData: TradingR1Trace | null = null;
-  let marketQuestion: string | null = null;
+const BENEFITS = [
+  {
+    icon: "🛡️",
+    title: "Adversarial Validation",
+    description:
+      "Two-agent adversarial validation catches flawed AI reasoning before it moves markets",
+  },
+  {
+    icon: "⛓️",
+    title: "On-Chain Proof",
+    description:
+      "On-chain proof on Arc — every verdict is immutable, verifiable, and gasless",
+  },
+  {
+    icon: "💸",
+    title: "Sentinel-as-a-Service",
+    description:
+      "Sentinel-as-a-service: other agents pay per validation via x402 nanopayments",
+  },
+] as const;
 
-  if (traceRow?.ipfs_cid) {
-    const ipfsContent = await fetchTraceFromIPFS(traceRow.ipfs_cid);
-    if (ipfsContent) {
-      try {
-        traceData = ipfsContent as unknown as TradingR1Trace;
-        marketQuestion = (ipfsContent as Record<string, unknown>).market_question as string ?? null;
-      } catch {
-        // IPFS content doesn't match expected schema
-      }
-    }
+export default async function LandingPage() {
+  // Ensure table exists and get count
+  let waitlistCount = 0;
+  try {
+    await ensureWaitlistTable();
+    waitlistCount = await getWaitlistCount();
+  } catch {
+    // DB not available — show page anyway with count 0
   }
 
-  // Fetch full verdict content from IPFS if available
-  let verdictData: SentinelVerdict | null = null;
-  if (validationRow?.response_uri) {
-    const cid = validationRow.response_uri.startsWith("ipfs://")
-      ? validationRow.response_uri.slice(7)
-      : validationRow.response_uri;
-    const ipfsContent = await fetchVerdictFromIPFS(cid);
-    if (ipfsContent) {
-      try {
-        verdictData = ipfsContent as unknown as SentinelVerdict;
-      } catch {
-        // IPFS content doesn't match expected schema
-      }
-    }
-  }
-
-  // Determine pending state: trace exists but no verdict
-  const pendingValidation = traceRow && !validationRow;
-
-  // On-chain tx hashes from DB columns
-  // Registration tx hash from agents table
-  const agents = await getAgents();
-  const traderAgent = agents.find((a) => a.role === "trader");
-  const registrationTxHash = traderAgent?.registration_tx_hash ?? null;
-
-  // Validation request tx hash from traces table
-  const validationRequestTxHash = traceRow?.tx_hash ?? null;
-
-  // Validation response tx hash from validations table
-  const validationResponseTxHash = validationRow?.tx_hash ?? null;
+  const countDisplay =
+    waitlistCount > 0
+      ? `Join ${waitlistCount} other${waitlistCount !== 1 ? "s" : ""} on the waitlist`
+      : "Be the first to join the waitlist";
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-950/80 px-6 py-4 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              <span className="text-blue-400">Prism</span>
-            </h1>
-            <p className="text-sm text-gray-500">See through the reasoning.</p>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-gray-500">
-            <span className="rounded bg-gray-800 px-2 py-1">Arc Testnet</span>
-            <span className="rounded bg-gray-800 px-2 py-1">Phase 0</span>
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+      {/* Nav */}
+      <nav className="border-b border-gray-800/50 bg-gray-950/80 px-6 py-4 backdrop-blur-sm sticky top-0 z-50">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
+          <a href="/" className="text-xl font-bold tracking-tight">
+            <span className="text-blue-400">Prism</span>
+          </a>
+          <a
+            href="/dashboard"
+            className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
+          >
+            Live Dashboard
+          </a>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 sm:py-24">
+        <div className="mx-auto max-w-3xl text-center">
+          {/* Tagline */}
+          <p className="mb-4 text-sm font-medium uppercase tracking-widest text-blue-400">
+            The first adversarial AI validator on ERC-8004
+          </p>
+
+          {/* Main headline */}
+          <h1 className="mb-6 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
+            See through the{" "}
+            <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              reasoning
+            </span>
+          </h1>
+
+          {/* Subtitle */}
+          <p className="mb-10 text-lg text-gray-400 sm:text-xl max-w-2xl mx-auto">
+            AI agents trade on prediction markets. But who checks their reasoning?
+            Prism pits a sentinel against every trade — catching flaws before capital
+            moves. On-chain. Gasless. Verifiable.
+          </p>
+
+          {/* Waitlist signup */}
+          <div className="mb-6">
+            <p className="mb-4 text-sm text-gray-500">{countDisplay}</p>
+            <div className="mx-auto max-w-md relative">
+              <WaitlistSignupForm />
+            </div>
           </div>
         </div>
-      </header>
 
-      {/* Split-Screen Main Content */}
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        <div className="grid min-h-[calc(100vh-200px)] grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Left Panel: Trader Reasoning */}
-          <div className="min-w-0">
-            <TraderPanel
-              trace={traceData}
-              ipfsCid={traceRow?.ipfs_cid ?? null}
-              contentHash={traceRow?.content_hash ?? null}
-            />
-          </div>
-
-          {/* Right Panel: Sentinel Challenges */}
-          <div className="min-w-0">
-            <SentinelPanel
-              verdict={verdictData}
-              responseUri={validationRow?.response_uri ?? null}
-              pendingMessage={pendingValidation ? "Trace submitted — awaiting sentinel validation" : undefined}
-            />
+        {/* Benefits */}
+        <div className="mx-auto mt-16 max-w-4xl w-full">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+            {BENEFITS.map((benefit) => (
+              <div
+                key={benefit.title}
+                className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 transition-colors hover:border-gray-700"
+              >
+                <div className="mb-3 text-2xl">{benefit.icon}</div>
+                <h3 className="mb-2 text-base font-semibold text-gray-100">
+                  {benefit.title}
+                </h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  {benefit.description}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Bottom Panel: Receipts + Trade Attribution */}
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ReceiptLinks
-            registrationTxHash={registrationTxHash}
-            validationRequestTxHash={validationRequestTxHash}
-            validationResponseTxHash={validationResponseTxHash}
-          />
-          <TradeAttribution
-            trade={tradeRow}
-            marketQuestion={marketQuestion}
-          />
+        {/* Tech stack badges */}
+        <div className="mt-16 flex flex-wrap items-center justify-center gap-3 text-xs text-gray-500">
+          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Arc</span>
+          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">ERC-8004</span>
+          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Circle Wallets</span>
+          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">x402</span>
+          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Polymarket</span>
+          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Neon</span>
+        </div>
+
+        {/* CTA to dashboard */}
+        <div className="mt-12">
+          <a
+            href="/dashboard"
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 border border-gray-700 px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+          >
+            View Live Dashboard
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </a>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 px-6 py-4 text-center text-xs text-gray-600">
-        The first adversarial AI validator on ERC-8004 · Powered by Arc &amp; Circle
+      <footer className="border-t border-gray-800 px-6 py-6">
+        <div className="mx-auto max-w-5xl flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+          <p className="text-xs text-gray-600">
+            The first adversarial AI validator on ERC-8004 · Powered by Arc &amp; Circle
+          </p>
+          <div className="flex items-center gap-4 text-xs text-gray-600">
+            <a href="/dashboard" className="hover:text-gray-400 transition-colors">
+              Dashboard
+            </a>
+            <span>·</span>
+            <a
+              href="https://github.com/Fato07/prism"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-gray-400 transition-colors"
+            >
+              GitHub
+            </a>
+          </div>
+        </div>
       </footer>
     </div>
   );

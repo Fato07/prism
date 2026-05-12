@@ -121,6 +121,35 @@ export async function fetchVerdictFromIPFS(
   }
 }
 
+/** Add an email to the waitlist. Returns true if newly inserted, false if already exists. */
+export async function addWaitlistEmail(email: string): Promise<{ inserted: boolean }> {
+  const client = getPool();
+  const result = await client.query(
+    `INSERT INTO waitlist (email) VALUES ($1) ON CONFLICT (email) DO NOTHING`,
+    [email]
+  );
+  return { inserted: result.rowCount !== null && result.rowCount > 0 };
+}
+
+/** Get the current waitlist count. */
+export async function getWaitlistCount(): Promise<number> {
+  const client = getPool();
+  const result = await client.query("SELECT count(*) AS count FROM waitlist");
+  return Number(result.rows[0].count);
+}
+
+/** Ensure the waitlist table exists (idempotent migration). */
+export async function ensureWaitlistTable(): Promise<void> {
+  const client = getPool();
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+}
+
 /** Close the pool (for testing / shutdown). */
 export async function closePool(): Promise<void> {
   if (pool) {
