@@ -1,0 +1,7 @@
+{
+  "name": "prism-monorepo",
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
+  }
+}
