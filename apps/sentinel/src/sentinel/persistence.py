@@ -1,7 +1,8 @@
 """Neon DB persistence for sentinel verdicts.
 
 Handles inserting verdicts into the Neon ``validations`` table and ensuring
-the sentinel agent row exists in the ``agents`` table.
+the sentinel agent row exists in the ``agents`` table.  Includes tx_hash
+persistence for on-chain validation response transactions.
 """
 
 from __future__ import annotations
@@ -58,6 +59,18 @@ def ensure_agent_row(dsn: str | None = None) -> None:
     logger.info("agent_row_ensured", agent_id=_agent_id())
 
 
+def update_agent_registration_tx_hash(tx_hash: str, dsn: str | None = None) -> None:
+    """Update the registration_tx_hash for the sentinel agent."""
+    dsn = dsn or _dsn()
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE agents SET registration_tx_hash = %s WHERE agent_id = %s",
+            (tx_hash, _agent_id()),
+        )
+        conn.commit()
+    logger.info("agent_registration_tx_hash_updated", agent_id=_agent_id(), tx_hash=tx_hash)
+
+
 def persist_verdict(verdict: SentinelVerdict, dsn: str | None = None) -> None:
     """Persist a verdict to the Neon ``validations`` table.
 
@@ -66,7 +79,7 @@ def persist_verdict(verdict: SentinelVerdict, dsn: str | None = None) -> None:
     dsn = dsn or _dsn()
     agent_id = _agent_id()
 
-    # Use the verdict's content_hash as request_hash (bytes32 on-chain).
+    # Use the verdict's request_hash as the primary key (bytes32 on-chain).
     request_hash = verdict.request_hash.encode("utf-8") if verdict.request_hash else b""
 
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
@@ -99,7 +112,12 @@ def update_verdict_response_uri(
 ) -> None:
     """Update the response_uri for a verdict after successful IPFS pin."""
     dsn = dsn or _dsn()
-    request_hash_bytes = request_hash.encode("utf-8") if request_hash else b""
+    # request_hash may be a hex string (64 chars) or a raw SHA-256 digest.
+    # Try to decode as hex first (32 bytes), fall back to UTF-8 encoding.
+    try:
+        request_hash_bytes = bytes.fromhex(request_hash) if request_hash else b""
+    except ValueError:
+        request_hash_bytes = request_hash.encode("utf-8") if request_hash else b""
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "UPDATE validations SET response_uri = %s WHERE request_hash = %s",
@@ -111,3 +129,21 @@ def update_verdict_response_uri(
         request_hash=request_hash,
         response_uri=response_uri,
     )
+
+
+def update_validation_tx_hash(request_hash: str, tx_hash: str, dsn: str | None = None) -> None:
+    """Update the on-chain tx_hash for a validation after validation response."""
+    dsn = dsn or _dsn()
+    # request_hash may be a hex string (64 chars) or a raw SHA-256 digest.
+    # Try to decode as hex first (32 bytes), fall back to UTF-8 encoding.
+    try:
+        request_hash_bytes = bytes.fromhex(request_hash) if request_hash else b""
+    except ValueError:
+        request_hash_bytes = request_hash.encode("utf-8") if request_hash else b""
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE validations SET tx_hash = %s WHERE request_hash = %s",
+            (tx_hash, request_hash_bytes),
+        )
+        conn.commit()
+    logger.info("validation_tx_hash_updated", request_hash=request_hash, tx_hash=tx_hash)

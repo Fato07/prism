@@ -1,7 +1,8 @@
 """Neon DB persistence for trading traces.
 
 Handles inserting traces into the Neon ``traces`` table and ensuring
-the corresponding agent row exists.
+the corresponding agent row exists.  Includes tx_hash persistence
+for on-chain validation request transactions.
 """
 
 from __future__ import annotations
@@ -58,6 +59,18 @@ def ensure_agent_row(dsn: str | None = None) -> None:
     logger.info("agent_row_ensured", agent_id=_agent_id())
 
 
+def update_agent_registration_tx_hash(tx_hash: str, dsn: str | None = None) -> None:
+    """Update the registration_tx_hash for the trader agent."""
+    dsn = dsn or _dsn()
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE agents SET registration_tx_hash = %s WHERE agent_id = %s",
+            (tx_hash, _agent_id()),
+        )
+        conn.commit()
+    logger.info("agent_registration_tx_hash_updated", agent_id=_agent_id(), tx_hash=tx_hash)
+
+
 def persist_trace(trace: TradingR1Trace, dsn: str | None = None) -> None:
     """Persist a trace to the Neon ``traces`` table.
 
@@ -100,3 +113,15 @@ def update_trace_ipfs_cid(trace_id: str, ipfs_cid: str, dsn: str | None = None) 
         )
         conn.commit()
     logger.info("trace_ipfs_cid_updated", trace_id=trace_id, ipfs_cid=ipfs_cid)
+
+
+def update_trace_tx_hash(trace_id: str, tx_hash: str, dsn: str | None = None) -> None:
+    """Update the on-chain tx_hash for a trace after validation request."""
+    dsn = dsn or _dsn()
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE traces SET tx_hash = %s WHERE trace_id = %s",
+            (tx_hash, trace_id),
+        )
+        conn.commit()
+    logger.info("trace_tx_hash_updated", trace_id=trace_id, tx_hash=tx_hash)

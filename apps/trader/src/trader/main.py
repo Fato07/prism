@@ -8,6 +8,9 @@ Startup gates (all must pass before the service accepts requests):
   1. Environment variable validation
   2. LLM family validation (must be anthropic-claude)
   3. Geofencing check (locale must not be in Polymarket restricted list)
+
+When PRISM_ONCHAIN=true, /trigger also submits the validation request
+on-chain and persists the tx_hash.
 """
 
 from __future__ import annotations
@@ -23,7 +26,12 @@ from pydantic import BaseModel, Field
 
 from trader.config import check_geofence, startup_check
 from trader.ipfs import PinataClient
-from trader.persistence import ensure_agent_row, persist_trace, update_trace_ipfs_cid
+from trader.persistence import (
+    ensure_agent_row,
+    persist_trace,
+    update_trace_ipfs_cid,
+    update_trace_tx_hash,
+)
 from trader.trading_r1 import WALLET_BALANCE_CAP, generate_and_post_process
 
 structlog.configure(
@@ -35,6 +43,12 @@ structlog.configure(
 )
 
 logger = structlog.get_logger("prism.trader")
+
+
+def _is_onchain() -> bool:
+    """Check if on-chain steps are enabled."""
+    return os.environ.get("PRISM_ONCHAIN", "").strip().lower() in ("1", "true", "yes")
+
 
 # ---------------------------------------------------------------------------
 # Startup gates
@@ -97,6 +111,8 @@ class TriggerResponse(BaseModel):
     action: str
     size_usdc: float
     final_probability: float
+    tx_hash: str | None = None
+    on_chain_request_hash: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +130,8 @@ async def health() -> dict[str, str]:
 async def trigger(request: TriggerRequest) -> TriggerResponse:
     """Generate a Trading-R1 trace for a market question.
 
-    Flow: Claude call → IPFS pin → DB persist → return trace metadata.
+    Flow: Claude call → IPFS pin → DB persist → (on-chain validationRequest
+    if PRISM_ONCHAIN=true) → return trace metadata.
     """
     logger.info("trigger_received", market_id=request.market_id)
 
@@ -156,12 +173,47 @@ async def trigger(request: TriggerRequest) -> TriggerResponse:
 
     content_hash_hex = trace.content_hash().hex()
 
+    # On-chain validation request (optional, controlled by PRISM_ONCHAIN env var)
+    tx_hash: str | None = None
+    on_chain_request_hash: str | None = None
+
+    if _is_onchain():
+        try:
+            from trader.validation import submit_validation_request_from_env
+
+            trace_uri = f"ipfs://{ipfs_cid}"
+            result = await submit_validation_request_from_env(
+                trace_uri=trace_uri,
+                trace_hash=f"0x{content_hash_hex}",
+            )
+            tx_hash = result.get("on_chain_tx_hash")
+            on_chain_request_hash = result.get("request_hash")
+
+            # Persist tx_hash to DB
+            if tx_hash:
+                update_trace_tx_hash(trace.trace_id, tx_hash)
+
+            logger.info(
+                "on_chain_validation_request_submitted",
+                trace_id=trace.trace_id,
+                tx_hash=tx_hash,
+                request_hash=on_chain_request_hash,
+            )
+        except Exception as exc:
+            # On-chain step failed — trace is still valid, just no tx_hash
+            logger.error(
+                "on_chain_validation_request_failed",
+                trace_id=trace.trace_id,
+                error=str(exc),
+            )
+
     logger.info(
         "trigger_complete",
         trace_id=trace.trace_id,
         ipfs_cid=ipfs_cid,
         action=trace.action,
         size_usdc=trace.size_usdc,
+        tx_hash=tx_hash,
     )
 
     return TriggerResponse(
@@ -171,4 +223,6 @@ async def trigger(request: TriggerRequest) -> TriggerResponse:
         action=trace.action,
         size_usdc=trace.size_usdc,
         final_probability=trace.final_probability,
+        tx_hash=tx_hash,
+        on_chain_request_hash=on_chain_request_hash,
     )

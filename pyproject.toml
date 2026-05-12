@@ -29,7 +29,9 @@ testpaths = [
     "apps/trader/src/tests",
     "apps/sentinel/src/tests",
     "packages/schemas-python/src/tests",
+    "tests",
 ]
 markers = [
     "integration: marks tests that require external services (DB, IPFS, Circle SDK)",
+    "slow: marks tests that are slow (LLM calls, on-chain transactions)",
 ]

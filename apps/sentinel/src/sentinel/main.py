@@ -12,6 +12,10 @@ x402 middleware:
   The /validate endpoint returns HTTP 402 to callers without a valid
   x402 payment header. This enforces sentinel-as-a-service economics
   even in Phase 0.
+
+When PRISM_ONCHAIN=true and on_chain_request_hash is provided,
+/validate also submits the validation response on-chain and persists
+the tx_hash.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from sentinel.ipfs import PinataClient
 from sentinel.persistence import (
     ensure_agent_row,
     persist_verdict,
+    update_validation_tx_hash,
     update_verdict_response_uri,
 )
 
@@ -45,6 +50,12 @@ structlog.configure(
 )
 
 logger = structlog.get_logger("prism.sentinel")
+
+
+def _is_onchain() -> bool:
+    """Check if on-chain steps are enabled."""
+    return os.environ.get("PRISM_ONCHAIN", "").strip().lower() in ("1", "true", "yes")
+
 
 # ---------------------------------------------------------------------------
 # x402 Payment Middleware
@@ -128,6 +139,10 @@ class ValidateRequest(BaseModel):
 
     trace_uri: str = Field(..., min_length=1, description="IPFS URI of the trace to validate")
     trace_hash: str = Field(..., min_length=1, description="Hex hash of the trace content")
+    on_chain_request_hash: str | None = Field(
+        None,
+        description="On-chain request hash from validationRequest (for on-chain response submission)",
+    )
 
 
 class ValidateResponse(BaseModel):
@@ -143,6 +158,7 @@ class ValidateResponse(BaseModel):
     calibration_critique: str
     ipfs_cid: str
     content_hash_hex: str
+    tx_hash: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +176,9 @@ async def health() -> dict[str, str]:
 async def validate(request: ValidateRequest) -> ValidateResponse:
     """Adversarially validate a trader's reasoning trace.
 
-    Flow: Fetch trace from IPFS → DSPy adversarial validation → IPFS pin → DB persist.
+    Flow: Fetch trace from IPFS → DSPy adversarial validation → IPFS pin →
+    DB persist → (on-chain validationResponse if PRISM_ONCHAIN=true and
+    on_chain_request_hash provided) → return verdict metadata.
     """
     logger.info("validate_received", trace_uri=request.trace_uri)
 
@@ -227,12 +245,47 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
 
     content_hash_hex = verdict.content_hash().hex()
 
+    # On-chain validation response (optional, controlled by PRISM_ONCHAIN env var)
+    tx_hash: str | None = None
+
+    if _is_onchain() and request.on_chain_request_hash:
+        try:
+            from sentinel.chain import submit_validation_response_from_env
+
+            verdict_uri = f"ipfs://{ipfs_cid}"
+            result = await submit_validation_response_from_env(
+                request_hash=request.on_chain_request_hash,
+                verdict_score=verdict.verdict_score,
+                verdict_uri=verdict_uri,
+                verdict_hash=f"0x{content_hash_hex}",
+            )
+            tx_hash = result.get("on_chain_tx_hash")
+
+            # Persist tx_hash to DB
+            if tx_hash:
+                update_validation_tx_hash(request_hash, tx_hash)
+
+            logger.info(
+                "on_chain_validation_response_submitted",
+                trace_id=verdict.trace_id,
+                tx_hash=tx_hash,
+                request_hash=request.on_chain_request_hash,
+            )
+        except Exception as exc:
+            # On-chain step failed — verdict is still valid, just no tx_hash
+            logger.error(
+                "on_chain_validation_response_failed",
+                trace_id=verdict.trace_id,
+                error=str(exc),
+            )
+
     logger.info(
         "validate_complete",
         trace_id=verdict.trace_id,
         verdict_score=verdict.verdict_score,
         verdict_label=verdict.verdict_label,
         ipfs_cid=ipfs_cid,
+        tx_hash=tx_hash,
     )
 
     return ValidateResponse(
@@ -246,4 +299,5 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
         calibration_critique=verdict.calibration_critique,
         ipfs_cid=ipfs_cid,
         content_hash_hex=content_hash_hex,
+        tx_hash=tx_hash,
     )

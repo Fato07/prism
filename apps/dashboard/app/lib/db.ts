@@ -40,7 +40,7 @@ function getPool(): pg.Pool {
 export async function getLatestTrace(): Promise<TraceRow | null> {
   const client = getPool();
   const result = await client.query(
-    "SELECT trace_id, agent_id::text AS agent_id, market_id, ipfs_cid, encode(content_hash, 'hex') AS content_hash, created_at::text AS created_at FROM traces ORDER BY created_at DESC LIMIT 1"
+    "SELECT trace_id, agent_id::text AS agent_id, market_id, ipfs_cid, encode(content_hash, 'hex') AS content_hash, tx_hash, created_at::text AS created_at FROM traces ORDER BY created_at DESC LIMIT 1"
   );
   if (result.rows.length === 0) return null;
   // pg returns BIGINT as string, parse to number
@@ -58,11 +58,11 @@ export async function getLatestValidation(
 
   if (traceId) {
     query =
-      "SELECT encode(request_hash, 'hex') AS request_hash, trace_id, sentinel_agent_id::text AS sentinel_agent_id, verdict_score, response_uri, created_at::text AS created_at FROM validations WHERE trace_id = $1 ORDER BY created_at DESC LIMIT 1";
+      "SELECT encode(request_hash, 'hex') AS request_hash, trace_id, sentinel_agent_id::text AS sentinel_agent_id, verdict_score, response_uri, tx_hash, created_at::text AS created_at FROM validations WHERE trace_id = $1 ORDER BY created_at DESC LIMIT 1";
     params = [traceId];
   } else {
     query =
-      "SELECT encode(request_hash, 'hex') AS request_hash, trace_id, sentinel_agent_id::text AS sentinel_agent_id, verdict_score, response_uri, created_at::text AS created_at FROM validations ORDER BY created_at DESC LIMIT 1";
+      "SELECT encode(request_hash, 'hex') AS request_hash, trace_id, sentinel_agent_id::text AS sentinel_agent_id, verdict_score, response_uri, tx_hash, created_at::text AS created_at FROM validations ORDER BY created_at DESC LIMIT 1";
     params = [];
   }
 
@@ -86,7 +86,7 @@ export async function getLatestTrade(): Promise<TradeRow | null> {
 export async function getAgents(): Promise<AgentRow[]> {
   const client = getPool();
   const result = await client.query(
-    "SELECT agent_id::text AS agent_id, role, wallet_address, agent_card_cid, created_at::text AS created_at FROM agents ORDER BY agent_id"
+    "SELECT agent_id::text AS agent_id, role, wallet_address, agent_card_cid, registration_tx_hash, created_at::text AS created_at FROM agents ORDER BY agent_id"
   );
   return result.rows.map((row: Record<string, unknown>) =>
     AgentRowSchema.parse({ ...row, agent_id: Number(row.agent_id) })

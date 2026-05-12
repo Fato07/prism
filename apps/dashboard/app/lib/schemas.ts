@@ -109,6 +109,7 @@ export const AgentRowSchema = z.object({
   role: z.enum(["trader", "sentinel", "oracle"]),
   wallet_address: z.string(),
   agent_card_cid: z.string().nullable(),
+  registration_tx_hash: z.string().nullable(),
   created_at: z.string(),
 });
 
@@ -120,6 +121,7 @@ export const TraceRowSchema = z.object({
   market_id: z.string(),
   ipfs_cid: z.string(),
   content_hash: z.string(),
+  tx_hash: z.string().nullable(),
   created_at: z.string(),
 });
 
@@ -131,6 +133,7 @@ export const ValidationRowSchema = z.object({
   sentinel_agent_id: z.number(),
   verdict_score: z.number().int().min(0).max(100),
   response_uri: z.string(),
+  tx_hash: z.string().nullable(),
   created_at: z.string(),
 });
 

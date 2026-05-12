@@ -59,6 +59,32 @@ class PinataClient:
             response.raise_for_status()
             return response.json()
 
+    def pin_json_sync(self, data: dict[str, Any]) -> str:
+        """Synchronous version of pin_json for use in tests."""
+        logger.info("pinning_json_to_ipfs_sync")
+        with httpx.Client(
+            headers={
+                "Authorization": f"Bearer {self.jwt}",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        ) as client:
+            response = client.post(PINATA_PIN_URL, json=data)
+            response.raise_for_status()
+            result = response.json()
+            cid: str = result["IpfsHash"]
+            logger.info("json_pinned_sync", cid=cid)
+            return cid
+
+    def fetch_json_sync(self, cid: str) -> dict[str, Any]:
+        """Synchronous version of fetch_json for use in tests."""
+        url = f"{PINATA_GATEWAY}/{cid}"
+        logger.info("fetching_from_ipfs_sync", cid=cid)
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            return response.json()
+
     async def close(self) -> None:
         """Close the underlying httpx client."""
         if self._http is not None:

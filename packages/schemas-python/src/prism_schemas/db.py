@@ -14,11 +14,12 @@ MIGRATION_SQL = """
 -- Prism Phase 0 schema: 5 tables for agents, traces, validations, trades, feedback
 
 CREATE TABLE IF NOT EXISTS agents (
-    agent_id          BIGINT PRIMARY KEY,
-    role              TEXT NOT NULL CHECK (role IN ('trader', 'sentinel', 'oracle')),
-    wallet_address    TEXT NOT NULL,
-    agent_card_cid    TEXT,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    agent_id            BIGINT PRIMARY KEY,
+    role                TEXT NOT NULL CHECK (role IN ('trader', 'sentinel', 'oracle')),
+    wallet_address      TEXT NOT NULL,
+    agent_card_cid      TEXT,
+    registration_tx_hash TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS traces (
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS traces (
     market_id         TEXT NOT NULL,
     ipfs_cid          TEXT NOT NULL,
     content_hash      BYTEA NOT NULL,
+    tx_hash           TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -36,6 +38,7 @@ CREATE TABLE IF NOT EXISTS validations (
     sentinel_agent_id BIGINT NOT NULL REFERENCES agents(agent_id),
     verdict_score     SMALLINT NOT NULL CHECK (verdict_score >= 0 AND verdict_score <= 100),
     response_uri      TEXT NOT NULL,
+    tx_hash           TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -70,6 +73,14 @@ CREATE INDEX IF NOT EXISTS idx_trades_trace_id ON trades(trace_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_agent_id ON feedback(agent_id);
 """
 
+# Incremental ALTER TABLE statements for adding tx_hash columns to existing DBs.
+ALTER_SQL = """
+-- Add tx_hash columns to existing tables (idempotent)
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS registration_tx_hash TEXT;
+ALTER TABLE traces ADD COLUMN IF NOT EXISTS tx_hash TEXT;
+ALTER TABLE validations ADD COLUMN IF NOT EXISTS tx_hash TEXT;
+"""
+
 
 def get_db_url() -> str:
     """Return DATABASE_URL from environment."""
@@ -87,6 +98,7 @@ def run_migration(dsn: str | None = None) -> None:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(MIGRATION_SQL)
+            cur.execute(ALTER_SQL)
     logger.info("Database migration complete")
 
 

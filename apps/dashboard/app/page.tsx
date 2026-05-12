@@ -12,6 +12,7 @@ import {
   getLatestTrade,
   fetchTraceFromIPFS,
   fetchVerdictFromIPFS,
+  getAgents,
 } from "@/lib/db";
 import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
@@ -66,12 +67,17 @@ export default async function HomePage() {
   // Determine pending state: trace exists but no verdict
   const pendingValidation = traceRow && !validationRow;
 
-  // On-chain tx hashes (these would come from on-chain queries or DB columns)
-  // For now, we show the registration/validation links based on DB data
-  // In production, these would be queried from a separate on-chain_events table
-  const registrationTxHash = null; // populated by chain integration
-  const validationRequestTxHash = null; // populated by chain integration
-  const validationResponseTxHash = null; // populated by chain integration
+  // On-chain tx hashes from DB columns
+  // Registration tx hash from agents table
+  const agents = await getAgents();
+  const traderAgent = agents.find((a) => a.role === "trader");
+  const registrationTxHash = traderAgent?.registration_tx_hash ?? null;
+
+  // Validation request tx hash from traces table
+  const validationRequestTxHash = traceRow?.tx_hash ?? null;
+
+  // Validation response tx hash from validations table
+  const validationResponseTxHash = validationRow?.tx_hash ?? null;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
