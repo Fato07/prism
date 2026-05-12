@@ -14,3 +14,4 @@ uv.lock.bak
 .DS_Store
 .ruff_cache/
 .mypy_cache/
+next-env.d.ts
