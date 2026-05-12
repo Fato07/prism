@@ -621,7 +621,11 @@ class TestX402Middleware:
             patch("sentinel.main.generate_verdict") as mock_gen,
             patch("sentinel.main.persist_verdict"),
             patch("sentinel.main.update_verdict_response_uri"),
-            patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False),
+            patch.dict(
+                os.environ,
+                {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+                clear=False,
+            ),
         ):
             mock_pinata = AsyncMock()
             mock_pinata.fetch_json.return_value = _make_trace().model_dump(mode="json")

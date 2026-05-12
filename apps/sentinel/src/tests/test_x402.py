@@ -244,7 +244,11 @@ class TestMalformedPayment:
 
 class TestSuccessfulPayment:
     def test_valid_payment_returns_200_with_verdict_and_payment_tx_hash(self) -> None:
-        with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+            clear=False,
+        ):
             client, stop = _build_client()
             try:
                 resp = client.post(
@@ -265,7 +269,11 @@ class TestSuccessfulPayment:
 
     def test_payment_tx_hash_is_deterministic_for_same_token(self) -> None:
         token = "stable-payment-token-aaa"
-        with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+            clear=False,
+        ):
             client, stop = _build_client()
             try:
                 resp1 = client.post(
@@ -287,7 +295,11 @@ class TestSuccessfulPayment:
             assert resp1.json()["payment_tx_hash"] == resp2.json()["payment_tx_hash"]
 
     def test_valid_payment_accepted_via_x_payment_header(self) -> None:
-        with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+            clear=False,
+        ):
             client, stop = _build_client()
             try:
                 resp = client.post(
@@ -348,7 +360,11 @@ class TestConfiguredPrice:
 class TestDoubleSpend:
     def test_same_payment_token_used_twice_returns_402(self) -> None:
         token = "TEST_TOKEN_PLACEHOLDER_NOT_A_SECRET_xx"
-        with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+        with patch.dict(
+            os.environ,
+            {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+            clear=False,
+        ):
             client, stop = _build_client()
             try:
                 first = client.post(

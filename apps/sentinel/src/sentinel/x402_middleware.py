@@ -214,7 +214,10 @@ async def _settle_payment(
 
     settle_url = f"{facilitator_url.rstrip('/')}/settle"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0)) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(8.0),
+            follow_redirects=True,
+        ) as client:
             resp = await client.post(settle_url, json=payload)
             if resp.status_code != 200:
                 logger.warning(

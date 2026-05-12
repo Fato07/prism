@@ -666,7 +666,11 @@ class TestMcpWithPayment:
     def test_mcp_tools_list_with_x402_payment_returns_validate(self) -> None:
         patches = _patch_sentinel_main()
         try:
-            with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+            with patch.dict(
+                os.environ,
+                {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+                clear=False,
+            ):
                 from sentinel.main import app
 
                 with TestClient(app) as client:
@@ -734,7 +738,11 @@ class TestPaymentTxHashSchemaParity:
         """Paid MCP tools/call must return payment_tx_hash sourced from middleware."""
         patches = _patch_sentinel_main()
         try:
-            with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+            with patch.dict(
+                os.environ,
+                {"X402_BYPASS": "", "X402_FACILITATOR_URL": "", "X402_RECIPIENT_ADDRESS": ""},
+                clear=False,
+            ):
                 from sentinel.main import app
 
                 with TestClient(app) as client:
