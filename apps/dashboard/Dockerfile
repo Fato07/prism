@@ -17,6 +17,8 @@ COPY packages/arc-contracts/package.json packages/arc-contracts/
 COPY packages/arc-contracts/src/ packages/arc-contracts/src/
 # Copy dashboard package files
 COPY apps/dashboard/package.json apps/dashboard/
+# Create .npmrc to approve esbuild and sharp builds for pnpm v10+
+RUN printf 'ignore-scripts=false\n' > .npmrc
 # Install dependencies from root (resolves workspace:*)
 RUN pnpm install --filter=prism-dashboard... --frozen-lockfile || pnpm install --filter=prism-dashboard...
 
