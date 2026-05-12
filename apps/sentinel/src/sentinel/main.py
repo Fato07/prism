@@ -32,7 +32,7 @@ from prism_mcp.server import build_mcp_server
 from prism_schemas.db import run_migration
 from prism_schemas.verdict import SentinelVerdict
 from pydantic import BaseModel, Field
-from trader.config import startup_check  # Reuse env validation from trader package
+from prism_schemas.startup import startup_check
 
 from sentinel.adversarial import (
     generate_verdict,
