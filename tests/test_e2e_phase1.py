@@ -569,7 +569,6 @@ class TestX402McpVerdictPipeline:
         assert data.verdict_label == verdict.verdict_label
         assert data.ipfs_cid == "QmMcpE2ECID"
         generate_fn.assert_called_once()
-        persist_patch.start()
         # Verify pipeline was invoked
 
     def test_x402_mcp_protected_without_payment(self) -> None:

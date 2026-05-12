@@ -17,9 +17,13 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 import structlog
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
 from fastapi import FastAPI, HTTPException
 from prism_schemas.db import run_migration
 from prism_schemas.trace import TradingR1Trace
@@ -90,7 +94,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="Prism Trader", version="0.1.0", lifespan=_lifespan)
+app = FastAPI(title="Prism Trader", version="0.1.0", lifespan=_lifespan)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
