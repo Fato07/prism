@@ -19,6 +19,13 @@ IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e"
 VALIDATION_REGISTRY = "0x8004Cb1BF31DAf7788923b405b754f57acEB4272"
 REPUTATION_REGISTRY = "0x8004B663056A597Dffe9eCcC1965A193B7388713"
 
+# Circle-internal token id for USDC on ARC-TESTNET. Overridable via env for
+# operator flexibility (e.g. when working against a different Circle environment).
+USDC_TOKEN_ID_ARC_TESTNET = os.environ.get(
+    "CIRCLE_USDC_TOKEN_ID_ARC_TESTNET",
+    "15dc2b5d-0994-58b0-bf8c-3a0501148ee8",
+)
+
 # keccak256("Transfer(address,address,uint256)")
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
@@ -68,10 +75,18 @@ class CircleChain:
         abi_function_signature: str,
         abi_parameters: list[str],
         fee_level: str = "MEDIUM",
+        paymaster: str | None = None,
     ) -> str:
         """Execute a contract call via Circle SDK on ARC-TESTNET.
 
         Returns the Circle transaction ID.
+
+        On Arc testnet, gas is auto-sponsored by Circle Gas Station for wallets
+        covered by an active sponsorship policy — see infra/circle/paymaster.md.
+        The ``paymaster`` parameter is accepted for forward-compatibility with
+        environments (e.g. Base mainnet, future Phase 2) where explicit
+        sponsorship must be specified per call; it is logged for observability
+        but does not change the Arc testnet request body.
         """
         from circle.web3.developer_controlled_wallets import TransactionsApi
         from circle.web3.developer_controlled_wallets.models import (
@@ -81,7 +96,6 @@ class CircleChain:
             AbiParametersInner,
         )
 
-        # Circle SDK requires each parameter to be wrapped in AbiParametersInner.
         wrapped_params = [AbiParametersInner(p) for p in abi_parameters]
 
         api = TransactionsApi(self.client)
@@ -99,6 +113,8 @@ class CircleChain:
             contract_address=contract_address,
             function=abi_function_signature,
             wallet_id=wallet_id,
+            paymaster=paymaster,
+            gas_sponsorship="circle_gas_station_arc_testnet",
         )
 
         response = await asyncio.to_thread(
@@ -109,6 +125,116 @@ class CircleChain:
         tx_id = response.data.id
         logger.info("contract_execution_submitted", tx_id=tx_id)
         return tx_id
+
+    async def transfer_usdc(
+        self,
+        *,
+        wallet_id: str,
+        destination_address: str,
+        amount_usdc: str,
+        token_id: str | None = None,
+        fee_level: str = "MEDIUM",
+    ) -> str:
+        """Transfer USDC from a Circle wallet to an address on ARC-TESTNET.
+
+        ``amount_usdc`` is a decimal string (e.g. ``"0.01"`` for one cent).
+        Returns the Circle transaction ID. Settlement is on Arc Testnet; if
+        Gas Station sponsorship is active for the source wallet, the wallet
+        pays zero gas on top of the transferred amount.
+        """
+        from circle.web3.developer_controlled_wallets import TransactionsApi
+        from circle.web3.developer_controlled_wallets.models import (
+            create_transfer_transaction_for_developer_request as req_mod,
+        )
+
+        api = TransactionsApi(self.client)
+        request_body = req_mod.CreateTransferTransactionForDeveloperRequest(
+            wallet_id=wallet_id,
+            destination_address=destination_address,
+            amounts=[amount_usdc],
+            token_id=token_id or USDC_TOKEN_ID_ARC_TESTNET,
+            fee_level=fee_level,
+        )
+
+        logger.info(
+            "transferring_usdc",
+            wallet_id=wallet_id,
+            destination=destination_address,
+            amount=amount_usdc,
+            blockchain=BLOCKCHAIN,
+        )
+
+        response = await asyncio.to_thread(
+            api.create_developer_transaction_transfer,
+            request_body,
+        )
+
+        tx_id = response.data.id
+        logger.info("usdc_transfer_submitted", tx_id=tx_id)
+        return tx_id
+
+    async def estimate_fee(
+        self,
+        *,
+        wallet_id: str,
+        contract_address: str,
+        abi_function_signature: str,
+        abi_parameters: list[str],
+    ) -> float:
+        """Estimate the network fee (USDC on Arc) for a contract execution.
+
+        Returns the medium-priority ``network_fee`` as a float. On Arc Testnet,
+        fees are denominated in USDC (USDC is the native gas token). With Gas
+        Station sponsorship active, the returned value is ``0.0``.
+        """
+        from circle.web3.developer_controlled_wallets import TransactionsApi
+        from circle.web3.developer_controlled_wallets.models.abi_parameters_inner import (
+            AbiParametersInner,
+        )
+        from circle.web3.developer_controlled_wallets.models.estimate_contract_execution_transaction_fee_request import (  # noqa: E501
+            EstimateContractExecutionTransactionFeeRequest,
+        )
+
+        wrapped_params = [AbiParametersInner(p) for p in abi_parameters]
+
+        api = TransactionsApi(self.client)
+        request_body = EstimateContractExecutionTransactionFeeRequest(
+            wallet_id=wallet_id,
+            contract_address=contract_address,
+            abi_function_signature=abi_function_signature,
+            abi_parameters=wrapped_params,
+        )
+
+        logger.info(
+            "estimating_fee",
+            contract_address=contract_address,
+            function=abi_function_signature,
+            wallet_id=wallet_id,
+        )
+
+        response = await asyncio.to_thread(
+            api.create_transaction_estimate_fee,
+            request_body,
+        )
+
+        tier = response.data.medium or response.data.high or response.data.low
+        raw_fee = getattr(tier, "network_fee", None) if tier is not None else None
+        fee: float = 0.0 if raw_fee in (None, "") else float(str(raw_fee))
+
+        logger.info("fee_estimated", network_fee_usdc=fee)
+        return max(fee, 0.0)
+
+    async def get_transaction(self, tx_id: str) -> Any:
+        """Fetch the full Circle Transaction object for a given transaction id.
+
+        Used for inspecting ``network_fee``, ``tx_hash``, ``state``, and other
+        fields populated by Circle after submission.
+        """
+        from circle.web3.developer_controlled_wallets import TransactionsApi
+
+        api = TransactionsApi(self.client)
+        response = await asyncio.to_thread(api.get_transaction, id=tx_id)
+        return response.data.transaction
 
     async def wait_for_transaction(
         self,
@@ -209,16 +335,20 @@ class CircleChain:
 
         raise ValueError(f"No Transfer mint event found for wallet {wallet_address} in receipt")
 
-    async def get_wallet_balance(self, wallet_id: str) -> dict[str, Any]:
-        """Get token balances for a wallet."""
+    async def get_wallet_balance(self, wallet_id: str) -> dict[str, float]:
+        """Return per-symbol token balances for a Circle wallet.
+
+        Uses the ``list_wallet_balance`` API which returns a list of
+        token balances (``token_balances`` field on the response data).
+        """
         from circle.web3.developer_controlled_wallets import WalletsApi
 
         api = WalletsApi(self.client)
         response = await asyncio.to_thread(
-            api.get_wallet,
+            api.list_wallet_balance,
             id=wallet_id,
         )
-        balances = {}
-        for balance in response.data.wallet.balances:
+        balances: dict[str, float] = {}
+        for balance in response.data.token_balances:
             balances[balance.token.symbol] = float(balance.amount)
         return balances
