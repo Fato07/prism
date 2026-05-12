@@ -54,6 +54,8 @@ X402_DEFAULT_NETWORK = "base"
 X402_DEFAULT_FACILITATOR_NAME = "x402"
 X402_DEFAULT_SETTLEMENT_TIMEOUT_S = 10.0
 
+MCP_PROTECTED_PREFIX = "/mcp"
+
 _consumed_payment_tokens: set[str] = set()
 _consumed_lock = asyncio.Lock()
 
@@ -188,9 +190,9 @@ async def _settle_payment(
     recipient = get_x402_recipient()
 
     if not facilitator_url or not recipient:
-        mock_hash = "0x" + hashlib.sha256(
-            f"x402-mock-settlement:{payment_token}".encode()
-        ).hexdigest()
+        mock_hash = (
+            "0x" + hashlib.sha256(f"x402-mock-settlement:{payment_token}".encode()).hexdigest()
+        )
         logger.info("x402_settled_mock", tx_hash=mock_hash, **request_context)
         return True, mock_hash, None
 
@@ -246,14 +248,34 @@ def _bypass_via_header(request: Request) -> bool:
     return True
 
 
+def _is_protected_path(path: str, method: str) -> bool:
+    """Whether the given request targets a paywalled resource.
+
+    The sentinel protects two surfaces:
+      * ``POST /validate`` — the legacy REST adversarial validator.
+      * Any request under ``/mcp`` — the FastMCP ASGI sub-app, regardless of
+        method, because the MCP streamable HTTP transport uses ``POST`` for
+        ``tools/call`` and ``GET`` for the SSE stream. GET requests without
+        SSE headers still trigger downstream protocol activity and so are
+        gated as well.
+    """
+    if path == "/validate" and method == "POST":
+        return True
+    return path == MCP_PROTECTED_PREFIX or path.startswith(MCP_PROTECTED_PREFIX + "/")
+
+
 async def x402_middleware(
     request: Request,
     call_next: Callable[[Request], Awaitable[Response]],
 ) -> Response:
-    """Middleware that enforces x402 payment on POST /validate.
+    """Middleware that enforces x402 payment on protected sentinel routes.
+
+    Protected routes are ``POST /validate`` and anything under ``/mcp``
+    (the FastMCP ASGI sub-app). All other paths (e.g. ``/health``) pass
+    through unconditionally.
 
     Pipeline:
-      1. Not POST /validate → pass through.
+      1. Not a protected path → pass through.
       2. `X402_BYPASS=1` env or trusted `X402-Bypass` header → pass through.
       3. Missing payment header → HTTP 402 with payment requirements.
       4. Malformed / expired payment token → HTTP 402 with specific error.
@@ -262,7 +284,7 @@ async def x402_middleware(
       7. Settlement failed → HTTP 402 with `settlement_failed`.
       8. Success → mark consumed, stash tx hash, pass through.
     """
-    if not (request.url.path == "/validate" and request.method == "POST"):
+    if not _is_protected_path(request.url.path, request.method):
         return await call_next(request)
 
     if is_x402_bypass_enabled():

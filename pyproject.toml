@@ -16,18 +16,21 @@ dev = [
 prism-schemas = { path = "packages/schemas-python", editable = true }
 prism-trader = { path = "apps/trader", editable = true }
 prism-sentinel = { path = "apps/sentinel", editable = true }
+prism-mcp = { path = "apps/mcp", editable = true }
 
 [tool.uv.workspace]
 members = [
     "packages/schemas-python",
     "apps/trader",
     "apps/sentinel",
+    "apps/mcp",
 ]
 
 [tool.pytest.ini_options]
 testpaths = [
     "apps/trader/src/tests",
     "apps/sentinel/src/tests",
+    "apps/mcp/src/tests",
     "packages/schemas-python/src/tests",
     "tests",
 ]

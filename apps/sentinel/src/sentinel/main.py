@@ -3,6 +3,7 @@
 Endpoints:
   GET  /health    — liveness check
   POST /validate  — adversarially validate a trader's reasoning trace
+  ALL  /mcp/*     — FastMCP ASGI sub-app exposing ``validate`` as an MCP tool
 
 Startup gates (all must pass before the service accepts requests):
   1. Environment variable validation
@@ -10,14 +11,14 @@ Startup gates (all must pass before the service accepts requests):
   3. x402 bypass production safety gate
 
 x402 middleware:
-  The /validate endpoint is paywalled — callers must include a valid
-  x402 payment header authorizing $0.01 USDC settlement on Base via
-  the configured x402 facilitator (Circle Gateway). See
-  `sentinel.x402_middleware` for the full pipeline.
+  Both ``POST /validate`` and ``/mcp/*`` are paywalled — callers must
+  include a valid x402 payment header authorizing $0.01 USDC settlement
+  on Base via the configured x402 facilitator (Circle Gateway). See
+  ``sentinel.x402_middleware`` for the full pipeline.
 
 When PRISM_ONCHAIN=true and on_chain_request_hash is provided,
-/validate also submits the validation response on-chain and persists
-the tx_hash.
+/validate (and the MCP ``validate`` tool) also submit the validation
+response on-chain and persist the tx_hash.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ import os
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
+from prism_mcp.server import build_mcp_server
 from prism_schemas.db import run_migration
 from prism_schemas.verdict import SentinelVerdict
 from pydantic import BaseModel, Field
@@ -106,8 +108,12 @@ if _dsn:
     except Exception as exc:
         logger.error("db_setup_failed", error=str(exc))
 
-app = FastAPI(title="Prism Sentinel", version="0.1.0")
+_mcp_server = build_mcp_server()
+_mcp_app = _mcp_server.http_app(path="/")
+
+app = FastAPI(title="Prism Sentinel", version="0.1.0", lifespan=_mcp_app.lifespan)
 app.middleware("http")(x402_middleware)
+app.mount("/mcp", _mcp_app)
 
 
 # ---------------------------------------------------------------------------
@@ -123,8 +129,7 @@ class ValidateRequest(BaseModel):
     on_chain_request_hash: str | None = Field(
         None,
         description=(
-            "On-chain request hash from validationRequest"
-            " (for on-chain response submission)"
+            "On-chain request hash from validationRequest (for on-chain response submission)"
         ),
     )
 
