@@ -26,6 +26,8 @@ FROM base AS builder
 COPY --from=deps /app/ ./
 # Copy dashboard source only (other apps not needed)
 COPY apps/dashboard/ apps/dashboard/
+# Ensure public directory exists (Next.js expects it even if empty)
+RUN mkdir -p /app/apps/dashboard/public
 # Build from the dashboard directory (outputFileTracingRoot = monorepo root)
 WORKDIR /app/apps/dashboard
 RUN pnpm build
