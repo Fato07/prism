@@ -1,11 +1,7 @@
 [build]
 builder = "DOCKERFILE"
+dockerfilePath = "apps/polymarket-gateway/Dockerfile"
 
 [deploy]
-startCommand = "pnpm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
-
-[[services.environment]]
-name = "PORT"
-value = "3203"

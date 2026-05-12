@@ -11,6 +11,7 @@ dependencies = [
     "psycopg[binary]",
     "circle-developer-controlled-wallets",
     "prism-schemas",
+    "prism-mcp",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "fastapi",

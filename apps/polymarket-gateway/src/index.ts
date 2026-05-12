@@ -46,10 +46,13 @@ export default {
   fetch: app.fetch,
 };
 
-if (
-  process.argv[1]?.endsWith("src/index.ts") ||
-  process.argv[1]?.endsWith("src/index.js")
-) {
+const _entryFile = process.argv[1] ?? "";
+const _isDirectRun =
+  _entryFile.endsWith("src/index.ts") ||
+  _entryFile.endsWith("src/index.js") ||
+  _entryFile.endsWith("dist/index.js");
+
+if (_isDirectRun) {
   const { serve } = await import("@hono/node-server");
   serve({ fetch: app.fetch, port });
   logger.info({ port }, `Polymarket Gateway listening on http://localhost:${port}`);

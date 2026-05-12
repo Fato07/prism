@@ -1,6 +1,10 @@
+# MCP is NOT deployed as a separate service.
+# The sentinel Dockerfile includes apps/mcp/ and mounts the MCP ASGI sub-app.
+# This file is kept for local development reference only.
+
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "apps/mcp/Dockerfile"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"

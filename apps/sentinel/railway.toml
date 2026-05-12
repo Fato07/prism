@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "apps/sentinel/Dockerfile"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
