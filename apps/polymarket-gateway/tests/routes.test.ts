@@ -17,6 +17,28 @@ beforeAll(() => {
   process.env.BUILDER_HMAC_SECRET = "test-hmac-secret";
   process.env.WALLET_BALANCE_CAP_USDC = "100";
   process.env.PORT = "3203";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify([
+          {
+            condition_id: "0x1234567890abcdef",
+            question: "Will Prism pass scrutiny validation?",
+            active: true,
+            tokens: [
+              { outcome: "Yes", price: 0.62 },
+              { outcome: "No", price: 0.38 },
+            ],
+          },
+        ]),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    ),
+  );
 });
 
 import { Hono } from "hono";

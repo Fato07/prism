@@ -48,7 +48,7 @@ class CircleChain:
     def client(self) -> Any:
         """Lazily initialise the Circle SDK client."""
         if self._client is None:
-            from circle.web3 import utils
+            from circle.web3 import utils  # type: ignore[attr-defined]
 
             self._client = utils.init_developer_controlled_wallets_client(
                 api_key=self.api_key,
