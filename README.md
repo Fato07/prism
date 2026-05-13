@@ -117,7 +117,7 @@ Video generated with [Remotion](https://remotion.dev) — see `apps/pitch-video/
 | Sentinel | Python · [DSPy](https://dspy.ai) · GPT-4o-mini (OpenAI) |
 | Data Models | Pydantic v2 / Zod — all I/O boundaries typed |
 | Chain | Circle Dev-Controlled Wallets SDK (Python) + [viem](https://viem.sh) (TypeScript) |
-| IPFS | Pinata (free tier) |
+| IPFS | Pinata (pinning) + ipfs.io (gateway) |
 | Database | Neon serverless Postgres |
 | MCP | [FastMCP](https://github.com/jlowin/fastmcp) |
 | Payments | [x402](https://x402.org) protocol — HTTP-native USDC micropayments |
@@ -138,7 +138,7 @@ Video generated with [Remotion](https://remotion.dev) — see `apps/pitch-video/
 | **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health` |
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `POST /trade`, `GET /health` |
-| **MCP Server** | Python, FastMCP | `validate(trace_uri)` tool |
+| **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
 | **Dashboard** | Next.js 16, React 19 | Split-screen trace + verdict view |
 
 ---
@@ -170,6 +170,9 @@ cp .env.example .env
 #   - DATABASE_URL (Neon Postgres pooled connection string)
 #   - ARC_RPC_URL (Arc testnet RPC endpoint)
 #   - POLY_BUILDER_CODE (Polymarket builder attribution code)
+#   - TRADER_AGENT_ID, SENTINEL_AGENT_ID (ERC-8004 token IDs, after registration)
+#   - X402_FACILITATOR_URL, X402_NETWORK, X402_PRICE_USDC, X402_RECIPIENT_ADDRESS (x402 config)
+#   - PRISM_TRADE_MODE (paper or live — default: paper)
 
 # 3. Install Python dependencies
 uv sync
