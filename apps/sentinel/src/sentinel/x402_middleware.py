@@ -372,6 +372,50 @@ def _is_mcp_path(path: str) -> bool:
     return path == MCP_PROTECTED_PREFIX or path.startswith(MCP_PROTECTED_PREFIX + "/")
 
 
+# MCP JSON-RPC methods that are gratis (the protocol's free metadata layer):
+# clients need them to discover tools / set up the session, and charging for
+# them creates a chicken-and-egg with the session handshake. Only the
+# `tools/call` method actually invokes a paid resource.
+MCP_FREE_METHODS: frozenset[str] = frozenset(
+    {
+        "initialize",
+        "notifications/initialized",
+        "notifications/cancelled",
+        "ping",
+        "tools/list",
+        "resources/list",
+        "prompts/list",
+    }
+)
+
+
+async def _read_mcp_method(request: Request) -> str | None:
+    """Best-effort: extract the JSON-RPC method name from an MCP request body.
+
+    Reads the body once via ``await request.body()`` which Starlette caches
+    internally, so downstream FastMCP can re-read the same bytes without
+    the stream being exhausted. Returns ``None`` on any parse failure so the
+    middleware falls through to the default paywall path.
+    """
+    if request.method.upper() != "POST":
+        return None
+    try:
+        raw = await request.body()
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(payload, dict):
+        m = payload.get("method")
+        if isinstance(m, str):
+            return m
+    return None
+
+
 async def _read_mcp_request_id(request: Request) -> Any:
     """Best-effort extraction of the JSON-RPC ``id`` from an MCP request body.
 
@@ -480,6 +524,19 @@ async def x402_middleware(
     """
     if not _is_protected_path(request.url.path, request.method):
         return await call_next(request)
+
+    # MCP setup methods (initialize, tools/list, etc.) pass through without
+    # payment so clients can complete the JSON-RPC handshake. Only paid
+    # actions (``tools/call``) actually hit the paywall below.
+    if _is_mcp_path(request.url.path):
+        method = await _read_mcp_method(request)
+        if method in MCP_FREE_METHODS:
+            logger.info(
+                "x402_mcp_free_method",
+                path=request.url.path,
+                method=method,
+            )
+            return await call_next(request)
 
     if is_x402_bypass_enabled():
         request.state.x402_payment_tx_hash = None

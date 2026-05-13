@@ -187,6 +187,35 @@ def usdc_balance(address: str) -> float:
 # ───────────────────────── MCP/x402 dance ─────────────────────────
 
 
+def make_mcp_initialize_body() -> dict[str, Any]:
+    """Build the JSON-RPC body for the MCP initialize handshake.
+
+    Required as the first call — the server returns a session ID in the
+    ``mcp-session-id`` header that subsequent calls must echo back.
+    """
+    return {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {"experimental": {}, "sampling": {}},
+            "clientInfo": {
+                "name": "prism-external-x402-demo",
+                "version": "0.1.0",
+            },
+        },
+    }
+
+
+def make_mcp_initialized_notification() -> dict[str, Any]:
+    """The required notification after initialize completes."""
+    return {
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+    }
+
+
 def make_mcp_body(trace_uri: str, trace_hash: str) -> dict[str, Any]:
     """Build the JSON-RPC body for the MCP tools/call request."""
     return {
@@ -216,10 +245,50 @@ async def call_unpaid(client: httpx.AsyncClient, body: dict[str, Any]) -> httpx.
 
 
 async def call_paid(
-    client: httpx.AsyncClient, body: dict[str, Any], payment_b64: str
+    client: httpx.AsyncClient,
+    body: dict[str, Any],
+    payment_b64: str,
+    session_id: str | None,
 ) -> httpx.Response:
     headers = {**base_headers(), "X-PAYMENT": payment_b64}
+    if session_id:
+        headers["mcp-session-id"] = session_id
     return await client.post(SENTINEL_MCP_URL, json=body, headers=headers)
+
+
+async def mcp_handshake(client: httpx.AsyncClient) -> str:
+    """Complete the MCP initialize + notifications/initialized handshake.
+
+    Returns the ``mcp-session-id`` issued by the server.
+    Raises if the server doesn't issue one or returns non-200.
+    """
+    init_body = make_mcp_initialize_body()
+    init_resp = await client.post(
+        SENTINEL_MCP_URL, json=init_body, headers=base_headers()
+    )
+    if init_resp.status_code != 200:
+        raise RuntimeError(
+            f"MCP initialize failed: {init_resp.status_code} {init_resp.text[:200]}"
+        )
+    session_id = init_resp.headers.get("mcp-session-id")
+    if not session_id:
+        raise RuntimeError(
+            "MCP server did not issue an mcp-session-id header on initialize"
+        )
+    # Required notifications/initialized so the server transitions from
+    # handshake to operational state. Server replies 202 Accepted.
+    notif_body = make_mcp_initialized_notification()
+    notif_resp = await client.post(
+        SENTINEL_MCP_URL,
+        json=notif_body,
+        headers={**base_headers(), "mcp-session-id": session_id},
+    )
+    if notif_resp.status_code not in (200, 202):
+        raise RuntimeError(
+            f"MCP notifications/initialized rejected: {notif_resp.status_code} "
+            f"{notif_resp.text[:200]}"
+        )
+    return session_id
 
 
 def parse_jsonrpc_402_body(parsed: dict[str, Any]) -> dict[str, Any]:
@@ -416,10 +485,24 @@ async def amain(trace_uri: str, trace_hash: str) -> int:
     async with httpx.AsyncClient(
         follow_redirects=True, timeout=httpx.Timeout(180.0)
     ) as client:
-        # Step 1: unpaid call → expect 402
+        # Step 0: MCP handshake — initialize + notifications/initialized.
+        # Free per the sentinel's middleware (paid actions are only tools/call).
         print()
-        banner("[1/4] Calling sentinel /mcp without payment …", status=">")
-        r1 = await call_unpaid(client, body)
+        banner("[0/4] MCP handshake — initialize …", status=">")
+        try:
+            session_id = await mcp_handshake(client)
+        except RuntimeError as exc:
+            banner(str(exc), status="!")
+            return 1
+        banner(f"Session: {session_id[:24]}…", status="✓")
+
+        # Step 1: unpaid call → expect 402
+        banner("[1/4] Calling sentinel /mcp with session but no payment …", status=">")
+        r1 = await client.post(
+            SENTINEL_MCP_URL,
+            json=body,
+            headers={**base_headers(), "mcp-session-id": session_id},
+        )
         if r1.status_code != 402:
             banner(f"Unexpected status {r1.status_code}: {r1.text[:200]}", status="!")
             return 1
@@ -438,7 +521,7 @@ async def amain(trace_uri: str, trace_hash: str) -> int:
 
         # Step 3: paid call
         banner("[3/4] Re-calling /mcp with X-PAYMENT header …", status=">")
-        r2 = await call_paid(client, body, payment_b64)
+        r2 = await call_paid(client, body, payment_b64, session_id)
         if r2.status_code != 200:
             banner(f"Paid call returned {r2.status_code}: {r2.text[:300]}", status="!")
             return 1
