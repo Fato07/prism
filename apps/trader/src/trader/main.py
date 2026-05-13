@@ -282,7 +282,16 @@ async def _run_pipeline_internal() -> PipelineResponse:
             resp = await client.post(
                 f"{_sentinel_url()}/validate",
                 json=validate_body,
-                headers={"X402-Bypass": "true"},
+                headers={
+                    # The sentinel's x402 middleware authorizes internal
+                    # trader→sentinel calls if X402-Bypass matches its
+                    # `X402_INTERNAL_BYPASS_TOKEN` env var exactly. Both
+                    # services must be configured with the same token; if
+                    # neither has a token set, any non-empty value works.
+                    "X402-Bypass": os.environ.get(
+                        "X402_INTERNAL_BYPASS_TOKEN", "true"
+                    ),
+                },
             )
 
             if resp.status_code in (200, 202):
