@@ -1,46 +1,46 @@
-# --- Environment & secrets ---
-.env
-.env.*
-*.env
-.env.local
-.env.*.local
-.env.sample.setup
-*.secret
-*secret*
-*_secret*
-*_seed*
-*seed*
-*hmac*
-*.key
-*.pem
-*.p12
-*.pfx
-*.jks
 
+!data/calibration/sample/
 # --- Calibration & gated data ---
+# --- Dependencies & build ---
+# --- Environment & secrets ---
+# --- Factory / mission artifacts ---
+# --- Generated output ---
 # Full calibration corpus is gated (eval ground truth)
 # Only data/calibration/sample/ may be committed if present
-data/calibration/
-!data/calibration/sample/
-
-# --- Factory / mission artifacts ---
-.factory/
-.agents/
-
-# --- Dependencies & build ---
-node_modules/
-.next/
-*.tsbuildinfo
-dist/
-__pycache__/
-.venv/
-.pytest_cache/
-uv.lock.bak
-.DS_Store
-.ruff_cache/
-.mypy_cache/
-next-env.d.ts
-
-# --- Generated output ---
 # Remotion rendered output (regenerate with pnpm render)
-apps/pitch-video/out/
+*.env
+*.jks
+*.key
+*.p12
+*.pem
+*.pfx
+*.secret
+*.tsbuildinfo
+*_secret*
+*_seed*
+*hmac*
+*secret*
+*seed*
+.DS_Store
+.agents/
+.env
+.env.*
+.env.*.local
+.env.local
+.env.sample.setup
+.factory/
+.mypy_cache/
+.next/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+apps/pitch-video/out/.local/
+data/calibration/
+dist/
+next-env.d.ts
+node_modules/
+uv.lock.bak
+
+# Local-only state (script keys, scratch files)
+.local/

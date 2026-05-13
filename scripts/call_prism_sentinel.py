@@ -529,7 +529,29 @@ async def amain(trace_uri: str, trace_hash: str) -> int:
 
         # Step 4: parse + save receipt
         banner("[4/4] Parsing verdict + saving receipt …", status=">")
-        parsed = r2.json()
+        # MCP streamable-HTTP may respond as either application/json or
+        # text/event-stream. SSE responses look like ``event: message\ndata:
+        # {...}\n\n`` — we extract the first ``data:`` line as JSON.
+        ctype = r2.headers.get("content-type", "")
+        raw_text = r2.text
+        if "text/event-stream" in ctype.lower():
+            data_line = next(
+                (
+                    line[len("data:") :].strip()
+                    for line in raw_text.splitlines()
+                    if line.startswith("data:")
+                ),
+                None,
+            )
+            if not data_line:
+                banner(
+                    f"SSE response had no data: line. First 200 chars: {raw_text[:200]!r}",
+                    status="!",
+                )
+                return 1
+            parsed = json.loads(data_line)
+        else:
+            parsed = r2.json()
         result = parsed.get("result", {})
         structured = result.get("structuredContent", {}) or {}
         verdict_score = structured.get("verdict_score")
