@@ -165,11 +165,12 @@ describe("IPFS CID extraction from URI", () => {
   });
 });
 
-describe("Pinata gateway URL construction", () => {
-  it("constructs valid Pinata gateway URL", () => {
+describe("IPFS gateway URL construction", () => {
+  it("constructs valid IPFS gateway URL", () => {
     const cid = "QmXyz123";
-    const url = `https://gateway.pinata.cloud/ipfs/${cid}`;
-    expect(url).toBe("https://gateway.pinata.cloud/ipfs/QmXyz123");
+    const gateway = process.env.IPFS_GATEWAY || "https://ipfs.io/ipfs";
+    const url = `${gateway}/${cid}`;
+    expect(url).toBe("https://ipfs.io/ipfs/QmXyz123");
   });
 });
 

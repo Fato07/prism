@@ -92,8 +92,9 @@ export function TraderPanel({ trace, ipfsCid, contentHash, noExpand }: TraderPan
     );
   }
 
+  const ipfsGateway = process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://ipfs.io/ipfs";
   const ipfsHref = ipfsCid
-    ? `https://gateway.pinata.cloud/ipfs/${ipfsCid}`
+    ? `${ipfsGateway}/${ipfsCid}`
     : undefined;
 
   return (

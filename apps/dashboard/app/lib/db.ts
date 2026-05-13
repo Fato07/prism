@@ -17,6 +17,9 @@ import {
 
 const { Pool } = pg;
 
+/** IPFS gateway — configurable via IPFS_GATEWAY env var. Defaults to ipfs.io (Pinata public gateway is rate-limited). */
+const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "https://ipfs.io/ipfs";
+
 /** Global pool instance (cached across server component invocations). */
 let pool: pg.Pool | null = null;
 
@@ -46,6 +49,62 @@ export async function getLatestTrace(): Promise<TraceRow | null> {
   // pg returns BIGINT as string, parse to number
   const row = result.rows[0];
   return TraceRowSchema.parse({ ...row, agent_id: Number(row.agent_id) });
+}
+
+/** Fetch a trace by its ID. */
+export async function getTraceById(
+  traceId: string
+): Promise<TraceRow | null> {
+  const client = getPool();
+  const result = await client.query(
+    "SELECT trace_id, agent_id::text AS agent_id, market_id, ipfs_cid, encode(content_hash, 'hex') AS content_hash, tx_hash, created_at::text AS created_at FROM traces WHERE trace_id = $1",
+    [traceId]
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return TraceRowSchema.parse({ ...row, agent_id: Number(row.agent_id) });
+}
+
+/**
+ * Fetch the latest trace that has a corresponding validation.
+ * Falls back to the latest trace if no validations exist.
+ */
+export async function getLatestValidatedTrace(): Promise<{
+  trace: TraceRow;
+  validation: ValidationRow;
+} | null> {
+  const client = getPool();
+  const result = await client.query(
+    `SELECT t.trace_id, t.agent_id::text AS agent_id, t.market_id, t.ipfs_cid,
+            encode(t.content_hash, 'hex') AS content_hash, t.tx_hash, t.created_at::text AS created_at,
+            encode(v.request_hash, 'hex') AS v_request_hash, v.sentinel_agent_id::text AS v_sentinel_agent_id,
+            v.verdict_score, v.response_uri, v.tx_hash AS v_tx_hash, v.created_at::text AS v_created_at
+     FROM traces t
+     JOIN validations v ON v.trace_id = t.trace_id
+     ORDER BY v.created_at DESC
+     LIMIT 1`
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  const trace = TraceRowSchema.parse({
+    trace_id: row.trace_id,
+    agent_id: Number(row.agent_id),
+    market_id: row.market_id,
+    ipfs_cid: row.ipfs_cid,
+    content_hash: row.content_hash,
+    tx_hash: row.tx_hash,
+    created_at: row.created_at,
+  });
+  const validation = ValidationRowSchema.parse({
+    request_hash: row.v_request_hash,
+    trace_id: row.trace_id,
+    sentinel_agent_id: Number(row.v_sentinel_agent_id),
+    verdict_score: row.verdict_score,
+    response_uri: row.response_uri,
+    tx_hash: row.v_tx_hash,
+    created_at: row.v_created_at,
+  });
+  return { trace, validation };
 }
 
 /** Fetch the most recent validation for a given trace. */
@@ -93,30 +152,38 @@ export async function getAgents(): Promise<AgentRow[]> {
   );
 }
 
-/** Fetch trace content from IPFS via Pinata gateway. */
+/** Fetch trace content from IPFS via configurable gateway. */
 export async function fetchTraceFromIPFS(
   cid: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    const url = `https://gateway.pinata.cloud/ipfs/${cid}`;
+    const url = `${IPFS_GATEWAY}/${cid}`;
     const res = await fetch(url, { next: { revalidate: 300 } });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[db] fetchTraceFromIPFS: ${res.status} for CID ${cid} via ${IPFS_GATEWAY}`);
+      return null;
+    }
     return (await res.json()) as Record<string, unknown>;
-  } catch {
+  } catch (err) {
+    console.error(`[db] fetchTraceFromIPFS: failed for CID ${cid}`, err);
     return null;
   }
 }
 
-/** Fetch verdict content from IPFS via Pinata gateway. */
+/** Fetch verdict content from IPFS via configurable gateway. */
 export async function fetchVerdictFromIPFS(
   cid: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    const url = `https://gateway.pinata.cloud/ipfs/${cid}`;
+    const url = `${IPFS_GATEWAY}/${cid}`;
     const res = await fetch(url, { next: { revalidate: 300 } });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[db] fetchVerdictFromIPFS: ${res.status} for CID ${cid} via ${IPFS_GATEWAY}`);
+      return null;
+    }
     return (await res.json()) as Record<string, unknown>;
-  } catch {
+  } catch (err) {
+    console.error(`[db] fetchVerdictFromIPFS: failed for CID ${cid}`, err);
     return null;
   }
 }

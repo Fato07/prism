@@ -19,6 +19,8 @@
 import {
   getLatestTrace,
   getLatestValidation,
+  getLatestValidatedTrace,
+  getTraceById,
   getLatestTrade,
   fetchTraceFromIPFS,
   fetchVerdictFromIPFS,
@@ -40,6 +42,7 @@ import { VerdictHistoryStrip } from "@/components/dashboard/verdict-history-stri
 import { ConfidenceCollision } from "@/components/dashboard/confidence-collision";
 import { AdversarialDialogue } from "@/components/dashboard/adversarial-dialogue";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { BrandMark } from "@/components/brands/brand-mark";
 import { ArrowUpRight, Activity } from "lucide-react";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
@@ -47,17 +50,28 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const [traceRow, tradeRow, agents, stats, recentVerdicts] = await Promise.all([
-    getLatestTrace(),
+  const [tradeRow, agents, stats, recentVerdicts] = await Promise.all([
     getLatestTrade(),
     getAgents(),
     getActivityStats(),
     getRecentVerdicts(30),
   ]);
 
-  const validationRow = traceRow
-    ? await getLatestValidation(traceRow.trace_id)
-    : await getLatestValidation();
+  // Prefer the latest trace that has a validation (so we can always show both
+  // trader reasoning and sentinel verdict). Fall back to the latest trace
+  // alone if no validations exist yet.
+  const validatedPair = await getLatestValidatedTrace();
+
+  let traceRow = validatedPair?.trace ?? null;
+  let validationRow = validatedPair?.validation ?? null;
+
+  // If no validated pair exists, try the latest trace + its validation
+  if (!traceRow) {
+    traceRow = await getLatestTrace();
+    validationRow = traceRow
+      ? await getLatestValidation(traceRow.trace_id)
+      : await getLatestValidation();
+  }
 
   const tracePromise: Promise<TradingR1Trace | null> =
     traceRow?.ipfs_cid
@@ -263,6 +277,7 @@ function DashboardHeader({
           <AutoRefresh intervalMs={8000} />
           <Separator orientation="vertical" className="h-4" />
           <Pill tone="info" emphasis="soft" size="sm">
+            <BrandMark name="arc" size={12} aria-label="Arc" />
             <LiveDot tone="online" pulse size="sm" />
             <span className="text-mono">Arc Testnet</span>
           </Pill>
@@ -365,14 +380,15 @@ function DashboardFooter() {
     <footer className="border-t border-[var(--color-border)] px-6 py-5">
       <div className="mx-auto flex max-w-7xl flex-col items-start gap-2 text-mono text-[11px] text-fg-faint sm:flex-row sm:items-center sm:justify-between">
         <span>The first adversarial AI validator on ERC-8004</span>
-        <span className="inline-flex items-center gap-3">
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>Powered by</span>
           <a
             href="https://arc.network"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-fg-muted transition-colors hover:text-fg"
+            className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg"
           >
+            <BrandMark name="arc" size={12} aria-label="Arc" />
             Arc
           </a>
           <span className="text-fg-faint">·</span>
@@ -380,8 +396,9 @@ function DashboardFooter() {
             href="https://www.circle.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-fg-muted transition-colors hover:text-fg"
+            className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg"
           >
+            <BrandMark name="circle" size={12} aria-label="Circle" />
             Circle
           </a>
           <span className="text-fg-faint">·</span>
@@ -389,9 +406,20 @@ function DashboardFooter() {
             href="https://neon.tech"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-fg-muted transition-colors hover:text-fg"
+            className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg"
           >
+            <BrandMark name="neon" size={12} aria-label="Neon" />
             Neon
+          </a>
+          <span className="text-fg-faint">·</span>
+          <a
+            href="https://thecanteenapp.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg"
+          >
+            <BrandMark name="canteen" size={12} aria-label="Canteen" />
+            Canteen
           </a>
         </span>
       </div>
