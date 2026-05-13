@@ -32,6 +32,7 @@ Env vars:
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -51,9 +52,46 @@ X402_STANDARD_PAYMENT_HEADER = "x-payment"
 X402_BYPASS_HEADER = "x402-bypass"
 X402_ASSET = "USDC"
 X402_DEFAULT_PRICE_USDC = "0.01"
-X402_DEFAULT_NETWORK = "base"
+X402_DEFAULT_NETWORK = "base-sepolia"
 X402_DEFAULT_FACILITATOR_NAME = "x402"
 X402_DEFAULT_SETTLEMENT_TIMEOUT_S = 10.0
+
+# Network identifiers — friendly slug → CAIP-2 → USDC contract address.
+# x402.org's public facilitator currently supports Base Sepolia (84532) only;
+# Base mainnet (8453) requires the Coinbase CDP-hosted facilitator (auth req'd).
+X402_NETWORK_MAP: dict[str, dict[str, str]] = {
+    "base-sepolia": {
+        "caip2": "eip155:84532",
+        "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    },
+    "base": {
+        "caip2": "eip155:8453",
+        "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913",
+    },
+    "eip155:84532": {
+        "caip2": "eip155:84532",
+        "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    },
+    "eip155:8453": {
+        "caip2": "eip155:8453",
+        "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913",
+    },
+}
+
+
+def _resolve_network() -> dict[str, str]:
+    """Return the CAIP-2 id and USDC contract address for X402_NETWORK.
+
+    Accepts either a friendly slug (``base-sepolia``, ``base``) or a CAIP-2
+    identifier (``eip155:84532``, ``eip155:8453``). Defaults to base-sepolia
+    if unknown.
+    """
+    raw = os.environ.get("X402_NETWORK", X402_DEFAULT_NETWORK).strip().lower()
+    info = X402_NETWORK_MAP.get(raw)
+    if info is None:
+        logger.warning("x402_unknown_network", configured=raw, defaulting_to="base-sepolia")
+        info = X402_NETWORK_MAP["base-sepolia"]
+    return info
 
 MCP_PROTECTED_PREFIX = "/mcp"
 
@@ -200,15 +238,40 @@ async def _settle_payment(
         logger.info("x402_settled_mock", tx_hash=mock_hash, **request_context)
         return True, mock_hash, None
 
+    # The X-PAYMENT header value is base64-encoded JSON of an x402 v2
+    # PaymentPayload. The facilitator's /settle endpoint expects the *decoded*
+    # object under the key `paymentPayload` (not the raw base64 string under
+    # `payment` — that was a pre-v2 shape and the public facilitator now rejects
+    # it with `errorReason: missing_parameters`).
+    try:
+        decoded_bytes = base64.b64decode(payment_token, validate=False)
+        payment_payload_obj = json.loads(decoded_bytes)
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.warning(
+            "x402_payment_decode_failed",
+            error=str(exc),
+            **request_context,
+        )
+        return False, None, "invalid_payment_token"
+
+    net = _resolve_network()
+    # USDC has 6 decimals on every EVM chain; convert decimal string to smallest unit.
+    try:
+        amount_smallest = str(int(float(get_x402_price_usdc()) * 1_000_000))
+    except (ValueError, TypeError):
+        amount_smallest = "10000"  # 0.01 USDC fallback
+
     payload = {
         "x402Version": 2,
-        "payment": payment_token,
+        "paymentPayload": payment_payload_obj,
         "paymentRequirements": {
             "scheme": "exact",
-            "network": get_x402_network(),
-            "asset": X402_ASSET,
+            "network": net["caip2"],
+            "asset": net["usdc_address"],
+            "amount": amount_smallest,
             "payTo": recipient,
-            "maxAmountRequired": get_x402_price_usdc(),
+            "maxTimeoutSeconds": 120,
+            "extra": {"name": "USD Coin", "version": "2"},
         },
     }
 
