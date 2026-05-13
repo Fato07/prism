@@ -369,7 +369,7 @@ def render_markdown_receipt(d: dict[str, Any]) -> str:
     )
     tx_base = d.get("payment_tx_hash")
     tx_base_link = (
-        f"[`{tx_base[:18]}…`](https://basescan.org/tx/{tx_base})"
+        f"[`{tx_base[:18]}…`]({EXPLORER}/tx/{tx_base})"
         if tx_base
         else "_(unknown)_"
     )
@@ -581,7 +581,7 @@ async def amain(trace_uri: str, trace_hash: str) -> int:
         print("─" * 56)
         print(f"  Verdict: {verdict_label} (score {verdict_score}/100)")
         if payment_tx_hash:
-            print(f"  Settlement: https://basescan.org/tx/{payment_tx_hash}")
+            print(f"  Settlement: {EXPLORER}/tx/{payment_tx_hash}")
         if tx_hash_arc:
             print(f"  Anchor on Arc: https://testnet.arcscan.app/tx/{tx_hash_arc}")
         print()

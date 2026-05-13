@@ -1,0 +1,25 @@
+
+Prism — external x402 + MCP demo client
+========================================================
+
+  • Loaded client wallet from .local/prism-client.key
+  • Client address: 0x993F4D56e1329b6e3b91A13B9ACe1a890a023518
+  • USDC balance on base-sepolia: 19.9400 USDC
+
+  > [0/4] MCP handshake — initialize …
+  ✓ Session: 468d6db939c94831853f5956…
+  > [1/4] Calling sentinel /mcp with session but no payment …
+  ✓ 402 received · 0.01 USDC to 0x1453ba8a… on base-sepolia
+  > [2/4] Signing EIP-3009 transferWithAuthorization …
+  ✓ Payment payload ready (956 char base64)
+  > [3/4] Re-calling /mcp with X-PAYMENT header …
+  ✓ 200 OK · response 3020 bytes
+  > [4/4] Parsing verdict + saving receipt …
+  ✓ Receipt: docs/demos/external-call-20260513T230443+0000.md
+
+────────────────────────────────────────────────────────
+  Verdict: PASS (score 65/100)
+  Settlement: https://sepolia.basescan.org/tx/0xc8d5ed9946afd0917d6958130e524accfb5d1065684e84fa4aca905791a322d6
+
+  Wallet balance now: 19.9300 USDC (spent 0.0100 USDC on this call)
+────────────────────────────────────────────────────────
