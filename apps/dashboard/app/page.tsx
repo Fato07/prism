@@ -26,7 +26,8 @@ import { WhyPrism } from "@/components/landing/why-prism";
 import { LiveActivityStrip } from "@/components/landing/live-activity-strip";
 import { Pill } from "@/components/ui/pill";
 import { Separator } from "@/components/ui/separator";
-import { ArrowUpRight, Cpu, Network } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { BrandMark } from "@/components/brands/brand-mark";
 
 export const dynamic = "force-dynamic";
 
@@ -57,8 +58,34 @@ export const metadata: Metadata = {
   },
 };
 
-const PRIMARY_TECH = ["Arc", "ERC-8004", "Circle Wallets"] as const;
-const SECONDARY_TECH = ["x402", "Polymarket V2", "Neon Postgres", "IPFS", "DSPy", "Mirascope"] as const;
+// Brand-mark name (when applicable) for each tech in the stack section.
+type TechItem = {
+  label: string;
+  brand?:
+    | "arc"
+    | "circle"
+    | "canteen"
+    | "polymarket"
+    | "coinbase"
+    | "neon"
+    | "ipfs"
+    | "ethereum";
+};
+
+const PRIMARY_TECH: TechItem[] = [
+  { label: "Arc", brand: "arc" },
+  { label: "ERC-8004", brand: "ethereum" },
+  { label: "Circle Wallets", brand: "circle" },
+  { label: "Canteen", brand: "canteen" },
+];
+const SECONDARY_TECH: TechItem[] = [
+  { label: "x402", brand: "coinbase" },
+  { label: "Polymarket V2", brand: "polymarket" },
+  { label: "Neon Postgres", brand: "neon" },
+  { label: "IPFS", brand: "ipfs" },
+  { label: "DSPy" },
+  { label: "Mirascope" },
+];
 
 export default async function LandingPage() {
   // Best-effort data fetch — landing must render even if Neon is down.
@@ -107,16 +134,27 @@ export default async function LandingPage() {
             <div className="flex flex-wrap items-center gap-2">
               {PRIMARY_TECH.map((t) => (
                 <span
-                  key={t}
-                  className="ring-spectrum relative inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg"
+                  key={t.label}
+                  className="ring-spectrum relative inline-flex items-center gap-2 rounded-lg bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg"
                 >
-                  {t}
+                  {t.brand && (
+                    <BrandMark name={t.brand} size={16} aria-label={t.label} />
+                  )}
+                  {t.label}
                 </span>
               ))}
               <Separator orientation="vertical" className="mx-2 h-6" />
               {SECONDARY_TECH.map((t) => (
-                <Pill key={t} tone="neutral" emphasis="outline" size="md">
-                  <span className="text-mono text-xs">{t}</span>
+                <Pill key={t.label} tone="neutral" emphasis="outline" size="md">
+                  {t.brand && (
+                    <BrandMark
+                      name={t.brand}
+                      size={12}
+                      aria-label={t.label}
+                      className="text-fg-muted"
+                    />
+                  )}
+                  <span className="text-mono text-xs">{t.label}</span>
                 </Pill>
               ))}
             </div>
@@ -233,12 +271,16 @@ function Footer() {
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-fg-faint">
           <span className="inline-flex items-center gap-1.5">
-            <Network className="h-3 w-3" strokeWidth={2} />
+            <BrandMark name="arc" size={14} aria-label="Arc" />
             <span className="text-mono">Arc Testnet</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <Cpu className="h-3 w-3" strokeWidth={2} />
+            <BrandMark name="circle" size={14} aria-label="Circle" />
             <span className="text-mono">Circle Wallets</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <BrandMark name="canteen" size={14} aria-label="Canteen" />
+            <span className="text-mono">Built on Canteen</span>
           </span>
           <a
             href="/dashboard"
@@ -250,8 +292,9 @@ function Footer() {
             href="https://github.com/Fato07/prism"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-fg-muted transition-colors hover:text-fg"
+            className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg"
           >
+            <BrandMark name="github" size={12} aria-label="GitHub" />
             GitHub
           </a>
         </div>

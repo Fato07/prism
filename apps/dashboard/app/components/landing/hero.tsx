@@ -17,6 +17,7 @@ import { Shader } from "@/components/ui/shader";
 import { Pill } from "@/components/ui/pill";
 import { LiveDot } from "@/components/ui/live-dot";
 import { WaitlistSignupForm } from "@/components/waitlist-form";
+import { BrandMark } from "@/components/brands/brand-mark";
 
 interface HeroProps {
   waitlistCount: number;
@@ -94,13 +95,16 @@ export function Hero({ waitlistCount }: HeroProps) {
           className="mb-7 flex flex-wrap items-center justify-center gap-2"
         >
           <Pill tone="info" emphasis="glass" size="sm">
+            <BrandMark name="arc" size={14} aria-label="Arc" />
             <LiveDot tone="online" pulse />
             <span className="text-mono">Arc Testnet · live</span>
           </Pill>
           <Pill tone="neutral" emphasis="glass" size="sm">
+            <BrandMark name="ethereum" size={12} aria-label="ERC" />
             <span className="text-mono">ERC-8004</span>
           </Pill>
           <Pill tone="neutral" emphasis="glass" size="sm">
+            <BrandMark name="coinbase" size={12} aria-label="Coinbase x402" />
             <span className="text-mono">x402</span>
           </Pill>
         </motion.div>
