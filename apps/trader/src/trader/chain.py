@@ -81,12 +81,17 @@ class CircleChain:
 
         Returns the Circle transaction ID.
 
-        On Arc testnet, gas is auto-sponsored by Circle Gas Station for wallets
-        covered by an active sponsorship policy — see infra/circle/paymaster.md.
-        The ``paymaster`` parameter is accepted for forward-compatibility with
-        environments (e.g. Base mainnet, future Phase 2) where explicit
-        sponsorship must be specified per call; it is logged for observability
-        but does not change the Arc testnet request body.
+        Gas payment model:
+          - Phase 0 wallets are EOA (verified May 13 via Circle API: both
+            trader and sentinel return ``accountType = EOA``).
+          - Circle's Gas Station only sponsors SCA / MSCA wallets on EVM
+            chains; EOA wallets pay their own gas from USDC balance.
+          - On Arc Testnet, gas is denominated in USDC at ~0.003-0.005
+            USDC per contract execution (verified via
+            ``Transaction.network_fee`` across 17 recent txs).
+          - The ``paymaster`` parameter is accepted for forward-compatibility
+            with a future SCA migration; it is logged for observability but
+            does not change the request body (and does nothing today).
         """
         from circle.web3.developer_controlled_wallets import TransactionsApi
         from circle.web3.developer_controlled_wallets.models import (
@@ -114,7 +119,9 @@ class CircleChain:
             function=abi_function_signature,
             wallet_id=wallet_id,
             paymaster=paymaster,
-            gas_sponsorship="circle_gas_station_arc_testnet",
+            # EOA wallet pays gas from its own USDC balance on Arc Testnet;
+            # Gas Station sponsorship requires SCA wallets (Phase 2 work).
+            gas_payer="eoa_wallet_balance",
         )
 
         response = await asyncio.to_thread(
