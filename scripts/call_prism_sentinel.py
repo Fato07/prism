@@ -91,11 +91,53 @@ except ImportError as exc:  # pragma: no cover
 
 # ───────────────────────── Configuration ─────────────────────────
 
-SENTINEL_MCP_URL = "https://prism-sentinel-production.up.railway.app/mcp"
-USDC_BASE_MAINNET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913"
-BASE_RPC = "https://mainnet.base.org"
-BASE_CHAIN_ID = 8453
-CAIP2_BASE = f"eip155:{BASE_CHAIN_ID}"
+# Note the trailing slash — the sentinel mounts FastMCP at `/mcp/` and a
+# request to `/mcp` (no slash) receives a 307 redirect. httpx (and most HTTP
+# clients) strip custom headers like X-PAYMENT across 3xx redirects for
+# security, so hitting the canonical URL directly avoids losing the payment.
+SENTINEL_MCP_URL = "https://prism-sentinel-production.up.railway.app/mcp/"
+
+# Network config — the public x402.org facilitator currently supports Base
+# Sepolia only. Base mainnet x402 requires the Coinbase CDP facilitator (auth).
+# Override via the `PRISM_X402_NETWORK` env var if you wire up a mainnet
+# facilitator on your sentinel.
+NETWORK = os.environ.get("PRISM_X402_NETWORK", "base-sepolia").lower()
+
+# Per-network USDC domain config. The EIP-712 domain `name` differs between
+# Sepolia ("USDC") and mainnet ("USD Coin") — if we sign with the wrong
+# domain name, the facilitator rejects with `invalid_exact_evm_signature`.
+# Verified by calling name()/version() on each contract on 2026-05-13.
+_NETWORK_CONFIG: dict[str, dict[str, Any]] = {
+    "base-sepolia": {
+        "chain_id": 84532,
+        "caip2": "eip155:84532",
+        "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "usdc_domain_name": "USDC",
+        "usdc_domain_version": "2",
+        "rpc_url": "https://sepolia.base.org",
+        "explorer": "https://sepolia.basescan.org",
+    },
+    "base": {
+        "chain_id": 8453,
+        "caip2": "eip155:8453",
+        "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913",
+        "usdc_domain_name": "USD Coin",
+        "usdc_domain_version": "2",
+        "rpc_url": "https://mainnet.base.org",
+        "explorer": "https://basescan.org",
+    },
+}
+if NETWORK not in _NETWORK_CONFIG:
+    raise SystemExit(
+        f"unknown PRISM_X402_NETWORK={NETWORK!r}; expected one of {list(_NETWORK_CONFIG)}"
+    )
+CFG = _NETWORK_CONFIG[NETWORK]
+
+USDC_CONTRACT = CFG["usdc_address"]
+BASE_RPC = CFG["rpc_url"]
+BASE_CHAIN_ID = CFG["chain_id"]
+CAIP2_BASE = CFG["caip2"]
+EXPLORER = CFG["explorer"]
 
 # Latest anchored validated trace from production DB (May 13, 2026).
 # Override via --trace-uri / --trace-hash CLI args.
@@ -134,7 +176,7 @@ def usdc_balance(address: str) -> float:
         "jsonrpc": "2.0",
         "id": 1,
         "method": "eth_call",
-        "params": [{"to": USDC_BASE_MAINNET, "data": selector + padded}, "latest"],
+        "params": [{"to": USDC_CONTRACT, "data": selector + padded}, "latest"],
     }
     with httpx.Client(timeout=10.0) as c:
         resp = c.post(BASE_RPC, json=body)
@@ -207,19 +249,26 @@ def parse_jsonrpc_402_body(parsed: dict[str, Any]) -> dict[str, Any]:
 
 def to_v2_payment_requirements(req: dict[str, Any]) -> PaymentRequirements:
     """Lift Prism's custom 402 dict into a standard x402 v2 PaymentRequirements."""
-    if req["network_raw"].lower() != "base":
+    expected_networks = {"base-sepolia", "base", CAIP2_BASE}
+    if req["network_raw"].lower() not in expected_networks:
         raise ValueError(
-            f"Only Base mainnet supported in this demo; got {req['network_raw']!r}"
+            f"Sentinel announced network {req['network_raw']!r}, but this client is "
+            f"configured for {NETWORK!r} ({CAIP2_BASE}). Set PRISM_X402_NETWORK to match."
         )
     amount_smallest = str(int(float(req["amount_usdc_decimal"]) * 1_000_000))
     return PaymentRequirements(
         scheme=req["scheme"],
         network=Network(CAIP2_BASE),
-        asset=USDC_BASE_MAINNET,
+        asset=USDC_CONTRACT,
         amount=amount_smallest,
         pay_to=req["recipient"],
         max_timeout_seconds=120,
-        extra={"name": "USD Coin", "version": "2"},
+        extra={
+            # Must match the on-chain USDC contract's EIP-712 domain name/
+            # version. Sepolia: name="USDC". Mainnet: name="USD Coin".
+            "name": CFG["usdc_domain_name"],
+            "version": CFG["usdc_domain_version"],
+        },
     )
 
 

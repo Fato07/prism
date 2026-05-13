@@ -59,22 +59,34 @@ X402_DEFAULT_SETTLEMENT_TIMEOUT_S = 10.0
 # Network identifiers — friendly slug → CAIP-2 → USDC contract address.
 # x402.org's public facilitator currently supports Base Sepolia (84532) only;
 # Base mainnet (8453) requires the Coinbase CDP-hosted facilitator (auth req'd).
+# USDC EIP-712 domain `name` differs by network (verified by calling name()
+# on each contract): Sepolia uses "USDC", mainnet uses "USD Coin". The
+# facilitator reconstructs the EIP-712 typed-data hash from these fields when
+# verifying the client's signature — a mismatch yields invalid_exact_evm_signature.
 X402_NETWORK_MAP: dict[str, dict[str, str]] = {
     "base-sepolia": {
         "caip2": "eip155:84532",
         "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "usdc_domain_name": "USDC",
+        "usdc_domain_version": "2",
     },
     "base": {
         "caip2": "eip155:8453",
         "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913",
+        "usdc_domain_name": "USD Coin",
+        "usdc_domain_version": "2",
     },
     "eip155:84532": {
         "caip2": "eip155:84532",
         "usdc_address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "usdc_domain_name": "USDC",
+        "usdc_domain_version": "2",
     },
     "eip155:8453": {
         "caip2": "eip155:8453",
         "usdc_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913",
+        "usdc_domain_name": "USD Coin",
+        "usdc_domain_version": "2",
     },
 }
 
@@ -271,7 +283,10 @@ async def _settle_payment(
             "amount": amount_smallest,
             "payTo": recipient,
             "maxTimeoutSeconds": 120,
-            "extra": {"name": "USD Coin", "version": "2"},
+            "extra": {
+                "name": net["usdc_domain_name"],
+                "version": net["usdc_domain_version"],
+            },
         },
     }
 
@@ -284,15 +299,33 @@ async def _settle_payment(
             resp = await client.post(settle_url, json=payload)
             if resp.status_code != 200:
                 logger.warning(
-                    "x402_facilitator_non_200",
-                    status_code=resp.status_code,
-                    body=resp.text[:200],
+                    "x402_facilitator_non_200",  # noqa: T201
+                    status=resp.status_code,
+                    body=resp.text[:400],
+                    **request_context,
                 )
                 return False, None, "settlement_failed"
             data = resp.json()
             if not data.get("success"):
+                # Log the structured error so we can debug rejection reasons
+                # (invalid_exact_evm_signature, insufficient_funds, etc).
+                logger.warning(
+                    "x402_settlement_rejected",
+                    error_reason=data.get("errorReason"),
+                    error_message=data.get("errorMessage"),
+                    payer=data.get("payer"),
+                    facilitator_network=data.get("network"),
+                    **request_context,
+                )
                 return False, None, "settlement_failed"
-            tx_hash = data.get("txHash") or data.get("transaction") or data.get("hash")
+            tx_hash = (
+                data.get("transaction") or data.get("txHash") or data.get("hash")
+            )
+            logger.info(
+                "x402_settlement_succeeded",
+                tx_hash=tx_hash,
+                **request_context,
+            )
             return True, tx_hash, None
     except httpx.TimeoutException:
         return False, None, "payment_settlement_timeout"
