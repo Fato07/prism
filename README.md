@@ -99,6 +99,102 @@ The split-screen view shows the trader's reasoning trace on the left and the sen
 
 ---
 
+## Call the Sentinel Yourself — External x402 + MCP Demo
+
+Prism's sentinel is a paid public service: any external agent can pay
+$0.01 USDC on Base Sepolia and get an adversarial verdict on its
+reasoning trace. The flow is x402 (payment protocol) over MCP
+(Model Context Protocol).
+
+**Reference client:** [`scripts/call_prism_sentinel.py`](./scripts/call_prism_sentinel.py)
+
+It's ~470 lines of standalone Python with PEP 723 inline dependencies —
+fork it, swap the wallet/trace, point it at your own sentinel. No
+Circle account, API key, or special tooling required on the caller side.
+
+### Run it in 3 commands
+
+```bash
+# 1. First run — generates a fresh keypair, prints the address, exits cleanly
+#    (the private key persists to .local/prism-client.key, gitignored)
+uv run scripts/call_prism_sentinel.py
+
+# 2. Fund the address it printed with ~0.05 USDC on Base Sepolia
+#    (free from https://faucet.circle.com — select Base Sepolia + USDC)
+
+# 3. Re-run — executes the full x402+MCP dance, saves Markdown receipt
+uv run scripts/call_prism_sentinel.py
+```
+
+Expected output:
+
+```text
+Prism — external x402 + MCP demo client
+========================================================
+
+  • Loaded client wallet from .local/prism-client.key
+  • Client address: 0x993F4D56e1329b6e3b91A13B9ACe1a890a023518
+  • USDC balance on base-sepolia: 19.9300 USDC
+
+  > [0/4] MCP handshake — initialize …
+  ✓ Session: 468d6db939c94831853f5956…
+  > [1/4] Calling sentinel /mcp with session but no payment …
+  ✓ 402 received · 0.01 USDC to 0x1453ba8a… on base-sepolia
+  > [2/4] Signing EIP-3009 transferWithAuthorization …
+  ✓ Payment payload ready (956 char base64)
+  > [3/4] Re-calling /mcp with X-PAYMENT header …
+  ✓ 200 OK · response 3020 bytes
+  > [4/4] Parsing verdict + saving receipt …
+  ✓ Receipt: docs/demos/external-call-<timestamp>.md
+
+  Verdict: PASS (score 65/100)
+  Settlement: https://sepolia.basescan.org/tx/0xc8d5ed99…
+```
+
+### What's verifiable when you run it
+
+- A real **EIP-3009 USDC transferWithAuthorization** signed by your client
+  wallet, settled on Base Sepolia by the [x402.org public facilitator](https://www.x402.org/facilitator)
+- A real **adversarial verdict** from a different model family than the
+  trace's original author, pinned to IPFS
+- A **committed Markdown receipt** in `docs/demos/` with all hashes and
+  explorer links — shareable, screenshot-able, gitable
+
+### How it works under the hood
+
+See [`docs/architecture.md`](./docs/architecture.md) for the full sequence
+diagram. The short version:
+
+1. **MCP handshake** — `initialize` then `notifications/initialized` (free,
+   exempt from x402 paywall so clients can establish a session)
+2. **First `tools/call validate`** — sentinel returns `HTTP 402` with x402
+   payment requirements in a JSON-RPC error envelope
+3. **Client signs** an EIP-3009 `TransferWithAuthorization` typed-data
+   payload (USDC contract on Base Sepolia, name="USDC", version="2")
+4. **Second `tools/call validate`** with the base64-encoded signed
+   `PaymentPayload` in the `X-PAYMENT` header
+5. **Sentinel forwards** to the x402.org facilitator which submits the
+   USDC transfer on Base, then runs the DSPy adversarial verdict and
+   returns the result (as MCP `tools/call` SSE/JSON response)
+
+Latest receipt: [`docs/demos/external-call-20260513T230443+0000.md`](./docs/demos/external-call-20260513T230443+0000.md)
+
+### Why this is the integration template for other teams
+
+- **No Circle account required on the caller side.** The example uses
+  `eth_account` (pure-Python keypair management). Other teams can swap
+  in their own wallet stack — MetaMask via WalletConnect, hardware
+  wallets, custodial signers, whatever.
+- **No special MCP knowledge required.** The handshake + tool-call shape
+  is in the script verbatim.
+- **Single file.** `uv run` resolves the deps inline via PEP 723. No
+  `pyproject.toml`, no venv, no install step.
+- **Backwards-compatible upgrade path.** Replace `base-sepolia` with
+  `base` mainnet once your sentinel is wired to a mainnet x402
+  facilitator (CDP from Coinbase).
+
+---
+
 ## 📹 Pitch Video (90s)
 
 **[▶ Watch the Pitch on YouTube](https://youtube.com/watch?v=PLACEHOLDER)**
