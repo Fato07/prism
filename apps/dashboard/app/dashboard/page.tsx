@@ -1,9 +1,19 @@
 /**
  * Prism Dashboard — /dashboard
  *
- * Split-screen layout: trader reasoning (left), sentinel challenges (right).
- * Server components fetch from Neon DB + IPFS.
- * Bottom panel: on-chain receipt links + trade attribution.
+ * Layout:
+ *   Header        (sticky, single row)
+ *   DashboardShell (client wrapper) renders one of two layouts based on
+ *     the dialogue dock side (none / left / right):
+ *
+ *     side === "none"   : single column main, dialogue inline mid-workspace
+ *     side === "left"   : dialogue full-height sticky column on the left
+ *     side === "right"  : dialogue full-height sticky column on the right
+ *
+ *   Each interactive panel renders its own expand button in its header,
+ *   opening a Dialog with the same content (no recursion via `noExpand`).
+ *
+ * Server component for data fetching; presentation in client subcomponents.
  */
 
 import {
@@ -13,131 +23,378 @@ import {
   fetchTraceFromIPFS,
   fetchVerdictFromIPFS,
   getAgents,
+  getActivityStats,
+  getRecentVerdicts,
 } from "@/lib/db";
 import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
 import { ReceiptLinks } from "@/components/receipt-links";
 import { TradeAttribution } from "@/components/trade-attribution";
-import type { TradingR1Trace } from "@/lib/schemas";
-import type { SentinelVerdict } from "@/lib/schemas";
+import { Pill } from "@/components/ui/pill";
+import { LiveDot } from "@/components/ui/live-dot";
+import { Separator } from "@/components/ui/separator";
+import { HashChip } from "@/components/ui/hash-chip";
+import { Shader } from "@/components/ui/shader";
+import { AutoRefresh } from "@/components/dashboard/auto-refresh";
+import { VerdictHistoryStrip } from "@/components/dashboard/verdict-history-strip";
+import { ConfidenceCollision } from "@/components/dashboard/confidence-collision";
+import { AdversarialDialogue } from "@/components/dashboard/adversarial-dialogue";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { ArrowUpRight, Activity } from "lucide-react";
+import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0; // always fetch fresh data
+export const revalidate = 0;
 
 export default async function DashboardPage() {
-  // Fetch DB rows
-  const traceRow = await getLatestTrace();
+  const [traceRow, tradeRow, agents, stats, recentVerdicts] = await Promise.all([
+    getLatestTrace(),
+    getLatestTrade(),
+    getAgents(),
+    getActivityStats(),
+    getRecentVerdicts(30),
+  ]);
+
   const validationRow = traceRow
     ? await getLatestValidation(traceRow.trace_id)
     : await getLatestValidation();
-  const tradeRow = await getLatestTrade();
 
-  // Fetch full trace content from IPFS if available
-  let traceData: TradingR1Trace | null = null;
-  let marketQuestion: string | null = null;
+  const tracePromise: Promise<TradingR1Trace | null> =
+    traceRow?.ipfs_cid
+      ? fetchTraceFromIPFS(traceRow.ipfs_cid).then(
+          (c) => (c as unknown as TradingR1Trace) ?? null,
+        )
+      : Promise.resolve(null);
 
-  if (traceRow?.ipfs_cid) {
-    const ipfsContent = await fetchTraceFromIPFS(traceRow.ipfs_cid);
-    if (ipfsContent) {
-      try {
-        traceData = ipfsContent as unknown as TradingR1Trace;
-        marketQuestion = (ipfsContent as Record<string, unknown>).market_question as string ?? null;
-      } catch {
-        // IPFS content doesn't match expected schema
-      }
-    }
-  }
+  const verdictCid = validationRow?.response_uri?.startsWith("ipfs://")
+    ? validationRow.response_uri.slice(7)
+    : validationRow?.response_uri ?? null;
 
-  // Fetch full verdict content from IPFS if available
-  let verdictData: SentinelVerdict | null = null;
-  if (validationRow?.response_uri) {
-    const cid = validationRow.response_uri.startsWith("ipfs://")
-      ? validationRow.response_uri.slice(7)
-      : validationRow.response_uri;
-    const ipfsContent = await fetchVerdictFromIPFS(cid);
-    if (ipfsContent) {
-      try {
-        verdictData = ipfsContent as unknown as SentinelVerdict;
-      } catch {
-        // IPFS content doesn't match expected schema
-      }
-    }
-  }
+  const verdictPromise: Promise<SentinelVerdict | null> = verdictCid
+    ? fetchVerdictFromIPFS(verdictCid).then(
+        (c) => (c as unknown as SentinelVerdict) ?? null,
+      )
+    : Promise.resolve(null);
 
-  // Determine pending state: trace exists but no verdict
+  const [traceData, verdictData] = await Promise.all([
+    tracePromise,
+    verdictPromise,
+  ]);
+
+  const marketQuestion =
+    (traceData as unknown as Record<string, unknown> | null)?.market_question as
+      | string
+      | undefined ?? null;
+
   const pendingValidation = traceRow && !validationRow;
 
-  // On-chain tx hashes from DB columns
-  // Registration tx hash from agents table
-  const agents = await getAgents();
   const traderAgent = agents.find((a) => a.role === "trader");
+  const sentinelAgent = agents.find((a) => a.role === "sentinel");
+
   const registrationTxHash = traderAgent?.registration_tx_hash ?? null;
-
-  // Validation request tx hash from traces table
   const validationRequestTxHash = traceRow?.tx_hash ?? null;
-
-  // Validation response tx hash from validations table
   const validationResponseTxHash = validationRow?.tx_hash ?? null;
 
+  const workspace = (
+    <>
+      <ZoneLabel
+        eyebrow="Live workspace"
+        tagline="Latest trace, sentinel verdict, and the gap between them"
+      />
+      <div className="space-y-4">
+        <VerdictHistoryStrip entries={recentVerdicts} />
+        <ConfidenceCollision
+          traderProbability={traceData?.final_probability ?? null}
+          sentinelScore={verdictData?.verdict_score ?? null}
+          traderAction={traceData?.action ?? null}
+          sentinelLabel={verdictData?.verdict_label ?? null}
+        />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <TraderPanel
+            trace={traceData}
+            ipfsCid={traceRow?.ipfs_cid ?? null}
+            contentHash={traceRow?.content_hash ?? null}
+          />
+          <SentinelPanel
+            verdict={verdictData}
+            responseUri={validationRow?.response_uri ?? null}
+            pendingMessage={
+              pendingValidation
+                ? "Trace submitted — awaiting sentinel validation"
+                : undefined
+            }
+          />
+        </div>
+      </div>
+    </>
+  );
+
+  const dialogue = (
+    <AdversarialDialogue
+      messages={verdictData?.dialogue_messages ?? []}
+      verdictScore={verdictData?.verdict_score ?? null}
+      verdictLabel={verdictData?.verdict_label ?? null}
+      traderModel={traceData?.model_name ?? null}
+      sentinelModel={verdictData?.model_name ?? null}
+    />
+  );
+
+  const proof = (
+    <>
+      <ZoneLabel
+        eyebrow="On-chain proof"
+        tagline="Every step anchored on Arc — IdentityRegistry, ValidationRegistry, Polymarket builder attribution"
+      />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ReceiptLinks
+          registrationTxHash={registrationTxHash}
+          validationRequestTxHash={validationRequestTxHash}
+          validationResponseTxHash={validationResponseTxHash}
+        />
+        <TradeAttribution trade={tradeRow} marketQuestion={marketQuestion} />
+      </div>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-950/80 px-6 py-4 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-4">
-            <a href="/" className="text-2xl font-bold tracking-tight hover:opacity-80 transition-opacity">
-              <span className="text-blue-400">Prism</span>
-            </a>
-            <span className="text-gray-600">/</span>
-            <span className="text-sm text-gray-400">Dashboard</span>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-gray-500">
-            <span className="rounded bg-gray-800 px-2 py-1">Arc Testnet</span>
-            <span className="rounded bg-gray-800 px-2 py-1">Phase 0</span>
-          </div>
+    <div className="relative min-h-screen bg-canvas text-fg">
+      {/* Ambient corner shaders */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -left-32 -top-32 h-96 w-96 opacity-25">
+          <Shader variant="trader" intensity="subtle" />
         </div>
-      </header>
-
-      {/* Split-Screen Main Content */}
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        <div className="grid min-h-[calc(100vh-200px)] grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Left Panel: Trader Reasoning */}
-          <div className="min-w-0">
-            <TraderPanel
-              trace={traceData}
-              ipfsCid={traceRow?.ipfs_cid ?? null}
-              contentHash={traceRow?.content_hash ?? null}
-            />
-          </div>
-
-          {/* Right Panel: Sentinel Challenges */}
-          <div className="min-w-0">
-            <SentinelPanel
-              verdict={verdictData}
-              responseUri={validationRow?.response_uri ?? null}
-              pendingMessage={pendingValidation ? "Trace submitted — awaiting sentinel validation" : undefined}
-            />
-          </div>
+        <div className="absolute -bottom-32 -right-32 h-[28rem] w-[28rem] opacity-20">
+          <Shader variant="sentinel" intensity="subtle" />
         </div>
+      </div>
 
-        {/* Bottom Panel: Receipts + Trade Attribution */}
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ReceiptLinks
-            registrationTxHash={registrationTxHash}
-            validationRequestTxHash={validationRequestTxHash}
-            validationResponseTxHash={validationResponseTxHash}
-          />
-          <TradeAttribution
-            trade={tradeRow}
-            marketQuestion={marketQuestion}
-          />
-        </div>
-      </main>
+      <DashboardHeader
+        traderAgent={traderAgent}
+        sentinelAgent={sentinelAgent}
+        validationsCount={stats.validations}
+      />
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800 px-6 py-4 text-center text-xs text-gray-600">
-        The first adversarial AI validator on ERC-8004 · Powered by Arc &amp; Circle
-      </footer>
+      <DashboardShell
+        workspace={workspace}
+        proof={proof}
+        dialogue={dialogue}
+      />
+
+      <DashboardFooter />
     </div>
+  );
+}
+
+/* ─────────────── Zone label ─────────────── */
+
+function ZoneLabel({ eyebrow, tagline }: { eyebrow: string; tagline?: string }) {
+  return (
+    <div className="mb-5 flex items-center gap-3">
+      <span
+        className="h-px w-8 shrink-0"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent, var(--color-trader), var(--color-sentinel))",
+          opacity: 0.7,
+        }}
+        aria-hidden="true"
+      />
+      <span className="text-mono text-[11px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-muted">
+        {eyebrow}
+      </span>
+      {tagline && (
+        <>
+          <Separator orientation="vertical" className="h-3" />
+          <span className="text-mono text-[11px] text-fg-faint">{tagline}</span>
+        </>
+      )}
+      <span
+        className="ml-2 h-px flex-1"
+        style={{
+          background:
+            "linear-gradient(90deg, var(--color-border), transparent)",
+          opacity: 0.6,
+        }}
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
+/* ─────────────── Header ─────────────── */
+
+interface DashboardHeaderProps {
+  traderAgent?: { agent_id: number; wallet_address: string } | undefined;
+  sentinelAgent?: { agent_id: number; wallet_address: string } | undefined;
+  validationsCount: number;
+}
+
+function DashboardHeader({
+  traderAgent,
+  sentinelAgent,
+  validationsCount,
+}: DashboardHeaderProps) {
+  return (
+    <header
+      className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md"
+      // Expose header height to descendants so the docked aside can offset
+      // its sticky position correctly.
+      style={{ ["--dashboard-header-h" as string]: "64px" }}
+    >
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
+        <a
+          href="/"
+          className="inline-flex shrink-0 items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
+        >
+          <Wordmark />
+          <span>Prism</span>
+        </a>
+        <span className="text-fg-faint">/</span>
+        <span className="text-mono text-xs uppercase tracking-[var(--tracking-wide)] text-fg-muted">
+          dashboard
+        </span>
+
+        <Separator orientation="vertical" className="h-4" />
+
+        <AgentBadge tone="trader" label="T" agent={traderAgent} />
+        <AgentBadge tone="sentinel" label="S" agent={sentinelAgent} />
+
+        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+          <AutoRefresh intervalMs={8000} />
+          <Separator orientation="vertical" className="h-4" />
+          <Pill tone="info" emphasis="soft" size="sm">
+            <LiveDot tone="online" pulse size="sm" />
+            <span className="text-mono">Arc Testnet</span>
+          </Pill>
+          <Pill tone="neutral" emphasis="outline" size="sm">
+            <Activity className="h-3 w-3" strokeWidth={2} />
+            <span className="text-mono">
+              {validationsCount.toLocaleString()} verdicts
+            </span>
+          </Pill>
+          <a
+            href="https://testnet.arcscan.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-mono text-xs text-fg-muted transition-colors hover:text-fg"
+          >
+            arcscan
+            <ArrowUpRight className="h-3 w-3" strokeWidth={2} />
+          </a>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function AgentBadge({
+  tone,
+  label,
+  agent,
+}: {
+  tone: "trader" | "sentinel";
+  label: string;
+  agent?: { agent_id: number; wallet_address: string } | undefined;
+}) {
+  if (!agent) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <LiveDot tone="offline" pulse={false} size="sm" />
+        <span className="text-mono text-[11px] text-fg-faint">
+          {label}: not registered
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <LiveDot tone={tone} pulse size="sm" />
+      <span className="text-mono text-[11px] text-fg-muted">
+        <span className="text-fg">{label}</span>
+        <span className="text-fg-faint">·{agent.agent_id}</span>
+      </span>
+      <HashChip
+        value={agent.wallet_address}
+        href={`https://testnet.arcscan.app/address/${agent.wallet_address}`}
+        truncate={4}
+        size="xs"
+      />
+    </span>
+  );
+}
+
+function Wordmark() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 17L10 3L16 17Z"
+        stroke="url(#dashboard-prism-gradient)"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <defs>
+        <linearGradient
+          id="dashboard-prism-gradient"
+          x1="3"
+          y1="3"
+          x2="17"
+          y2="17"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="var(--color-trader)" />
+          <stop offset="0.6" stopColor="var(--color-sentinel)" />
+          <stop offset="1" stopColor="var(--color-verdict-good)" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+/* ─────────────── Footer ─────────────── */
+
+function DashboardFooter() {
+  return (
+    <footer className="border-t border-[var(--color-border)] px-6 py-5">
+      <div className="mx-auto flex max-w-7xl flex-col items-start gap-2 text-mono text-[11px] text-fg-faint sm:flex-row sm:items-center sm:justify-between">
+        <span>The first adversarial AI validator on ERC-8004</span>
+        <span className="inline-flex items-center gap-3">
+          <span>Powered by</span>
+          <a
+            href="https://arc.network"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-fg-muted transition-colors hover:text-fg"
+          >
+            Arc
+          </a>
+          <span className="text-fg-faint">·</span>
+          <a
+            href="https://www.circle.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-fg-muted transition-colors hover:text-fg"
+          >
+            Circle
+          </a>
+          <span className="text-fg-faint">·</span>
+          <a
+            href="https://neon.tech"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-fg-muted transition-colors hover:text-fg"
+          >
+            Neon
+          </a>
+        </span>
+      </div>
+    </footer>
   );
 }

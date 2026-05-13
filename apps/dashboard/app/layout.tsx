@@ -1,5 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#0F1018",
+  colorScheme: "dark",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -11,6 +18,20 @@ export const metadata: Metadata = {
   },
   description:
     "Prism is the first adversarial AI validator on ERC-8004. Two agents — a trader and a sentinel — challenge each other's reasoning with on-chain proof on Arc. Join the waitlist.",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/apple-icon.svg", type: "image/svg+xml", sizes: "180x180" },
+    ],
+  },
+  manifest: "/manifest.json",
+  applicationName: "Prism",
+  appleWebApp: {
+    title: "Prism",
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "Prism — Adversarial AI Validator on ERC-8004",
     description:
@@ -37,8 +58,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-950 text-gray-100 antialiased">{children}</body>
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="bg-canvas text-fg antialiased font-sans selection:bg-trader/30 selection:text-trader-fg">
+        {children}
+      </body>
     </html>
   );
 }

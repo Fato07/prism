@@ -138,6 +138,77 @@ export async function getWaitlistCount(): Promise<number> {
   return Number(result.rows[0].count);
 }
 
+/**
+ * Aggregate activity stats for the landing-page live strip.
+ * All counts are pure reads; safe to call from a server component on every render.
+ * Returns zeros if any table is missing or unreachable so the landing page never fails.
+ */
+export interface ActivityStats {
+  traces: number;
+  validations: number;
+  trades: number;
+  flagged: number; // verdict_score < 50
+}
+
+export interface VerdictHistoryEntry {
+  trace_id: string;
+  request_hash: string;
+  verdict_score: number;
+  created_at: string;
+}
+
+/**
+ * Recent verdicts for the dashboard history strip.
+ * Returned newest-first; defaults to 30 entries. Empty array on any DB error.
+ */
+export async function getRecentVerdicts(
+  limit: number = 30,
+): Promise<VerdictHistoryEntry[]> {
+  try {
+    const client = getPool();
+    const result = await client.query(
+      `SELECT trace_id,
+              encode(request_hash, 'hex') AS request_hash,
+              verdict_score,
+              created_at::text AS created_at
+         FROM validations
+        ORDER BY created_at DESC
+        LIMIT $1`,
+      [Math.max(1, Math.min(100, limit))],
+    );
+    return result.rows.map((r: Record<string, unknown>) => ({
+      trace_id: String(r.trace_id),
+      request_hash: String(r.request_hash),
+      verdict_score: Number(r.verdict_score),
+      created_at: String(r.created_at),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getActivityStats(): Promise<ActivityStats> {
+  try {
+    const client = getPool();
+    const result = await client.query(
+      `SELECT
+         (SELECT count(*) FROM traces)                                          AS traces,
+         (SELECT count(*) FROM validations)                                     AS validations,
+         (SELECT count(*) FROM trades)                                          AS trades,
+         (SELECT count(*) FROM validations WHERE verdict_score < 50)            AS flagged`
+    );
+    const row = result.rows[0] ?? {};
+    return {
+      traces: Number(row.traces ?? 0),
+      validations: Number(row.validations ?? 0),
+      trades: Number(row.trades ?? 0),
+      flagged: Number(row.flagged ?? 0),
+    };
+  } catch {
+    return { traces: 0, validations: 0, trades: 0, flagged: 0 };
+  }
+}
+
 /** Ensure the waitlist table exists (idempotent migration). */
 export async function ensureWaitlistTable(): Promise<void> {
   const client = getPool();

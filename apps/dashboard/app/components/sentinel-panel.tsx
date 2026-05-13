@@ -1,186 +1,334 @@
+"use client";
+
 /**
  * Sentinel panel — displays the most recent adversarial verdict.
- * Server component — fetches verdict from DB and IPFS.
+ *
+ * Centerpiece is a ScoreDonut (0-100, color-mapped to verdict spectrum).
+ * Around it: verdict label pill, evidence/thesis challenges, critique.
+ *
+ * Header layout: title (left) · verdict label + expand button (right).
+ * Clicking expand opens the same panel in a Dialog with `noExpand` set.
  */
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/empty-state";
+import { LiveDot } from "@/components/ui/live-dot";
+import { HashChip } from "@/components/ui/hash-chip";
+import { ScoreDonut } from "@/components/ui/score-donut";
+import { Separator } from "@/components/ui/separator";
+import { Dialog } from "@/components/ui/dialog";
+import { ExpandButton } from "@/components/ui/expandable";
+import { formatRelativeTime } from "@/lib/utils";
+import { useState } from "react";
+import { ShieldAlert, Sparkles, Target, Loader2 } from "lucide-react";
 import type { SentinelVerdict } from "@/lib/schemas";
 
 interface SentinelPanelProps {
   verdict: SentinelVerdict | null;
   responseUri: string | null;
   pendingMessage?: string;
+  /** Hides the expand button — set when rendered inside the expanded modal. */
+  noExpand?: boolean;
 }
 
-function labelVariant(label: string): "reject" | "warn" | "pass" | "endorse" {
-  const map: Record<string, "reject" | "warn" | "pass" | "endorse"> = {
-    REJECT: "reject",
+type VerdictLabel = "REJECT" | "WARN" | "PASS" | "ENDORSE";
+
+function labelTone(label: string): "bad" | "warn" | "good" | "neutral" {
+  const map: Record<VerdictLabel, "bad" | "warn" | "good"> = {
+    REJECT: "bad",
     WARN: "warn",
-    PASS: "pass",
-    ENDORSE: "endorse",
+    PASS: "good",
+    ENDORSE: "good",
   };
-  return map[label] ?? "warn";
+  return map[label as VerdictLabel] ?? "neutral";
 }
 
-/** Extract CID from an ipfs:// URI. */
 function cidFromUri(uri: string): string | null {
   if (uri.startsWith("ipfs://")) return uri.slice(7);
   return null;
 }
 
-export function SentinelPanel({ verdict, responseUri, pendingMessage }: SentinelPanelProps) {
+export function SentinelPanel({
+  verdict,
+  responseUri,
+  pendingMessage,
+  noExpand,
+}: SentinelPanelProps) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const showExpand = !noExpand;
+
   if (!verdict) {
     return (
-      <Card className="h-full">
+      <Card tone="sentinel" className="h-full">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <span className="text-red-400">◆</span> Sentinel Challenges
+            <ShieldAlert
+              className="h-4 w-4 text-[var(--color-sentinel)]"
+              strokeWidth={1.8}
+            />
+            Sentinel challenges
           </CardTitle>
+          <div className="flex items-center gap-2">
+            {pendingMessage ? (
+              <Pill tone="warn" emphasis="soft" size="xs">
+                <LiveDot tone="pending" pulse size="sm" />
+                awaiting
+              </Pill>
+            ) : (
+              <Pill tone="sentinel" emphasis="outline" size="xs">
+                idle
+              </Pill>
+            )}
+            {showExpand && (
+              <ExpandButton
+                onClick={() => setModalOpen(true)}
+                label="Sentinel challenges"
+              />
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {pendingMessage ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="mb-3 animate-pulse text-2xl text-amber-400">⏳</div>
-              <p className="text-sm text-amber-300">{pendingMessage}</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+              <Loader2
+                className="h-6 w-6 animate-spin text-[var(--color-warning)]"
+                strokeWidth={1.6}
+              />
+              <p className="max-w-xs text-sm text-fg-muted">{pendingMessage}</p>
             </div>
           ) : (
             <EmptyState
               title="No verdicts yet"
-              description="The sentinel has not reviewed any traces. Run the validation pipeline to populate this panel."
+              description="Run the validation pipeline to populate this panel."
             />
           )}
         </CardContent>
+        {showExpand && (
+          <Dialog
+            open={modalOpen}
+            onClose={() => setModalOpen(false)}
+            title="Sentinel challenges"
+            maxWidthClass="max-w-5xl"
+          >
+            <SentinelPanel
+              verdict={verdict}
+              responseUri={responseUri}
+              pendingMessage={pendingMessage}
+              noExpand
+            />
+          </Dialog>
+        )}
       </Card>
     );
   }
 
   const verdictCid = responseUri ? cidFromUri(responseUri) : null;
+  const ipfsHref = verdictCid
+    ? `https://gateway.pinata.cloud/ipfs/${verdictCid}`
+    : undefined;
+  const tone = labelTone(verdict.verdict_label);
 
   return (
-    <Card className="h-full overflow-auto">
+    <>
+    <Card tone="sentinel" className="flex h-full flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <span className="text-red-400">◆</span> Sentinel Challenges
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Verdict Score + Label */}
-        <div className="flex items-center gap-3">
-          <Badge variant={labelVariant(verdict.verdict_label)}>
-            {verdict.verdict_label}
-          </Badge>
-          <span className="font-mono text-2xl font-bold text-gray-100">
-            {verdict.verdict_score}
-          </span>
-          <span className="text-xs text-gray-500">/100</span>
-        </div>
-
-        {/* Score bar */}
-        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
-          <div
-            className={`h-full rounded-full transition-all ${
-              verdict.verdict_score >= 76
-                ? "bg-emerald-500"
-                : verdict.verdict_score >= 51
-                  ? "bg-green-500"
-                  : verdict.verdict_score >= 26
-                    ? "bg-amber-500"
-                    : "bg-red-500"
-            }`}
-            style={{ width: `${verdict.verdict_score}%` }}
+          <ShieldAlert
+            className="h-4 w-4 text-[var(--color-sentinel)]"
+            strokeWidth={1.8}
           />
+          Sentinel challenges
+        </CardTitle>
+        <div className="flex items-center gap-2">
+          <Pill tone={tone === "neutral" ? "sentinel" : tone} emphasis="soft" size="sm">
+            {verdict.verdict_label}
+          </Pill>
+          {showExpand && (
+            <ExpandButton
+              onClick={() => setModalOpen(true)}
+              label="Sentinel challenges"
+            />
+          )}
         </div>
+      </CardHeader>
 
-        {/* Evidence Challenges */}
-        <div>
-          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
-            Evidence Challenges ({verdict.evidence_challenges.length})
-          </h4>
-          <div className="space-y-2">
-            {verdict.evidence_challenges.map((challenge, i) => (
-              <div key={i} className="rounded border border-red-900/40 bg-red-950/20 p-3">
-                <p className="text-sm text-red-200">
-                  <span className="mr-1 font-mono text-xs text-red-400">#{i + 1}</span>
-                  {challenge}
-                </p>
-              </div>
-            ))}
+      <CardContent className="flex-1 space-y-6 overflow-auto p-5">
+        {/* Verdict score centerpiece */}
+        <div className="flex items-center justify-between gap-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 p-5">
+          <ScoreDonut score={verdict.verdict_score} label="verdict" size="lg" />
+          <div className="flex-1 space-y-3">
+            <div>
+              <span className="text-mono text-[10px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                Discrimination
+              </span>
+              <p className="mt-1 text-sm leading-relaxed text-fg-muted">
+                {scoreNarrative(verdict.verdict_score)}
+              </p>
+            </div>
+            <Pill tone="sentinel" emphasis="outline" size="xs">
+              <span className="text-mono">{verdict.model_family}</span>
+            </Pill>
           </div>
         </div>
 
-        {/* Thesis Challenges */}
-        <div>
-          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
-            Thesis Challenges ({verdict.thesis_challenges.length})
-          </h4>
-          <div className="space-y-2">
-            {verdict.thesis_challenges.map((challenge, i) => (
-              <div key={i} className="rounded border border-amber-900/40 bg-amber-950/20 p-3">
-                <p className="text-sm text-amber-200">
-                  <span className="mr-1 font-mono text-xs text-amber-400">#{i + 1}</span>
-                  {challenge}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Calibration Critique */}
-        <div>
-          <h4 className="mb-1 text-xs font-medium uppercase tracking-wider text-gray-500">
-            Calibration Critique
-          </h4>
-          <p className="text-sm text-gray-300">{verdict.calibration_critique}</p>
-        </div>
-
-        {/* Dialogue */}
-        {verdict.dialogue_messages.length > 0 && (
-          <div>
-            <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
-              Adversarial Dialogue
-            </h4>
-            <div className="space-y-2">
-              {verdict.dialogue_messages.map((msg, i) => (
-                <div key={i} className="rounded bg-gray-800/30 p-3">
-                  <span className="mb-1 block text-xs font-medium uppercase text-gray-500">
-                    {msg.role}
-                  </span>
-                  <p className="text-sm text-gray-300">{msg.content}</p>
-                </div>
+        {/* Evidence challenges */}
+        {verdict.evidence_challenges.length > 0 && (
+          <section>
+            <Eyebrow icon={Target}>
+              Evidence challenges · {verdict.evidence_challenges.length}
+            </Eyebrow>
+            <ol className="space-y-2.5">
+              {verdict.evidence_challenges.map((challenge, i) => (
+                <ChallengeItem
+                  key={i}
+                  index={i}
+                  text={challenge}
+                  severity="evidence"
+                />
               ))}
-            </div>
-          </div>
+            </ol>
+          </section>
         )}
 
-        {/* IPFS link */}
-        {verdictCid && (
-          <div className="border-t border-gray-800 pt-3">
-            <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
-              On-Chain & IPFS
-            </h4>
-            <div className="text-xs">
-              <span className="text-gray-500">Verdict CID: </span>
-              <a
-                href={`https://gateway.pinata.cloud/ipfs/${verdictCid}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-blue-400 underline decoration-blue-400/30 hover:text-blue-300"
-              >
-                {verdictCid.slice(0, 20)}…
-              </a>
-            </div>
-          </div>
+        {/* Thesis challenges */}
+        {verdict.thesis_challenges.length > 0 && (
+          <section>
+            <Eyebrow icon={Sparkles}>
+              Thesis challenges · {verdict.thesis_challenges.length}
+            </Eyebrow>
+            <ol className="space-y-2.5">
+              {verdict.thesis_challenges.map((challenge, i) => (
+                <ChallengeItem
+                  key={i}
+                  index={i}
+                  text={challenge}
+                  severity="thesis"
+                />
+              ))}
+            </ol>
+          </section>
         )}
 
-        {/* Meta */}
-        <div className="border-t border-gray-800 pt-3 text-xs text-gray-500">
-          <div>Model: {verdict.model_name} ({verdict.model_family})</div>
-          <div>Request Hash: <code className="font-mono">{verdict.request_hash.slice(0, 24)}…</code></div>
-          <div>Created: {new Date(verdict.created_at).toLocaleString()}</div>
-        </div>
+        {/* Calibration critique */}
+        <section>
+          <Eyebrow icon={ShieldAlert}>Calibration critique</Eyebrow>
+          <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/50 p-3.5 text-sm leading-relaxed text-fg-muted">
+            {verdict.calibration_critique}
+          </p>
+        </section>
+
+        {/* Footer meta */}
+        <section className="space-y-3 border-t border-[var(--color-border)] pt-4">
+          {verdictCid && (
+            <HashChip
+              label="verdict IPFS"
+              value={verdictCid}
+              href={ipfsHref}
+              truncate={6}
+              size="xs"
+            />
+          )}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-mono text-[10px] text-fg-faint">
+            <span>
+              <span className="text-fg-faint">model · </span>
+              <span className="text-fg-muted">{verdict.model_name}</span>
+            </span>
+            <span>
+              <span className="text-fg-faint">created · </span>
+              <span className="text-fg-muted">
+                {formatRelativeTime(verdict.created_at)}
+              </span>
+            </span>
+            <span className="col-span-2 truncate">
+              <span className="text-fg-faint">request_hash · </span>
+              <span className="text-fg-muted">
+                {verdict.request_hash.slice(0, 32)}…
+              </span>
+            </span>
+          </div>
+        </section>
       </CardContent>
     </Card>
+
+    {showExpand && (
+      <Dialog
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Sentinel challenges"
+        description="Full adversarial verdict"
+        maxWidthClass="max-w-5xl"
+      >
+        <SentinelPanel
+          verdict={verdict}
+          responseUri={responseUri}
+          pendingMessage={pendingMessage}
+          noExpand
+        />
+      </Dialog>
+    )}
+    </>
   );
+}
+
+/* ─────────────── Helpers ─────────────── */
+
+function Eyebrow({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <h4 className="mb-3 inline-flex items-center gap-1.5 text-mono text-[10px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+      <Icon className="h-3 w-3" strokeWidth={2} />
+      {children}
+    </h4>
+  );
+}
+
+function ChallengeItem({
+  index,
+  text,
+  severity,
+}: {
+  index: number;
+  text: string;
+  severity: "evidence" | "thesis";
+}) {
+  // Evidence challenges = red-leaning; thesis challenges = amber.
+  const accent =
+    severity === "evidence"
+      ? "var(--color-danger)"
+      : "var(--color-warning)";
+  return (
+    <li
+      className="rounded-lg border p-3.5"
+      style={{
+        borderColor: `color-mix(in oklch, ${accent} 25%, var(--color-border))`,
+        backgroundColor: `color-mix(in oklch, ${accent} 5%, transparent)`,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded px-1.5 text-mono text-[10px] font-semibold"
+          style={{
+            color: accent,
+            backgroundColor: `color-mix(in oklch, ${accent} 15%, transparent)`,
+          }}
+        >
+          #{index + 1}
+        </span>
+        <p className="flex-1 text-sm leading-relaxed text-fg">{text}</p>
+      </div>
+    </li>
+  );
+}
+
+function scoreNarrative(score: number): string {
+  if (score >= 76) return "Strong reasoning. Sentinel found no fatal flaws.";
+  if (score >= 51) return "Reasoning passes. Some weak evidence, but thesis holds.";
+  if (score >= 26) return "Caution. Calibration off; evidence under-supports thesis.";
+  return "Reject. Reasoning has critical flaws. Capital should not move.";
 }

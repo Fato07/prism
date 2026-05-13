@@ -1,9 +1,15 @@
 /**
- * On-chain receipt links — clickable links to Arc testnet explorer
- * for registration, validationRequest, and validationResponse transactions.
+ * On-chain receipt links — clickable explorer links for the three
+ * ERC-8004 transactions in the trader → sentinel → anchor pipeline.
+ *
+ * Uses HashChip for each tx hash so they're click-to-copy and open in
+ * Arc explorer. Pending state shows a muted hash placeholder.
  */
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Pill } from "@/components/ui/pill";
+import { HashChip } from "@/components/ui/hash-chip";
+import { Hexagon, ChevronRight } from "lucide-react";
 
 const ARC_EXPLORER = "https://testnet.arcscan.app";
 
@@ -13,31 +19,42 @@ interface ReceiptLinksProps {
   validationResponseTxHash: string | null;
 }
 
-function ReceiptLink({ label, txHash, contractLabel }: {
+interface ReceiptRowProps {
+  step: string;
   label: string;
+  contract: string;
   txHash: string | null;
-  contractLabel: string;
-}) {
-  if (!txHash) {
-    return (
-      <div className="flex items-center justify-between py-2 text-sm">
-        <span className="text-gray-400">{label}</span>
-        <span className="text-xs text-gray-600">{contractLabel} — pending</span>
-      </div>
-    );
-  }
+}
 
+function ReceiptRow({ step, label, contract, txHash }: ReceiptRowProps) {
   return (
-    <div className="flex items-center justify-between py-2 text-sm">
-      <span className="text-gray-300">{label}</span>
-      <a
-        href={`${ARC_EXPLORER}/tx/${txHash}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="font-mono text-xs text-blue-400 underline decoration-blue-400/30 hover:text-blue-300"
-      >
-        {txHash.slice(0, 10)}…{txHash.slice(-8)}
-      </a>
+    <div className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="text-mono text-[10px] font-semibold uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+          {step}
+        </span>
+        <ChevronRight
+          className="h-3 w-3 shrink-0 text-fg-faint"
+          strokeWidth={2}
+        />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-fg">{label}</div>
+          <div className="text-mono text-[10px] text-fg-faint">{contract}</div>
+        </div>
+      </div>
+
+      {txHash ? (
+        <HashChip
+          value={txHash}
+          href={`${ARC_EXPLORER}/tx/${txHash}`}
+          truncate={6}
+          size="sm"
+        />
+      ) : (
+        <Pill tone="warn" emphasis="outline" size="xs">
+          pending
+        </Pill>
+      )}
     </div>
   );
 }
@@ -47,29 +64,45 @@ export function ReceiptLinks({
   validationRequestTxHash,
   validationResponseTxHash,
 }: ReceiptLinksProps) {
+  const total = [
+    registrationTxHash,
+    validationRequestTxHash,
+    validationResponseTxHash,
+  ].filter(Boolean).length;
+
   return (
-    <Card>
+    <Card tone="verdict">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <span className="text-purple-400">⬡</span> On-Chain Receipts
+        <CardTitle className="flex items-center gap-2">
+          <Hexagon
+            className="h-4 w-4 text-[var(--color-verdict-good)]"
+            strokeWidth={1.8}
+          />
+          On-chain receipts
         </CardTitle>
+        <Pill tone="good" emphasis="soft" size="xs">
+          <span className="text-mono">{total}/3 anchored</span>
+        </Pill>
       </CardHeader>
       <CardContent>
-        <div className="divide-y divide-gray-800">
-          <ReceiptLink
-            label="Agent Registration"
+        <div className="divide-y divide-[var(--color-border)]">
+          <ReceiptRow
+            step="01"
+            label="Agent registration"
+            contract="IdentityRegistry"
             txHash={registrationTxHash}
-            contractLabel="IdentityRegistry"
           />
-          <ReceiptLink
-            label="Validation Request"
+          <ReceiptRow
+            step="02"
+            label="Validation request"
+            contract="ValidationRegistry"
             txHash={validationRequestTxHash}
-            contractLabel="ValidationRegistry"
           />
-          <ReceiptLink
-            label="Validation Response"
+          <ReceiptRow
+            step="03"
+            label="Validation response"
+            contract="ValidationRegistry"
             txHash={validationResponseTxHash}
-            contractLabel="ValidationRegistry"
           />
         </div>
       </CardContent>

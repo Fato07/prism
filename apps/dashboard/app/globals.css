@@ -1,1 +1,179 @@
 @import "tailwindcss";
+
+/*
+ * Prism design tokens.
+ *
+ * Brand metaphor: a prism splits one white signal into a spectrum.
+ *   Trader  = incoming light (electric cyan)
+ *   Sentinel = critical refraction (magenta)
+ *   Verdict = the resulting spectrum (red → amber → green, mapped to 0-100)
+ *
+ * Palette tuned in OKLCH for perceptual uniformity across the spectrum.
+ * Tailwind v4: @theme exposes these as utility classes (bg-canvas, text-fg, etc.).
+ */
+
+@theme {
+  /* Base surfaces — cool-leaning charcoal, not pure black */
+  --color-canvas: oklch(0.16 0.012 260);          /* page background */
+  --color-canvas-raised: oklch(0.19 0.014 260);   /* card / panel */
+  --color-canvas-sunken: oklch(0.13 0.010 260);   /* code blocks, sunken inputs */
+  --color-panel: oklch(0.21 0.014 260 / 0.6);     /* glass panels */
+  --color-border: oklch(0.28 0.010 260 / 0.6);
+  --color-border-strong: oklch(0.36 0.012 260);
+  --color-fg: oklch(0.96 0.005 260);
+  --color-fg-muted: oklch(0.72 0.012 260);
+  --color-fg-subtle: oklch(0.55 0.014 260);
+  --color-fg-faint: oklch(0.40 0.012 260);
+
+  /* Brand: trader (incoming light) and sentinel (refraction) */
+  --color-trader: oklch(0.78 0.16 220);           /* electric cyan */
+  --color-trader-fg: oklch(0.96 0.04 220);
+  --color-trader-dim: oklch(0.45 0.13 220);
+  --color-sentinel: oklch(0.72 0.21 340);         /* magenta */
+  --color-sentinel-fg: oklch(0.96 0.04 340);
+  --color-sentinel-dim: oklch(0.42 0.18 340);
+
+  /* Verdict spectrum — 0 (red) → 50 (amber) → 100 (green).
+     Used in donut chart, evidence bars, status indicators. */
+  --color-verdict-bad: oklch(0.68 0.22 25);
+  --color-verdict-mid: oklch(0.78 0.18 75);
+  --color-verdict-good: oklch(0.74 0.20 145);
+
+  /* Functional */
+  --color-success: oklch(0.74 0.20 145);
+  --color-warning: oklch(0.78 0.18 75);
+  --color-danger: oklch(0.68 0.22 25);
+  --color-info: oklch(0.78 0.16 220);
+
+  /* Fonts (wired by next/font in layout.tsx via CSS variables) */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale — tight, Linear-ish */
+  --tracking-display: -0.04em;
+  --tracking-tight: -0.015em;
+  --tracking-wide: 0.06em;
+
+  /* Motion */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 400ms;
+
+  /* Radii */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
+
+  /* Shadows — almost imperceptible, layered for depth not drama */
+  --shadow-soft:
+    0 0 0 1px oklch(0.28 0.010 260 / 0.5),
+    0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-elevated:
+    0 0 0 1px oklch(0.32 0.012 260 / 0.6),
+    0 8px 24px -8px oklch(0 0 0 / 0.5),
+    0 2px 4px oklch(0 0 0 / 0.3);
+  --shadow-glow-trader:
+    0 0 0 1px oklch(0.78 0.16 220 / 0.25),
+    0 0 24px -6px oklch(0.78 0.16 220 / 0.35);
+  --shadow-glow-sentinel:
+    0 0 0 1px oklch(0.72 0.21 340 / 0.25),
+    0 0 24px -6px oklch(0.72 0.21 340 / 0.35);
+}
+
+/*
+ * Verdict-score → color helper.
+ * Used inline via CSS to interpolate the spectrum gradient on a 0-100 score
+ * without JS color math.
+ */
+@layer utilities {
+  .verdict-spectrum {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-verdict-bad) 0%,
+      var(--color-verdict-mid) 50%,
+      var(--color-verdict-good) 100%
+    );
+  }
+
+  .text-mono {
+    font-family: var(--font-mono);
+    font-feature-settings: "tnum", "zero", "ss01";
+    letter-spacing: 0;
+  }
+
+  /* Subtle conic gradient border — used on emphasized cards */
+  .ring-spectrum {
+    position: relative;
+  }
+  .ring-spectrum::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: conic-gradient(
+      from 180deg,
+      var(--color-trader),
+      var(--color-sentinel),
+      var(--color-verdict-good),
+      var(--color-verdict-mid),
+      var(--color-trader)
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  /* Pulse animation for live indicators */
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.55; transform: scale(0.92); }
+  }
+  .animate-pulse-dot {
+    animation: pulse-dot 2.4s var(--ease-out-quart) infinite;
+  }
+
+  /* Slow drift — used by shader-less fallback gradient */
+  @keyframes drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(2%, -1%) scale(1.04); }
+  }
+  .animate-drift {
+    animation: drift 18s ease-in-out infinite;
+  }
+
+  /* Focus ring — Linear-style soft glow */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--color-canvas),
+      0 0 0 4px var(--color-trader);
+  }
+}
+
+/*
+ * Global resets — minimal, Tailwind handles most.
+ * Render with subpixel-aware antialiasing on the body.
+ */
+html {
+  color-scheme: dark;
+}
+
+body {
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+}
+
+/* Hide scrollbar on shader hero containers, keep functionality */
+.shader-hide-scrollbar::-webkit-scrollbar { display: none; }
+.shader-hide-scrollbar { scrollbar-width: none; }

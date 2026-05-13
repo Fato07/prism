@@ -1,13 +1,32 @@
 /**
  * Prism Landing Page — Root route (/)
  *
- * Waitlist landing page with pitch section, email signup, waitlist count,
- * and link to live dashboard. Mobile-responsive. SEO meta tags in layout.
+ * Composition (top to bottom):
+ *   1. Glass nav (sticky)
+ *   2. Hero — paper-design MeshGradient shader + headline + waitlist form
+ *   3. How it works — three-step chromatic mechanism explainer
+ *   4. Why it matters — asymmetric feature cards (no emojis, lucide icons)
+ *   5. Live activity — real numbers from Neon
+ *   6. Tech stack — pills with gradient borders for primary tech
+ *   7. Footer
+ *
+ * All data fetching is server-side; the hero + how-it-works carry `'use client'`
+ * for the shader + motion. Everything else is a server component.
  */
 
 import type { Metadata } from "next";
-import { getWaitlistCount, ensureWaitlistTable } from "@/lib/db";
-import { WaitlistSignupForm } from "@/components/waitlist-form";
+import {
+  ensureWaitlistTable,
+  getWaitlistCount,
+  getActivityStats,
+} from "@/lib/db";
+import { Hero } from "@/components/landing/hero";
+import { HowItWorks } from "@/components/landing/how-it-works";
+import { WhyPrism } from "@/components/landing/why-prism";
+import { LiveActivityStrip } from "@/components/landing/live-activity-strip";
+import { Pill } from "@/components/ui/pill";
+import { Separator } from "@/components/ui/separator";
+import { ArrowUpRight, Cpu, Network } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -38,157 +57,205 @@ export const metadata: Metadata = {
   },
 };
 
-const BENEFITS = [
-  {
-    icon: "🛡️",
-    title: "Adversarial Validation",
-    description:
-      "Two-agent adversarial validation catches flawed AI reasoning before it moves markets",
-  },
-  {
-    icon: "⛓️",
-    title: "On-Chain Proof",
-    description:
-      "On-chain proof on Arc — every verdict is immutable, verifiable, and gasless",
-  },
-  {
-    icon: "💸",
-    title: "Sentinel-as-a-Service",
-    description:
-      "Sentinel-as-a-service: other agents pay per validation via x402 nanopayments",
-  },
-] as const;
+const PRIMARY_TECH = ["Arc", "ERC-8004", "Circle Wallets"] as const;
+const SECONDARY_TECH = ["x402", "Polymarket V2", "Neon Postgres", "IPFS", "DSPy", "Mirascope"] as const;
 
 export default async function LandingPage() {
-  // Ensure table exists and get count
+  // Best-effort data fetch — landing must render even if Neon is down.
   let waitlistCount = 0;
+  let stats = { traces: 0, validations: 0, trades: 0, flagged: 0 };
   try {
     await ensureWaitlistTable();
-    waitlistCount = await getWaitlistCount();
+    [waitlistCount, stats] = await Promise.all([
+      getWaitlistCount(),
+      getActivityStats(),
+    ]);
   } catch {
-    // DB not available — show page anyway with count 0
+    /* keep zeros */
   }
 
-  const countDisplay =
-    waitlistCount > 0
-      ? `Join ${waitlistCount} other${waitlistCount !== 1 ? "s" : ""} on the waitlist`
-      : "Be the first to join the waitlist";
-
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
-      {/* Nav */}
-      <nav className="border-b border-gray-800/50 bg-gray-950/80 px-6 py-4 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <a href="/" className="text-xl font-bold tracking-tight">
-            <span className="text-blue-400">Prism</span>
-          </a>
-          <a
-            href="/dashboard"
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white"
-          >
-            Live Dashboard
-          </a>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-canvas text-fg">
+      <GlassNav />
 
-      {/* Hero */}
-      <main className="flex-1 flex flex-col items-center justify-center px-6 py-16 sm:py-24">
-        <div className="mx-auto max-w-3xl text-center">
-          {/* Tagline */}
-          <p className="mb-4 text-sm font-medium uppercase tracking-widest text-blue-400">
-            The first adversarial AI validator on ERC-8004
-          </p>
+      <main>
+        <Hero waitlistCount={waitlistCount} />
 
-          {/* Main headline */}
-          <h1 className="mb-6 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-            See through the{" "}
-            <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              reasoning
-            </span>
-          </h1>
+        <HowItWorks />
 
-          {/* Subtitle */}
-          <p className="mb-10 text-lg text-gray-400 sm:text-xl max-w-2xl mx-auto">
-            AI agents trade on prediction markets. But who checks their reasoning?
-            Prism pits a sentinel against every trade — catching flaws before capital
-            moves. On-chain. Gasless. Verifiable.
-          </p>
+        <WhyPrism />
 
-          {/* Waitlist signup */}
-          <div className="mb-6">
-            <p className="mb-4 text-sm text-gray-500">{countDisplay}</p>
-            <div className="mx-auto max-w-md relative">
-              <WaitlistSignupForm />
+        <LiveActivityStrip stats={stats} waitlistCount={waitlistCount} />
+
+        {/* Tech stack */}
+        <section
+          className="border-b border-[var(--color-border)]"
+          aria-labelledby="tech"
+        >
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="mb-10">
+              <p className="text-mono text-xs font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                Built on
+              </p>
+              <h2
+                id="tech"
+                className="mt-2 max-w-2xl text-balance text-2xl font-semibold tracking-[var(--tracking-tight)] text-fg sm:text-3xl"
+              >
+                A stack chosen for adversarial honesty.
+              </h2>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {PRIMARY_TECH.map((t) => (
+                <span
+                  key={t}
+                  className="ring-spectrum relative inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg"
+                >
+                  {t}
+                </span>
+              ))}
+              <Separator orientation="vertical" className="mx-2 h-6" />
+              {SECONDARY_TECH.map((t) => (
+                <Pill key={t} tone="neutral" emphasis="outline" size="md">
+                  <span className="text-mono text-xs">{t}</span>
+                </Pill>
+              ))}
             </div>
           </div>
-        </div>
-
-        {/* Benefits */}
-        <div className="mx-auto mt-16 max-w-4xl w-full">
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-            {BENEFITS.map((benefit) => (
-              <div
-                key={benefit.title}
-                className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 transition-colors hover:border-gray-700"
-              >
-                <div className="mb-3 text-2xl">{benefit.icon}</div>
-                <h3 className="mb-2 text-base font-semibold text-gray-100">
-                  {benefit.title}
-                </h3>
-                <p className="text-sm text-gray-400 leading-relaxed">
-                  {benefit.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Tech stack badges */}
-        <div className="mt-16 flex flex-wrap items-center justify-center gap-3 text-xs text-gray-500">
-          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Arc</span>
-          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">ERC-8004</span>
-          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Circle Wallets</span>
-          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">x402</span>
-          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Polymarket</span>
-          <span className="rounded-full bg-gray-900 px-3 py-1 border border-gray-800">Neon</span>
-        </div>
-
-        {/* CTA to dashboard */}
-        <div className="mt-12">
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 border border-gray-700 px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
-          >
-            View Live Dashboard
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-            </svg>
-          </a>
-        </div>
+        </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-800 px-6 py-6">
-        <div className="mx-auto max-w-5xl flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <p className="text-xs text-gray-600">
-            The first adversarial AI validator on ERC-8004 · Powered by Arc &amp; Circle
-          </p>
-          <div className="flex items-center gap-4 text-xs text-gray-600">
-            <a href="/dashboard" className="hover:text-gray-400 transition-colors">
-              Dashboard
-            </a>
-            <span>·</span>
-            <a
-              href="https://github.com/Fato07/prism"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-gray-400 transition-colors"
-            >
-              GitHub
-            </a>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────── */
+
+function GlassNav() {
+  return (
+    <nav className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/70 backdrop-blur-md">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5">
+        <a
+          href="/"
+          className="group inline-flex items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
+        >
+          <Wordmark />
+          <span>Prism</span>
+        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://github.com/Fato07/prism"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="GitHub"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg focus-ring"
+          >
+            <GithubMark className="h-4 w-4" />
+          </a>
+          <a
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg transition-colors hover:bg-[var(--color-panel)] focus-ring"
+          >
+            Live dashboard
+            <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2} />
+          </a>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function GithubMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.339-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0022 12.017C22 6.484 17.522 2 12 2z"
+      />
+    </svg>
+  );
+}
+
+function Wordmark() {
+  // Tiny prism mark — three diverging rays, mono-color, abstract.
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 17L10 3L16 17Z"
+        stroke="url(#prism-gradient)"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <defs>
+        <linearGradient
+          id="prism-gradient"
+          x1="3"
+          y1="3"
+          x2="17"
+          y2="17"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="var(--color-trader)" />
+          <stop offset="0.6" stopColor="var(--color-sentinel)" />
+          <stop offset="1" stopColor="var(--color-verdict-good)" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+
+
+function Footer() {
+  return (
+    <footer className="px-6 py-10">
+      <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 text-sm text-fg-muted">
+          <Wordmark />
+          <span className="text-mono text-xs">
+            First adversarial AI validator on ERC-8004
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-fg-faint">
+          <span className="inline-flex items-center gap-1.5">
+            <Network className="h-3 w-3" strokeWidth={2} />
+            <span className="text-mono">Arc Testnet</span>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Cpu className="h-3 w-3" strokeWidth={2} />
+            <span className="text-mono">Circle Wallets</span>
+          </span>
+          <a
+            href="/dashboard"
+            className="text-fg-muted transition-colors hover:text-fg"
+          >
+            Dashboard
+          </a>
+          <a
+            href="https://github.com/Fato07/prism"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-fg-muted transition-colors hover:text-fg"
+          >
+            GitHub
+          </a>
+        </div>
+      </div>
+    </footer>
   );
 }

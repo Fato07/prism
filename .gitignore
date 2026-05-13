@@ -30,6 +30,7 @@ data/calibration/
 # --- Dependencies & build ---
 node_modules/
 .next/
+*.tsbuildinfo
 dist/
 __pycache__/
 .venv/
