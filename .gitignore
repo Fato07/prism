@@ -44,3 +44,7 @@ uv.lock.bak
 
 # Local-only state (script keys, scratch files)
 .local/
+
+# Pitch-video rendered output (regenerate with pnpm render)
+apps/pitch-video/out/*.mp4
+apps/pitch-video/out/*.webm

@@ -395,8 +395,8 @@ def render_markdown_receipt(d: dict[str, Any]) -> str:
 ## Payment
 
 - **Amount:** {d['amount_paid']} USDC
-- **Recipient:** [`{d['recipient']}`](https://basescan.org/address/{d['recipient']})
-- **Network:** Base mainnet (chain {BASE_CHAIN_ID})
+- **Recipient:** [`{d['recipient']}`]({EXPLORER}/address/{d['recipient']})
+- **Network:** {NETWORK} (chain {BASE_CHAIN_ID}, CAIP-2 `{CAIP2_BASE}`)
 - **Settlement tx (Base):** {tx_base_link}
 
 ## Verdict
