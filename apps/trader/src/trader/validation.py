@@ -31,18 +31,30 @@ logger = structlog.get_logger("prism.trader.validation")
 
 
 def _cast_call(contract: str, sig: str, *args: str) -> str:
-    """Run a cast call and return stdout."""
+    """Run a cast call and return stdout.
+
+    Used for optional on-chain read verification. If the Foundry `cast`
+    binary is not available (production Docker image doesn't ship it),
+    raises ``RuntimeError`` so callers' existing ``except RuntimeError``
+    blocks degrade gracefully and skip the verification step.
+    """
     cast_path = os.path.expanduser("~/.foundry/bin/cast")
+    if not os.path.exists(cast_path):
+        raise RuntimeError(f"cast binary not found at {cast_path}")
     rpc_url = os.environ.get("ARC_RPC_URL", "")
     if not rpc_url:
         raise OSError("ARC_RPC_URL is not set")
 
-    result = subprocess.run(
-        [cast_path, "call", contract, sig, *args, "--rpc-url", rpc_url],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            [cast_path, "call", contract, sig, *args, "--rpc-url", rpc_url],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError as exc:
+        # belt-and-braces in case the exists check raced an unmount
+        raise RuntimeError(f"cast binary disappeared: {exc}") from exc
     if result.returncode != 0:
         raise RuntimeError(f"cast call failed: {result.stderr}")
     return result.stdout.strip()
@@ -60,18 +72,18 @@ VALIDATION_REQUEST_EVENT_SIG = "ValidationRequest(address,uint256,string,bytes32
 
 
 def _compute_event_topic(event_sig: str) -> str:
-    """Compute the keccak256 of an event signature using cast."""
-    cast_path = os.path.expanduser("~/.foundry/bin/cast")
-    result = subprocess.run(
-        [cast_path, "keccak", event_sig],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode == 0:
-        return result.stdout.strip()
-    # Fallback: should never happen if Foundry is installed
-    return "0x" + "0" * 64
+    """Compute the keccak256 topic of a Solidity event signature.
+
+    Pure-Python via pycryptodome (already a transitive dep). Avoids the
+    Foundry CLI dependency at module-load time — the production Docker
+    image doesn't include Foundry, so shelling out to `cast keccak`
+    raised FileNotFoundError on import and broke every on-chain attempt.
+    """
+    from Crypto.Hash import keccak
+
+    k = keccak.new(digest_bits=256)
+    k.update(event_sig.encode("utf-8"))
+    return "0x" + k.hexdigest()
 
 
 VALIDATION_REQUEST_TOPIC = _compute_event_topic(VALIDATION_REQUEST_EVENT_SIG)

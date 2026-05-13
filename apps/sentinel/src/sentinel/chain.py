@@ -32,18 +32,29 @@ VALIDATION_TYPE = "adversarial-llm-v1"
 
 
 def _cast_call(contract: str, sig: str, *args: str) -> str:
-    """Run a cast call and return stdout."""
+    """Run a cast call and return stdout.
+
+    Used for optional on-chain read verification. Raises ``RuntimeError``
+    when the Foundry `cast` binary isn't available so callers' existing
+    ``except RuntimeError`` blocks degrade gracefully (production Docker
+    image doesn't ship Foundry).
+    """
     cast_path = os.path.expanduser("~/.foundry/bin/cast")
+    if not os.path.exists(cast_path):
+        raise RuntimeError(f"cast binary not found at {cast_path}")
     rpc_url = os.environ.get("ARC_RPC_URL", "")
     if not rpc_url:
         raise OSError("ARC_RPC_URL is not set")
 
-    result = subprocess.run(
-        [cast_path, "call", contract, sig, *args, "--rpc-url", rpc_url],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            [cast_path, "call", contract, sig, *args, "--rpc-url", rpc_url],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"cast binary disappeared: {exc}") from exc
     if result.returncode != 0:
         raise RuntimeError(f"cast call failed: {result.stderr}")
     return result.stdout.strip()
