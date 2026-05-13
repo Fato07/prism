@@ -1,9 +1,33 @@
+# --- Environment & secrets ---
 .env
+.env.*
+*.env
 .env.local
 .env.*.local
 .env.sample.setup
 *.secret
+*secret*
+*_secret*
+*_seed*
+*seed*
+*hmac*
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# --- Calibration & gated data ---
+# Full calibration corpus is gated (eval ground truth)
+# Only data/calibration/sample/ may be committed if present
+data/calibration/
+!data/calibration/sample/
+
+# --- Factory / mission artifacts ---
+.factory/
 .agents/
+
+# --- Dependencies & build ---
 node_modules/
 .next/
 dist/
@@ -16,5 +40,6 @@ uv.lock.bak
 .mypy_cache/
 next-env.d.ts
 
+# --- Generated output ---
 # Remotion rendered output (regenerate with pnpm render)
 apps/pitch-video/out/
