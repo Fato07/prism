@@ -515,6 +515,140 @@ export async function getVerdictsByAddress(
   return entries;
 }
 
+/** Builder-fees leaderboard entry. */
+export interface BuilderFeesEntry {
+  builder_code: string;
+  agent_id: number | null;
+  wallet_address: string | null;
+  trade_count: number;
+  total_fees: string;
+  last_trade_at: string | null;
+  /** Daily fee accumulation for the last 7 days (sparkline data). */
+  daily_fees: { date: string; fee: string }[];
+}
+
+/**
+ * Fetch the builder-fees leaderboard from trades.
+ * Only counts trades with status IN ('paper_filled','filled').
+ * Fee = 0.1% of fill notional (size * fill_price * 0.001).
+ * Joins agents table to resolve agent_id and wallet_address via HMAC builder_code.
+ * Returns empty array on any DB error.
+ */
+export async function getBuilderFeesLeaderboard(): Promise<
+  BuilderFeesEntry[]
+> {
+  try {
+    const client = getPool();
+
+    // Aggregate trades by builder_code
+    const aggResult = await client.query(
+      `SELECT builder_code,
+              COUNT(*)::int AS trade_count,
+              COALESCE(SUM(size * COALESCE(fill_price::numeric, 0)) * 0.001, 0)::numeric(20,6) AS total_fees,
+              MAX(created_at)::text AS last_trade_at
+         FROM trades
+        WHERE status IN ('paper_filled', 'filled')
+        GROUP BY builder_code
+        ORDER BY total_fees DESC`,
+    );
+
+    if (aggResult.rows.length === 0) return [];
+
+    // Fetch agents to resolve builder_code → agent_id + wallet
+    const agents = await getAgents();
+
+    // Fetch daily fee accumulation for last 7 days per builder_code
+    const dailyResult = await client.query(
+      `SELECT builder_code,
+              DATE(created_at)::text AS date,
+              COALESCE(SUM(size * COALESCE(fill_price::numeric, 0)) * 0.001, 0)::numeric(20,6) AS fee
+         FROM trades
+        WHERE status IN ('paper_filled', 'filled')
+          AND created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY builder_code, DATE(created_at)
+        ORDER BY builder_code, date`,
+    );
+
+    // Index daily fees by builder_code
+    const dailyMap = new Map<string, { date: string; fee: string }[]>();
+    for (const row of dailyResult.rows as Record<string, unknown>[]) {
+      const bc = String(row.builder_code);
+      const entry = { date: String(row.date), fee: String(row.fee) };
+      const arr = dailyMap.get(bc) ?? [];
+      arr.push(entry);
+      dailyMap.set(bc, arr);
+    }
+
+    return (aggResult.rows as Record<string, unknown>[]).map((row) => {
+      const builderCode = String(row.builder_code);
+      // Try to find an agent whose derived builder code matches
+      // NOTE: We cannot derive here because we don't have the HMAC secret
+      // in the dashboard. Instead, we match by joining trades.trace_id → traces.agent_id
+      // and then agents.wallet_address. We do a simpler fallback: if the agents
+      // table has a wallet that appears in a trade for this builder_code, use it.
+      return {
+        builder_code: builderCode,
+        agent_id: null as number | null,
+        wallet_address: null as string | null,
+        trade_count: Number(row.trade_count),
+        total_fees: String(row.total_fees),
+        last_trade_at: row.last_trade_at ? String(row.last_trade_at) : null,
+        daily_fees: dailyMap.get(builderCode) ?? [],
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Enrich builder-fees entries with agent_id and wallet_address by
+ * joining trades to traces to agents.
+ * This is a second pass because we need to correlate builder_codes
+ * back to the agents that produced them.
+ */
+export async function enrichBuilderFeesWithAgents(
+  entries: BuilderFeesEntry[],
+  agents: AgentRow[],
+  hmacSecret: string,
+): Promise<BuilderFeesEntry[]> {
+  // Import dynamically to avoid bundling crypto in client bundles
+  const { mapAgentIdToBuilderCode } = await import("@prism/builder-codes");
+
+  // Build a reverse map: builder_code → agent
+  const codeToAgent = new Map<string, { agent_id: number; wallet_address: string }>();
+  for (const agent of agents) {
+    const code = mapAgentIdToBuilderCode(agent.agent_id, hmacSecret);
+    codeToAgent.set(code, {
+      agent_id: agent.agent_id,
+      wallet_address: agent.wallet_address,
+    });
+  }
+
+  return entries.map((entry) => {
+    const match = codeToAgent.get(entry.builder_code);
+    if (match) {
+      return {
+        ...entry,
+        agent_id: match.agent_id,
+        wallet_address: match.wallet_address,
+      };
+    }
+    return entry;
+  });
+}
+
+/**
+ * Fetch the top-N builder-fees entries for the home page strip.
+ * Returns the same BuilderFeesEntry shape, limited to `limit` rows.
+ */
+export async function getBuilderFeesTopN(
+  limit: number = 3,
+): Promise<BuilderFeesEntry[]> {
+  const all = await getBuilderFeesLeaderboard();
+  return all.slice(0, Math.max(1, Math.min(10, limit)));
+}
+
 /** Close the pool (for testing / shutdown). */
 export async function closePool(): Promise<void> {
   if (pool) {

@@ -29,6 +29,7 @@ import { Separator } from "@/components/ui/separator";
 import { ArrowUpRight } from "lucide-react";
 import { BrandMark } from "@/components/brands/brand-mark";
 import { ConnectWalletButton } from "@/components/connect-wallet-button";
+import { BuilderFeesStrip } from "@/components/landing/builder-fees-strip";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,8 @@ export default async function LandingPage() {
         <WhyPrism />
 
         <LiveActivityStrip stats={stats} waitlistCount={waitlistCount} />
+
+        <BuilderFeesStrip />
 
         {/* Tech stack */}
         <section
