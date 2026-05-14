@@ -1,4 +1,6 @@
-import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig } from "remotion";
+import React from "react";
+import { AbsoluteFill, Sequence } from "remotion";
+import { z } from "zod";
 import { Hook } from "./scenes/Hook";
 import { Problem } from "./scenes/Problem";
 import { TwoAgentSolution } from "./scenes/TwoAgentSolution";
@@ -8,27 +10,33 @@ import { PlatformPlay } from "./scenes/PlatformPlay";
 import { CircleSurface } from "./scenes/CircleSurface";
 import { Close } from "./scenes/Close";
 import { Background } from "./components/Background";
+import { prismPitchSchema } from "./index";
+
+/** Props type derived from the zod schema. */
+export type PrismPitchProps = z.infer<typeof prismPitchSchema>;
+
+/** Live traction metrics injected at render time. */
+export type TractionNumbers = PrismPitchProps["tractionNumbers"];
 
 /**
  * Main composition for the Prism 90-second pitch video.
- * Each scene maps to a section of the pitch script in docs/pitch-script.md.
+ * Each scene maps to a section of the pitch script.
+ *
+ * Scene timings (90 seconds @ 30 fps = 2700 frames):
+ *  0-10s   Hook               — "Autonomous AI agents are about to trade billions."
+ * 10-25s   Problem             — Lucky bad reasoning, brilliant reasoning ignored.
+ * 25-45s   Two-Agent Solution  — Trader (Claude) vs Sentinel (GPT).
+ * 45-60s   On-Chain Proof      — Every dialogue anchored on Arc via ERC-8004.
+ * 60-68s   Polymarket          — Builder-code attribution from on-chain identity.
+ * 68-78s   Platform Play       — Sentinel-as-a-Service, $0.01/validation.
+ * 78-85s   Circle Surface      — Five Circle products powering Prism.
+ * 85-90s   Close               — "See through the reasoning."
  */
-export const PrismPitch: React.FC = () => {
-  const { fps } = useVideoConfig();
-  const frame = useCurrentFrame();
-  const seconds = frame / fps;
-
-  // Scene timings (matching pitch-script.md sections)
-  const scenes = [
-    { start: 0, duration: 10, label: "hook" },           // 0-10s
-    { start: 10, duration: 15, label: "problem" },        // 10-25s
-    { start: 25, duration: 20, label: "two-agent" },      // 25-45s
-    { start: 45, duration: 15, label: "on-chain" },       // 45-60s
-    { start: 60, duration: 8, label: "polymarket" },     // 60-68s
-    { start: 68, duration: 10, label: "platform" },       // 68-78s
-    { start: 78, duration: 7, label: "circle" },         // 78-85s
-    { start: 85, duration: 5, label: "close" },          // 85-90s
-  ];
+export const PrismPitch: React.FC<PrismPitchProps> = ({
+  operatorVideoSrc,
+  tractionNumbers,
+}) => {
+  const fps = 30;
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#0a0a0a" }}>
@@ -55,7 +63,10 @@ export const PrismPitch: React.FC = () => {
         <CircleSurface />
       </Sequence>
       <Sequence from={85 * fps} durationInFrames={5 * fps}>
-        <Close />
+        <Close
+          operatorVideoSrc={operatorVideoSrc}
+          tractionNumbers={tractionNumbers}
+        />
       </Sequence>
     </AbsoluteFill>
   );
