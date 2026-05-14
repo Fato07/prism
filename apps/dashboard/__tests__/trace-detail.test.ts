@@ -259,12 +259,12 @@ describe("VAL-TRACE-005: Agent attribution chips show correct labels", () => {
 /* ─────────────── Receipts strip: IPFS CID link ─────────────── */
 
 describe("VAL-TRACE-011: Receipts strip exposes IPFS CID link", () => {
-  const IPFS_GATEWAY = "https://ipfs.io/ipfs";
+  const IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs";
 
   it("constructs valid IPFS gateway URL from CID", () => {
     const cid = "QmXyz123abc456def789";
     const href = `${IPFS_GATEWAY}/${cid}`;
-    expect(href).toBe("https://ipfs.io/ipfs/QmXyz123abc456def789");
+    expect(href).toBe("https://gateway.pinata.cloud/ipfs/QmXyz123abc456def789");
   });
 
   it("IPFS link uses https protocol", () => {
@@ -374,11 +374,13 @@ describe("VAL-TRACE-016: Trade outcome renders size and fill price when applicab
       status: "paper_filled",
       size: "5.0",
       side: "BUY",
+      fill_price: "0.62",
     };
     const shouldRender = ["paper_filled", "filled"].includes(trade.status);
     expect(shouldRender).toBe(true);
     expect(trade.size).toBe("5.0");
     expect(trade.side).toBe("BUY");
+    expect(trade.fill_price).toBe("0.62");
   });
 
   it("renders outcome for filled trade", () => {
@@ -386,9 +388,24 @@ describe("VAL-TRACE-016: Trade outcome renders size and fill price when applicab
       status: "filled",
       size: "10.5",
       side: "SELL",
+      fill_price: "0.38",
     };
     const shouldRender = ["paper_filled", "filled"].includes(trade.status);
     expect(shouldRender).toBe(true);
+    expect(trade.fill_price).toBeTruthy();
+  });
+
+  it("renders outcome with null fill_price (pending fill)", () => {
+    const trade = {
+      status: "paper_filled",
+      size: "5.0",
+      side: "BUY",
+      fill_price: null,
+    };
+    const shouldRender = ["paper_filled", "filled"].includes(trade.status);
+    expect(shouldRender).toBe(true);
+    // fill_price is null — page omits the fill price display
+    expect(trade.fill_price).toBeNull();
   });
 
   it("does NOT render outcome for open trade", () => {

@@ -147,6 +147,7 @@ export const TradeRowSchema = z.object({
   size: z.string(),
   builder_code: z.string(),
   status: z.string(),
+  fill_price: z.string().nullable(),
   polymarket_tx: z.string().nullable(),
   created_at: z.string(),
 });

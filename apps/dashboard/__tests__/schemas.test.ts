@@ -205,6 +205,24 @@ describe("TradeRowSchema", () => {
       size: "10.5",
       builder_code: "0x0000000000000000000000000000000000000000000000000000000000000001",
       status: "paper_filled",
+      fill_price: "0.62",
+      polymarket_tx: null,
+      created_at: "2026-05-12T12:00:00Z",
+    };
+    const result = TradeRowSchema.safeParse(row);
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts trade row with null fill_price", () => {
+    const row = {
+      order_id: "order-456",
+      trace_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      market_id: "0x1234",
+      side: "BUY",
+      size: "10.5",
+      builder_code: "0xabc",
+      status: "pending",
+      fill_price: null,
       polymarket_tx: null,
       created_at: "2026-05-12T12:00:00Z",
     };
@@ -221,6 +239,7 @@ describe("TradeRowSchema", () => {
       size: "10.5",
       builder_code: "0xabc",
       status: "paper_filled",
+      fill_price: null,
       polymarket_tx: null,
       created_at: "2026-05-12T12:00:00Z",
     };

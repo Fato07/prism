@@ -172,6 +172,13 @@ function HistoryHeader() {
           Dashboard
         </a>
         <Separator orientation="vertical" className="h-4" />
+        <a
+          href="/history"
+          className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
+        >
+          History
+        </a>
+        <Separator orientation="vertical" className="h-4" />
         <h1 className="text-base font-semibold tracking-[var(--tracking-tight)] text-fg">
           History
         </h1>

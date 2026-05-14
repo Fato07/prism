@@ -123,7 +123,7 @@ export function SentinelPanel({
     );
   }
 
-  const ipfsGateway = process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://ipfs.io/ipfs";
+  const ipfsGateway = process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs";
   const verdictCid = responseUri ? cidFromUri(responseUri) : null;
   const ipfsHref = verdictCid
     ? `${ipfsGateway}/${verdictCid}`

@@ -76,6 +76,7 @@ const sampleTrade: TradeRow = {
   size: "10.5",
   builder_code: "0x0000000000000000000000000000000000000000000000000000000000000001",
   status: "paper_filled",
+  fill_price: "0.62",
   polymarket_tx: null,
   created_at: "2026-05-12T12:00:00Z",
 };
@@ -168,9 +169,9 @@ describe("IPFS CID extraction from URI", () => {
 describe("IPFS gateway URL construction", () => {
   it("constructs valid IPFS gateway URL", () => {
     const cid = "QmXyz123";
-    const gateway = process.env.IPFS_GATEWAY || "https://ipfs.io/ipfs";
+    const gateway = process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs";
     const url = `${gateway}/${cid}`;
-    expect(url).toBe("https://ipfs.io/ipfs/QmXyz123");
+    expect(url).toBe("https://gateway.pinata.cloud/ipfs/QmXyz123");
   });
 });
 

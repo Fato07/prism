@@ -99,6 +99,7 @@ function fallbackImage(): ImageResponse {
         {/* Brand */}
         <div
           style={{
+            display: "flex",
             fontSize: 20,
             fontWeight: 700,
             letterSpacing: "0.15em",
@@ -112,6 +113,7 @@ function fallbackImage(): ImageResponse {
         {/* Icon */}
         <div
           style={{
+            display: "flex",
             fontSize: 48,
             marginBottom: 16,
           }}
@@ -122,6 +124,7 @@ function fallbackImage(): ImageResponse {
         {/* Message */}
         <div
           style={{
+            display: "flex",
             fontSize: 32,
             fontWeight: 600,
             color: "#6a6a7a",
@@ -132,6 +135,7 @@ function fallbackImage(): ImageResponse {
 
         <div
           style={{
+            display: "flex",
             fontSize: 16,
             color: "#4a4a5a",
             marginTop: 12,
@@ -203,6 +207,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
         {/* Decorative accent line (top) */}
         <div
           style={{
+            display: "flex",
             position: "absolute",
             top: 0,
             left: 0,
@@ -240,6 +245,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
             >
               <div
                 style={{
+                  display: "flex",
                   fontSize: 14,
                   fontWeight: 700,
                   letterSpacing: "0.2em",
@@ -250,6 +256,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
               </div>
               <div
                 style={{
+                  display: "flex",
                   fontSize: 12,
                   color: "#4a4a5a",
                 }}
@@ -269,6 +276,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
               >
                 <div
                   style={{
+                    display: "flex",
                     fontSize: 13,
                     fontWeight: 600,
                     padding: "4px 16px",
@@ -318,6 +326,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
             >
               <div
                 style={{
+                  display: "flex",
                   fontSize: 120,
                   fontWeight: 800,
                   lineHeight: 1,
@@ -329,6 +338,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
               </div>
               <div
                 style={{
+                  display: "flex",
                   fontSize: 14,
                   color: "#6a6a7a",
                   marginTop: 8,
@@ -351,6 +361,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
               >
                 <div
                   style={{
+                    display: "flex",
                     fontSize: 36,
                     fontWeight: 700,
                     padding: "10px 28px",
@@ -364,6 +375,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
                 </div>
                 <div
                   style={{
+                    display: "flex",
                     fontSize: 13,
                     color: "#5a5a6a",
                   }}
@@ -385,6 +397,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
           >
             <div
               style={{
+                display: "flex",
                 fontSize: 36,
                 fontWeight: 600,
                 lineHeight: 1.3,
@@ -396,6 +409,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
             </div>
             <div
               style={{
+                display: "flex",
                 fontSize: 14,
                 color: "#5a5a6a",
                 letterSpacing: "0.02em",
@@ -409,6 +423,7 @@ export default async function OpengraphImage({ params }: ImageProps) {
         {/* Bottom accent bar */}
         <div
           style={{
+            display: "flex",
             height: 2,
             background: "linear-gradient(90deg, transparent, rgba(74,193,224,0.3), rgba(200,74,202,0.3), transparent)",
           }}

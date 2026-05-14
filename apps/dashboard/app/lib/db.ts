@@ -17,8 +17,8 @@ import {
 
 const { Pool } = pg;
 
-/** IPFS gateway — configurable via IPFS_GATEWAY env var. Defaults to ipfs.io (Pinata public gateway is rate-limited). */
-const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "https://ipfs.io/ipfs";
+/** IPFS gateway — configurable via IPFS_GATEWAY env var. Defaults to Pinata gateway. */
+const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs";
 
 /** Global pool instance (cached across server component invocations). */
 let pool: pg.Pool | null = null;
@@ -135,7 +135,7 @@ export async function getLatestValidation(
 export async function getLatestTrade(): Promise<TradeRow | null> {
   const client = getPool();
   const result = await client.query(
-    "SELECT order_id, trace_id, market_id, side, size::text, builder_code, status, polymarket_tx, created_at::text AS created_at FROM trades ORDER BY created_at DESC LIMIT 1"
+    "SELECT order_id, trace_id, market_id, side, size::text, builder_code, status, fill_price::text AS fill_price, polymarket_tx, created_at::text AS created_at FROM trades ORDER BY created_at DESC LIMIT 1"
   );
   if (result.rows.length === 0) return null;
   return TradeRowSchema.parse(result.rows[0]);
@@ -294,7 +294,7 @@ export async function getTradeByTraceId(
 ): Promise<TradeRow | null> {
   const client = getPool();
   const result = await client.query(
-    "SELECT order_id, trace_id, market_id, side, size::text, builder_code, status, polymarket_tx, created_at::text AS created_at FROM trades WHERE trace_id = $1 ORDER BY created_at DESC LIMIT 1",
+    "SELECT order_id, trace_id, market_id, side, size::text, builder_code, status, fill_price::text AS fill_price, polymarket_tx, created_at::text AS created_at FROM trades WHERE trace_id = $1 ORDER BY created_at DESC LIMIT 1",
     [traceId]
   );
   if (result.rows.length === 0) return null;

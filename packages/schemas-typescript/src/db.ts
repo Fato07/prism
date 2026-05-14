@@ -51,6 +51,7 @@ export const TradeRowSchema = z.object({
   size: z.string(), // NUMERIC returned as string
   builder_code: z.string(),
   status: z.string(),
+  fill_price: z.string().nullable(), // NUMERIC returned as string, NULL until order fills
   polymarket_tx: z.string().nullable(),
   created_at: z.string(),
 });

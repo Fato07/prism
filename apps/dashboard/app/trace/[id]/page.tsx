@@ -56,7 +56,7 @@ function isValidUUID(id: string): boolean {
 /* ─────────────── Constants ─────────────── */
 
 const ARC_EXPLORER = "https://testnet.arcscan.app";
-const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "https://ipfs.io/ipfs";
+const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/ipfs";
 
 /* ─────────────── Helpers ─────────────── */
 
@@ -535,6 +535,14 @@ export default async function TraceDetailPage({ params }: PageProps) {
                       {trade.side}
                     </Pill>
                   </div>
+                  {trade.fill_price && (
+                    <div>
+                      <span className="text-fg-faint">Fill price </span>
+                      <span className="text-mono font-medium text-fg">
+                        {trade.fill_price}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <span className="text-fg-faint">Status </span>
                     <Pill tone="good" emphasis="soft" size="xs">

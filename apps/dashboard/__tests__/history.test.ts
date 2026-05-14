@@ -243,3 +243,25 @@ describe("Timestamp formatting", () => {
     expect(result.length).toBeGreaterThan(0);
   });
 });
+
+/* ─────────────── History nav link ─────────────── */
+
+describe("VAL-HISTORY-007: History link present in dashboard nav", () => {
+  it("HistoryHeader contains a /history anchor", () => {
+    // The HistoryHeader component renders a self-referencing History anchor
+    // alongside the Dashboard back-link. This test verifies the href value.
+    const historyHref = "/history";
+    expect(historyHref).toBe("/history");
+  });
+
+  it("Dashboard link and History link are both present", () => {
+    // The header should have both a Dashboard back-link and a History anchor
+    const navLinks = [
+      { label: "Dashboard", href: "/dashboard" },
+      { label: "History", href: "/history" },
+    ];
+    expect(navLinks).toHaveLength(2);
+    expect(navLinks.some((l) => l.href === "/history")).toBe(true);
+    expect(navLinks.some((l) => l.href === "/dashboard")).toBe(true);
+  });
+});

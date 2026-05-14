@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS trades (
     size              NUMERIC NOT NULL,
     builder_code      TEXT NOT NULL,
     status            TEXT NOT NULL DEFAULT 'pending',
+    fill_price        NUMERIC,
     polymarket_tx     TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
