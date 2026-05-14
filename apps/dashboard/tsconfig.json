@@ -29,8 +29,14 @@
       "@prism/schemas": [
         "../../packages/schemas-typescript/src"
       ],
+      "@prism/schemas/*": [
+        "../../packages/schemas-typescript/src/*"
+      ],
       "@prism/arc-contracts": [
         "../../packages/arc-contracts/src"
+      ],
+      "@prism/arc-contracts/*": [
+        "../../packages/arc-contracts/src/*"
       ]
     }
   },

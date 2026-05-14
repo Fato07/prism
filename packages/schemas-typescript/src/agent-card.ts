@@ -27,7 +27,7 @@ export const AgentCardSchema = z.object({
   name: z.string(),
   description: z.string(),
   services: z.array(AgentCardServiceSchema).min(1),
-  x402Support: X402SupportSchema.default({}),
+  x402Support: X402SupportSchema.default({ enabled: true, price_usdc: 0.01 }),
   active: z.boolean().default(true),
   version: z.string().default("1.0.0"),
   agent_role: z.string(),
