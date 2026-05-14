@@ -99,6 +99,7 @@ SENTINEL_MCP_URL = "https://prism-sentinel-production.up.railway.app/mcp/"
 
 # Network config — the public x402.org facilitator currently supports Base
 # Sepolia only. Base mainnet x402 requires the Coinbase CDP facilitator (auth).
+# Arc Testnet uses Circle's facilitator (when documented) or mock fallback.
 # Override via the `PRISM_X402_NETWORK` env var if you wire up a mainnet
 # facilitator on your sentinel.
 NETWORK = os.environ.get("PRISM_X402_NETWORK", "base-sepolia").lower()
@@ -125,6 +126,15 @@ _NETWORK_CONFIG: dict[str, dict[str, Any]] = {
         "usdc_domain_version": "2",
         "rpc_url": "https://mainnet.base.org",
         "explorer": "https://basescan.org",
+    },
+    "arc-testnet": {
+        "chain_id": 5042002,
+        "caip2": "eip155:5042002",
+        "usdc_address": "0x3600000000000000000000000000000000000000",
+        "usdc_domain_name": "USDC",
+        "usdc_domain_version": "2",
+        "rpc_url": os.environ.get("ARC_TESTNET_RPC_URL", "https://rpc.testnet.arc-node.thecanteenapp.com"),
+        "explorer": "https://explorer.testnet.arc-node.thecanteenapp.com",
     },
 }
 if NETWORK not in _NETWORK_CONFIG:
@@ -608,11 +618,37 @@ def parse_args() -> argparse.Namespace:
         help="bytes32 hex content hash of the trace (default: matches the "
         "default --trace-uri).",
     )
+    p.add_argument(
+        "--mode",
+        default=None,
+        choices=["base-sepolia", "arc-testnet-circle"],
+        help="Network mode override. 'base-sepolia' uses the public x402.org "
+        "facilitator on Base Sepolia (default behavior). 'arc-testnet-circle' "
+        "targets Arc Testnet USDC via Circle's facilitator (requires "
+        "X402_CIRCLE_FACILITATOR_URL on the sentinel; falls back to mock "
+        "settlement if unavailable — see docs/research/arc-testnet-circle-gap.md).",
+    )
     return p.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    # When --mode is specified, override the global NETWORK variable.
+    global NETWORK, CFG, USDC_CONTRACT, BASE_RPC, BASE_CHAIN_ID, CAIP2_BASE, EXPLORER  # noqa: PLW0603
+    if args.mode == "arc-testnet-circle":
+        NETWORK = "arc-testnet"
+    elif args.mode == "base-sepolia":
+        NETWORK = "base-sepolia"
+    # Re-resolve config for the selected network.
+    if NETWORK not in _NETWORK_CONFIG:
+        print(f"FATAL: unknown network {NETWORK!r}; expected one of {list(_NETWORK_CONFIG)}")
+        return 2
+    CFG = _NETWORK_CONFIG[NETWORK]
+    USDC_CONTRACT = CFG["usdc_address"]
+    BASE_RPC = CFG["rpc_url"]
+    BASE_CHAIN_ID = CFG["chain_id"]
+    CAIP2_BASE = CFG["caip2"]
+    EXPLORER = CFG["explorer"]
     return asyncio.run(amain(args.trace_uri, args.trace_hash))
 
 

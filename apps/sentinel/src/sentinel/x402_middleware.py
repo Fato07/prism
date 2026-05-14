@@ -1,12 +1,15 @@
 """x402 payment middleware for the sentinel /validate endpoint.
 
 The sentinel exposes a paid `validate` resource. Callers must include a
-valid x402 payment header that authorizes $0.01 USDC settlement on Base
-via Circle Gateway / an x402-compatible facilitator.
+valid x402 payment header that authorizes $0.01 USDC settlement via
+the configured facilitator.
 
 Design notes:
-  - x402 settles on Base (chain 8453), NOT Arc. The sentinel service
-    runs on Railway; only the payment leg touches Base.
+  - **Dual facilitator mode** controlled by ``X402_FACILITATOR_MODE``:
+      * ``public`` (default): x402.org public facilitator on Base Sepolia.
+      * ``circle``: Circle facilitator targeting Arc Testnet USDC.
+    Both modes coexist; the env var is read at request time so toggling
+    requires only a restart, not a code change.
   - The `x402[fastapi]` SDK is installed and its types are used for
     parsing payment payloads. Settlement happens against the configured
     facilitator via HTTP (the SDK's `payment_middleware_from_config`
@@ -21,12 +24,28 @@ Env vars:
   X402_BYPASS                — `"1"` / `"true"` → skip all payment checks (dev/test only)
   X402_INTERNAL_BYPASS_TOKEN — opaque token; matching `X402-Bypass` request header bypasses payment
   X402_PRICE_USDC            — required price (default `"0.01"`)
-  X402_RECIPIENT_ADDRESS     — Base address that receives USDC
-  X402_NETWORK               — x402 network identifier (default `"base"`)
-  X402_FACILITATOR_URL       — facilitator base URL (e.g. `"https://x402.org/facilitator"`)
+  X402_RECIPIENT_ADDRESS     — Base address that receives USDC (public mode)
+  X402_ARC_RECIPIENT_ADDRESS — Arc Testnet address that receives USDC (circle mode)
+  X402_NETWORK               — x402 network identifier (default `"base-sepolia"`)
+  X402_FACILITATOR_MODE      — `"public"` (default) or `"circle"`
+  X402_FACILITATOR_URL       — public facilitator base URL (default `"https://x402.org/facilitator"`)
+  X402_CIRCLE_FACILITATOR_URL — Circle facilitator base URL (circle mode, optional)
   X402_FACILITATOR_NAME      — facilitator identifier reported in 402 body (default `"x402"`)
   X402_SETTLEMENT_TIMEOUT_S  — settlement timeout seconds (default `10`)
   RAILWAY_ENVIRONMENT        — `"production"` → bypass mode is refused at startup
+
+Circle facilitator on Arc Testnet — gap note (VAL-X402-CIRCLE-006):
+  As of 2026-05-15 the Circle facilitator endpoint for Arc Testnet USDC
+  settlement is **not publicly documented** with a stable URL or API
+  contract. The Arc 101 stream (see ``docs/research/2026-05-13-arc-101-stream.md``)
+  confirms the *concept* exists (Circle Gateway + submitBatch) but the
+  exact facilitator endpoint for programmatic x402-style verify/settle
+  on Arc Testnet is not available. When ``X402_FACILITATOR_MODE=circle``
+  and ``X402_CIRCLE_FACILITATOR_URL`` is unset, the middleware logs a
+  clear warning and falls back to mock settlement (same as dev mode).
+  Do NOT stub fake on-chain transactions — the gap must be documented
+  honestly and resolved post-hackathon once Circle publishes the Arc
+  Testnet facilitator endpoint. See ``docs/research/arc-testnet-circle-gap.md``.
 """
 
 from __future__ import annotations
@@ -53,6 +72,7 @@ X402_BYPASS_HEADER = "x402-bypass"
 X402_ASSET = "USDC"
 X402_DEFAULT_PRICE_USDC = "0.01"
 X402_DEFAULT_NETWORK = "base-sepolia"
+X402_DEFAULT_FACILITATOR_MODE = "public"
 X402_DEFAULT_FACILITATOR_NAME = "x402"
 X402_DEFAULT_SETTLEMENT_TIMEOUT_S = 10.0
 
@@ -88,16 +108,42 @@ X402_NETWORK_MAP: dict[str, dict[str, str]] = {
         "usdc_domain_name": "USD Coin",
         "usdc_domain_version": "2",
     },
+    # Arc Testnet — chain ID 5042002, native USDC at 0x3600… (6 decimals).
+    # USDC is the native gas token on Arc, so the EIP-712 domain name
+    # may differ from standard ERC-20 USDC. Using "USDC" / "2" as the
+    # default; operator must verify via contract name() call once the
+    # Circle facilitator endpoint is documented for Arc Testnet.
+    "arc-testnet": {
+        "caip2": "eip155:5042002",
+        "usdc_address": "0x3600000000000000000000000000000000000000",
+        "usdc_domain_name": "USDC",
+        "usdc_domain_version": "2",
+    },
+    "eip155:5042002": {
+        "caip2": "eip155:5042002",
+        "usdc_address": "0x3600000000000000000000000000000000000000",
+        "usdc_domain_name": "USDC",
+        "usdc_domain_version": "2",
+    },
 }
 
 
 def _resolve_network() -> dict[str, str]:
-    """Return the CAIP-2 id and USDC contract address for X402_NETWORK.
+    """Return the CAIP-2 id and USDC contract address for the active network.
 
-    Accepts either a friendly slug (``base-sepolia``, ``base``) or a CAIP-2
-    identifier (``eip155:84532``, ``eip155:8453``). Defaults to base-sepolia
-    if unknown.
+    When ``X402_FACILITATOR_MODE=circle``, the network is forced to
+    Arc Testnet regardless of the ``X402_NETWORK`` env var. Otherwise
+    the network is resolved from ``X402_NETWORK`` (default: base-sepolia).
     """
+    mode = get_x402_facilitator_mode()
+    if mode == "circle":
+        info = X402_NETWORK_MAP.get("arc-testnet")
+        if info is None:
+            # Should never happen — arc-testnet is hardcoded above.
+            logger.warning("x402_arc_testnet_missing_from_network_map")
+            info = X402_NETWORK_MAP["base-sepolia"]
+        return info
+
     raw = os.environ.get("X402_NETWORK", X402_DEFAULT_NETWORK).strip().lower()
     info = X402_NETWORK_MAP.get(raw)
     if info is None:
@@ -122,26 +168,90 @@ def get_x402_price_usdc() -> str:
 
 
 def get_x402_recipient() -> str | None:
-    """Base address that receives x402 USDC payments."""
+    """Receiving address for x402 USDC payments, mode-aware.
+
+    When ``X402_FACILITATOR_MODE=circle``, reads ``X402_ARC_RECIPIENT_ADDRESS``.
+    Otherwise reads ``X402_RECIPIENT_ADDRESS`` (Base Sepolia).
+    """
+    mode = get_x402_facilitator_mode()
+    if mode == "circle":
+        addr = os.environ.get("X402_ARC_RECIPIENT_ADDRESS", "").strip() or None
+        if addr is None:
+            logger.warning(
+                "x402_arc_recipient_missing",
+                message=(
+                    "X402_ARC_RECIPIENT_ADDRESS is not set but "
+                    "X402_FACILITATOR_MODE=circle. Settlement will fall back "
+                    "to mock mode."
+                ),
+            )
+        return addr
     return os.environ.get("X402_RECIPIENT_ADDRESS", "").strip() or None
 
 
 def get_x402_network() -> str:
-    """x402 network identifier (default: `base`)."""
+    """x402 network identifier for the active mode.
+
+    When ``X402_FACILITATOR_MODE=circle``, returns ``"arc-testnet"``.
+    Otherwise returns the ``X402_NETWORK`` env var (default: base-sepolia).
+    """
+    mode = get_x402_facilitator_mode()
+    if mode == "circle":
+        return "arc-testnet"
     return os.environ.get("X402_NETWORK", X402_DEFAULT_NETWORK).strip() or X402_DEFAULT_NETWORK
 
 
+def get_x402_facilitator_mode() -> str:
+    """Facilitator routing mode: ``"public"`` (default) or ``"circle"``.
+
+    Both modes coexist; the env var is read at request time so toggling
+    requires only a restart, not a code change.
+    """
+    raw = os.environ.get("X402_FACILITATOR_MODE", "").strip().lower()
+    if raw == "circle":
+        return "circle"
+    # Any value other than "circle" (including empty, "public", or
+    # unrecognized) defaults to the public Base Sepolia path.
+    return "public"
+
+
 def get_x402_facilitator_url() -> str | None:
-    """Facilitator base URL (e.g. `https://x402.org/facilitator`)."""
+    """Facilitator base URL for the active mode.
+
+    When ``X402_FACILITATOR_MODE=circle``, returns ``X402_CIRCLE_FACILITATOR_URL``
+    (if set) or None (gap — Circle facilitator on Arc Testnet is not yet
+    documented). When ``public``, returns ``X402_FACILITATOR_URL``.
+    """
+    mode = get_x402_facilitator_mode()
+    if mode == "circle":
+        url = os.environ.get("X402_CIRCLE_FACILITATOR_URL", "").strip() or None
+        if url is None:
+            logger.warning(
+                "x402_circle_facilitator_url_missing",
+                message=(
+                    "X402_CIRCLE_FACILITATOR_URL is not set. "
+                    "Circle facilitator on Arc Testnet is not yet documented — "
+                    "see docs/research/arc-testnet-circle-gap.md. "
+                    "Falling back to mock settlement."
+                ),
+            )
+        return url
     return os.environ.get("X402_FACILITATOR_URL", "").strip() or None
 
 
 def get_x402_facilitator_name() -> str:
-    """Facilitator identifier reported in 402 response body."""
-    return (
-        os.environ.get("X402_FACILITATOR_NAME", X402_DEFAULT_FACILITATOR_NAME).strip()
-        or X402_DEFAULT_FACILITATOR_NAME
-    )
+    """Facilitator identifier reported in 402 response body.
+
+    When ``X402_FACILITATOR_MODE=circle``, returns ``"circle"`` unless
+    ``X402_FACILITATOR_NAME`` is explicitly set.
+    """
+    mode = get_x402_facilitator_mode()
+    explicit = os.environ.get("X402_FACILITATOR_NAME", "").strip()
+    if explicit:
+        return explicit
+    if mode == "circle":
+        return "circle"
+    return X402_DEFAULT_FACILITATOR_NAME
 
 
 def get_x402_settlement_timeout_s() -> float:
@@ -199,6 +309,7 @@ def _payment_required_body(
         "facilitator": get_x402_facilitator_name(),
         "network": get_x402_network(),
         "scheme": "exact",
+        "facilitator_mode": get_x402_facilitator_mode(),
     }
     recipient = get_x402_recipient()
     if recipient:
@@ -243,6 +354,10 @@ async def _settle_payment(
     recipient address is configured. The mock path is intentional for
     development and unit tests so the downstream pipeline can still record
     a non-null `payment_tx_hash` without touching the chain.
+
+    When ``X402_FACILITATOR_MODE=circle`` and the Circle facilitator URL
+    is not configured (Arc Testnet gap), the mock path is also used and a
+    clear warning is logged. See module docstring for the gap note.
     """
     facilitator_url = get_x402_facilitator_url()
     recipient = get_x402_recipient()
@@ -251,7 +366,12 @@ async def _settle_payment(
         mock_hash = (
             "0x" + hashlib.sha256(f"x402-mock-settlement:{payment_token}".encode()).hexdigest()
         )
-        logger.info("x402_settled_mock", tx_hash=mock_hash, **request_context)
+        logger.info(
+            "x402_settled_mock",
+            tx_hash=mock_hash,
+            facilitator_mode=get_x402_facilitator_mode(),
+            **request_context,
+        )
         return True, mock_hash, None, None
 
     # The X-PAYMENT header value is base64-encoded JSON of an x402 v2
@@ -330,6 +450,7 @@ async def _settle_payment(
                 "x402_settlement_succeeded",
                 tx_hash=tx_hash,
                 payer=payer,
+                facilitator_mode=get_x402_facilitator_mode(),
                 **request_context,
             )
             return True, tx_hash, None, payer
@@ -642,5 +763,6 @@ async def x402_middleware(
         path=request.url.path,
         tx_hash=tx_hash,
         payer=payer,
+        facilitator_mode=get_x402_facilitator_mode(),
     )
     return await call_next(request)
