@@ -199,7 +199,7 @@ async def _pipeline_loop(interval_minutes: int) -> None:
 
 async def _run_pipeline_internal() -> PipelineResponse:
     """Core pipeline logic — shared by /pipeline endpoint and the scheduler."""
-    market = pick_market()
+    market = await pick_market()
     market_id = market["id"]
     market_question = market["question"]
 
@@ -343,6 +343,7 @@ async def _run_pipeline_internal() -> PipelineResponse:
                 "traceId": trace.trace_id,
                 "marketId": market_id,
                 "marketQuestion": market_question,
+                "tokenId": market.get("tokenId"),
                 "side": side,
                 "sizeUsdc": trace.size_usdc,
                 "priceLimit": trace.final_probability,
