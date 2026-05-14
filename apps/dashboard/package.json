@@ -17,6 +17,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@circle-fin/adapter-viem-v2": "^1.11.0",
+    "@circle-fin/app-kit": "^1.5.1",
     "@paper-design/shaders-react": "^0.0.76",
     "@prism/arc-contracts": "workspace:*",
     "@prism/schemas": "workspace:*",

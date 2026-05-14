@@ -14,6 +14,7 @@ import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft } from "lucide-react";
 import { SubmitForm } from "./submit-form";
+import { BridgeWidget } from "./bridge-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export default function SubmitPage() {
       <SubmitHeader />
 
       <main className="mx-auto max-w-5xl px-6 pb-16 pt-8">
+        <BridgeWidget />
         <SubmitForm />
       </main>
     </div>
