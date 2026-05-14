@@ -2011,6 +2011,7 @@ source = { editable = "apps/mcp" }
 dependencies = [
     { name = "fastmcp" },
     { name = "prism-schemas" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "structlog" },
 ]
@@ -2028,6 +2029,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=2.9" },
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "prism-schemas", editable = "packages/schemas-python" },
+    { name = "psycopg", extras = ["binary"] },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },

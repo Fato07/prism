@@ -1,4 +1,4 @@
-"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-009.
+"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-013.
 
 Covers:
   * VAL-MCP-001 — tools/list returns ``validate`` with the expected schema.
@@ -10,6 +10,10 @@ Covers:
   * VAL-MCP-007 — Respects PRISM_ONCHAIN flag.
   * VAL-MCP-008 — External MCP client can discover and call the tool end-to-end.
   * VAL-MCP-009 — MCP tool schema matches HTTP ``ValidateRequest`` / ``ValidateResponse``.
+  * VAL-MCP-010 — get_price tool returns correct pricing.
+  * VAL-MCP-011 — get_stats tool returns aggregate statistics.
+  * VAL-MCP-012 — get_calibration tool returns calibration metrics.
+  * VAL-MCP-013 — All 4 tools discoverable via tools/list.
 """
 
 from __future__ import annotations
@@ -724,9 +728,13 @@ class TestPaymentTxHashSchemaParity:
         assert output_schema is not None, "validate tool must expose an output schema"
 
         props = output_schema.get("properties") or {}
-        nested = (output_schema.get("$defs") or {}).get("ValidateMcpResult", {}).get(
-            "properties",
-            {},
+        nested = (
+            (output_schema.get("$defs") or {})
+            .get("ValidateMcpResult", {})
+            .get(
+                "properties",
+                {},
+            )
         )
 
         assert "payment_tx_hash" in props or "payment_tx_hash" in nested, (
@@ -814,3 +822,294 @@ class TestPaymentTxHashSchemaParity:
             "MCP tools/call result should expose payment_tx_hash, body=" + text[:1000]
         )
         assert "0x" in text
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-010: get_price tool returns correct pricing
+# ---------------------------------------------------------------------------
+
+
+class TestGetPriceTool:
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_get_price(self) -> None:
+        """get_price appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "get_price" in names
+
+    @pytest.mark.asyncio
+    async def test_get_price_returns_expected_fields(self) -> None:
+        """get_price returns the static 0.01 USDC price with expected structure."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("get_price", {})
+
+        data = result.data
+        assert data is not None
+        assert data.price_usdc == 0.01
+        assert data.currency == "USDC"
+        assert data.network == "base-sepolia"
+        assert isinstance(data.description, str) and len(data.description) > 0
+
+    @pytest.mark.asyncio
+    async def test_get_price_result_validates_against_pydantic_model(self) -> None:
+        """GetPriceResult model validates the tool output."""
+        from prism_mcp.server import GetPriceResult
+
+        result = GetPriceResult(
+            price_usdc=0.01,
+            currency="USDC",
+            network="base-sepolia",
+            description="test",
+        )
+        assert result.price_usdc == 0.01
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-011: get_stats tool returns aggregate statistics
+# ---------------------------------------------------------------------------
+
+
+class TestGetStatsTool:
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_get_stats(self) -> None:
+        """get_stats appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "get_stats" in names
+
+    @pytest.mark.asyncio
+    async def test_get_stats_returns_zeroed_defaults_without_db(self) -> None:
+        """get_stats returns zeroed defaults when DATABASE_URL is not set."""
+        from prism_mcp.server import build_mcp_server
+
+        with patch.dict(os.environ, {}, clear=False):
+            # Remove DATABASE_URL if present
+            os.environ.pop("DATABASE_URL", None)
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_stats", {})
+
+        data = result.data
+        assert data is not None
+        assert data.total_validations == 0
+        assert data.avg_verdict_score == 0.0
+        assert data.on_chain_anchors == 0
+        assert data.lookback_hours == 168
+        assert data.verdict_distribution.REJECT == 0
+        assert data.verdict_distribution.WARN == 0
+        assert data.verdict_distribution.PASS == 0
+        assert data.verdict_distribution.ENDORSE == 0
+
+    @pytest.mark.asyncio
+    async def test_get_stats_with_custom_hours(self) -> None:
+        """get_stats passes the hours parameter to the DB query."""
+        from prism_mcp.server import build_mcp_server
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("DATABASE_URL", None)
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_stats", {"hours": 24})
+
+        data = result.data
+        assert data is not None
+        assert data.lookback_hours == 24
+
+    @pytest.mark.asyncio
+    async def test_get_stats_rejects_zero_hours(self) -> None:
+        """get_stats raises ToolError for hours < 1."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("get_stats", {"hours": 0}, raise_on_error=False)
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "invalid_hours" in message
+
+    @pytest.mark.asyncio
+    async def test_get_stats_with_mocked_db(self) -> None:
+        """get_stats returns real data when DB query succeeds."""
+        from prism_mcp.server import build_mcp_server
+
+        mock_row = (
+            26,  # total_validations
+            62.3,  # avg_verdict_score
+            1,  # reject_count
+            0,  # warn_count
+            24,  # pass_count
+            1,  # endorse_count
+            20,  # on_chain_anchors
+            45.2,  # p95_latency_seconds
+        )
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = mock_row
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch.dict(
+                os.environ,
+                {"DATABASE_URL": "TEST_DSN_PLACEHOLDER"},
+                clear=False,
+            ),
+            patch("psycopg.connect", return_value=mock_conn),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_stats", {"hours": 168})
+
+        data = result.data
+        assert data is not None
+        assert data.total_validations == 26
+        assert data.avg_verdict_score == 62.3
+        assert data.on_chain_anchors == 20
+        assert data.p95_latency_seconds == 45.2
+        assert data.lookback_hours == 168
+        assert data.verdict_distribution.REJECT == 1
+        assert data.verdict_distribution.WARN == 0
+        assert data.verdict_distribution.PASS == 24
+        assert data.verdict_distribution.ENDORSE == 1
+
+    def test_query_stats_returns_defaults_on_db_error(self) -> None:
+        """_query_stats_from_db returns zeroed defaults on DB query failure."""
+        from prism_mcp.server import _query_stats_from_db
+
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "INVALID_DSN_PLACEHOLDER"}, clear=False),
+            patch("psycopg.connect", side_effect=Exception("connection refused")),
+        ):
+            data = _query_stats_from_db(168)
+
+        assert data["total_validations"] == 0
+        assert data["avg_verdict_score"] == 0.0
+
+    def test_get_stats_result_model_validates(self) -> None:
+        """GetStatsResult Pydantic model validates correctly."""
+        from prism_mcp.server import GetStatsResult, VerdictDistribution
+
+        result = GetStatsResult(
+            total_validations=26,
+            verdict_distribution=VerdictDistribution(REJECT=1, WARN=0, PASS=24, ENDORSE=1),
+            avg_verdict_score=62.3,
+            p95_latency_seconds=45.2,
+            on_chain_anchors=20,
+            lookback_hours=168,
+        )
+        assert result.total_validations == 26
+        assert result.verdict_distribution.PASS == 24
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-012: get_calibration tool returns calibration metrics
+# ---------------------------------------------------------------------------
+
+
+class TestGetCalibrationTool:
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_get_calibration(self) -> None:
+        """get_calibration appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "get_calibration" in names
+
+    @pytest.mark.asyncio
+    async def test_get_calibration_returns_expected_fields(self) -> None:
+        """get_calibration returns the static calibration data."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("get_calibration", {})
+
+        data = result.data
+        assert data is not None
+        assert data.calibration_passed is True
+        assert data.gap_points == 45
+        assert data.min_required_gap == 30
+        assert data.model_family == "openai-gpt"
+        assert data.tested_at == "2026-05-13T20:08:00Z"
+
+    @pytest.mark.asyncio
+    async def test_get_calibration_test_results_discriminate(self) -> None:
+        """Calibration test results show correct discrimination."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("get_calibration", {})
+
+        data = result.data
+        test_results = data.test_results
+        assert len(test_results) == 3
+
+        good = next(r for r in test_results if r.trace_quality == "good")
+        mediocre = next(r for r in test_results if r.trace_quality == "mediocre")
+        bad = next(r for r in test_results if r.trace_quality == "bad")
+
+        assert good.score == 65 and good.label == "PASS"
+        assert mediocre.score == 42 and mediocre.label == "WARN"
+        assert bad.score == 20 and bad.label == "REJECT"
+        assert good.score - bad.score == 45  # gap ≥ 30
+
+    @pytest.mark.asyncio
+    async def test_get_calibration_result_model_validates(self) -> None:
+        """GetCalibrationResult Pydantic model validates correctly."""
+        from prism_mcp.server import CalibrationTestResult, GetCalibrationResult
+
+        result = GetCalibrationResult(
+            calibration_passed=True,
+            gap_points=45,
+            min_required_gap=30,
+            model_family="openai-gpt",
+            test_results=[
+                CalibrationTestResult(trace_quality="good", score=65, label="PASS"),
+            ],
+            tested_at="2026-05-13T20:08:00Z",
+        )
+        assert result.calibration_passed is True
+        assert result.gap_points == 45
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-013: All 4 tools discoverable via tools/list
+# ---------------------------------------------------------------------------
+
+
+class TestAllToolsDiscoverable:
+    @pytest.mark.asyncio
+    async def test_tools_list_returns_all_four_tools(self) -> None:
+        """tools/list returns validate, get_price, get_stats, get_calibration."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = sorted([t.name for t in tools])
+        assert "validate" in names
+        assert "get_price" in names
+        assert "get_stats" in names
+        assert "get_calibration" in names
+        expected_tools = {"validate", "get_price", "get_stats", "get_calibration"}
+        assert expected_tools.issubset(set(names))
+        assert sum(1 for n in names if n in expected_tools) == 4
