@@ -12,6 +12,7 @@ from prism_schemas.startup import (
     validate_env,
 )
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
+from prism_schemas.treasury import TreasuryEvent, TreasuryEventCreate
 from prism_schemas.verdict import SentinelVerdict
 
 __all__ = [
@@ -32,6 +33,9 @@ __all__ = [
     "Evidence",
     "ThesisStep",
     "TradingR1Trace",
+    # Treasury
+    "TreasuryEvent",
+    "TreasuryEventCreate",
     # Verdict
     "SentinelVerdict",
 ]

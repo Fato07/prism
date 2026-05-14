@@ -33,9 +33,11 @@ export {
   ValidationRowSchema,
   TradeRowSchema,
   FeedbackRowSchema,
+  TreasuryEventRowSchema,
   type AgentRow,
   type TraceRow,
   type ValidationRow,
   type TradeRow,
   type FeedbackRow,
+  type TreasuryEventRow,
 } from "./db.js";

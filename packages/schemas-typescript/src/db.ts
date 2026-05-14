@@ -73,3 +73,18 @@ export const FeedbackRowSchema = z.object({
 });
 
 export type FeedbackRow = z.infer<typeof FeedbackRowSchema>;
+
+/** treasury_events table row */
+export const TreasuryEventRowSchema = z.object({
+  id: z.string(), // UUID
+  agent_id: z.number(),
+  wallet_address: z.string(),
+  event_type: z.enum(["park", "unpark"]),
+  usdc_amount: z.string().nullable(), // NUMERIC(20,6) returned as string
+  usyc_amount: z.string().nullable(), // NUMERIC(20,6) returned as string
+  rationale: z.string().nullable(),
+  tx_hash: z.string().nullable(),
+  created_at: z.string(),
+});
+
+export type TreasuryEventRow = z.infer<typeof TreasuryEventRowSchema>;
