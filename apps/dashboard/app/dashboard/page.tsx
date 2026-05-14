@@ -25,9 +25,9 @@ import {
   fetchTraceFromIPFS,
   fetchVerdictFromIPFS,
   getAgents,
-  getActivityStats,
   getRecentVerdicts,
 } from "@/lib/db";
+import { getActivityStats } from "@/lib/stats";
 import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
 import { ReceiptLinks } from "@/components/receipt-links";

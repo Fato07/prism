@@ -6,8 +6,12 @@
  * Numbers tween from 0 to the live value when the section enters view.
  * The "live" dot pulses; each cell has its own faint accent bar above
  * the number, color-coded by category.
+ *
+ * The stats prop comes from lib/stats.ts getActivityStats() — the same
+ * source of truth as /stats page tiles (VAL-CROSS-010, VAL-WIDGETS-003).
  */
 
+import type { ActivityStats } from "@/lib/stats";
 import {
   motion,
   useInView,
@@ -32,7 +36,8 @@ const TONE_VAR: Record<Tone, string> = {
 };
 
 interface LiveActivityStripProps {
-  stats: { traces: number; validations: number; trades: number; flagged: number };
+  /** Shared stats from lib/stats.ts — single source of truth with /stats. */
+  stats: ActivityStats;
   waitlistCount: number;
 }
 
@@ -44,8 +49,11 @@ export function LiveActivityStrip({
   const inView = useInView(ref, { once: true, margin: "-80px" });
 
   const items: { label: string; value: number; tone: Tone }[] = [
-    { label: "Traces generated", value: stats.traces, tone: "trader" },
     { label: "Verdicts anchored", value: stats.validations, tone: "sentinel" },
+    { label: "Unique wallets", value: stats.uniqueWallets, tone: "good" },
+    { label: "Traces generated", value: stats.traces, tone: "trader" },
+    { label: "On-chain anchors", value: stats.onChainAnchors, tone: "neutral" },
+    { label: "External x402 calls", value: stats.externalX402Calls, tone: "good" },
     { label: "Bad reasoning caught", value: stats.flagged, tone: "warn" },
     { label: "Trades placed", value: stats.trades, tone: "good" },
     { label: "Waitlist", value: waitlistCount, tone: "neutral" },
@@ -68,7 +76,7 @@ export function LiveActivityStrip({
           </h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-[var(--color-border)] sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-[var(--color-border)] sm:grid-cols-4 lg:grid-cols-4">
           {items.map((item, i) => (
             <Counter
               key={item.label}

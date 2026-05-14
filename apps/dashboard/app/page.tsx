@@ -18,8 +18,8 @@ import type { Metadata } from "next";
 import {
   ensureWaitlistTable,
   getWaitlistCount,
-  getActivityStats,
 } from "@/lib/db";
+import { getActivityStats } from "@/lib/stats";
 import { Hero } from "@/components/landing/hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { WhyPrism } from "@/components/landing/why-prism";
@@ -92,7 +92,7 @@ const SECONDARY_TECH: TechItem[] = [
 export default async function LandingPage() {
   // Best-effort data fetch — landing must render even if Neon is down.
   let waitlistCount = 0;
-  let stats = { traces: 0, validations: 0, trades: 0, flagged: 0 };
+  let stats = { traces: 0, validations: 0, trades: 0, flagged: 0, uniqueWallets: 0, onChainAnchors: 0, externalX402Calls: 0 };
   try {
     await ensureWaitlistTable();
     [waitlistCount, stats] = await Promise.all([
