@@ -21,6 +21,7 @@
     "@circle-fin/app-kit": "^1.5.1",
     "@paper-design/shaders-react": "^0.0.76",
     "@prism/arc-contracts": "workspace:*",
+    "@prism/builder-codes": "workspace:*",
     "@prism/schemas": "workspace:*",
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-wagmi": "^1.8.19",
