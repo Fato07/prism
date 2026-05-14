@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -24,11 +24,13 @@ class SentinelVerdict(BaseModel):
     verdict_score: int = Field(ge=0, le=100)
     verdict_label: Literal["REJECT", "WARN", "PASS", "ENDORSE"]
 
-    dialogue_messages: list[dict]
+    dialogue_messages: list[dict[str, Any]]
 
     model_family: Literal["anthropic-claude", "openai-gpt"]
     model_name: str
     created_at: datetime
+
+    requester_address: str | None = None
 
     def content_hash(self) -> bytes:
         """Deterministic hash for on-chain anchoring."""

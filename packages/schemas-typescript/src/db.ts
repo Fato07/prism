@@ -38,6 +38,7 @@ export const ValidationRowSchema = z.object({
   verdict_score: z.number().int().min(0).max(100),
   response_uri: z.string(),
   created_at: z.string(),
+  requester_address: z.string().nullable().optional(),
 });
 
 export type ValidationRow = z.infer<typeof ValidationRowSchema>;
