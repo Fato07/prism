@@ -15,8 +15,8 @@ const envSchema = z.object({
 
   LOCALE: z.string().default("EE"),
 
-  LIVE_TRADE_MIN_USDC: z.coerce.number().default(5),
-  LIVE_TRADE_MAX_USDC: z.coerce.number().default(10),
+  LIVE_TRADE_MIN_USDC: z.coerce.number().default(0.5),
+  LIVE_TRADE_MAX_USDC: z.coerce.number().default(25),
 
   POLY_CLOB_HOST: z.string().default("https://clob.polymarket.com"),
   POLY_FUNDER_SECRET: z.string().optional(),

@@ -8,7 +8,7 @@ PRISM_TRADE_MODE controls dispatch:
 
 Size guards:
 - Both modes: ≤ 25% of capped wallet balance (Phase 0 invariant)
-- Live mode also: LIVE_TRADE_MIN_USDC (5) ≤ size ≤ LIVE_TRADE_MAX_USDC (10)
+- Live mode also: LIVE_TRADE_MIN_USDC (0.5) ≤ size ≤ LIVE_TRADE_MAX_USDC (25)
 
 Builder code is deterministically derived from agentId via HMAC.
 */

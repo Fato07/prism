@@ -472,27 +472,27 @@ class TestTradeSizeCap:
     """Tests for trade size cap enforcement."""
 
     def test_size_within_cap_unchanged(self) -> None:
-        """Size ≤ 25 USDC with 100 USDC balance → unchanged."""
-        assert clamp_size(10.0, 100.0) == 10.0
+        """Size ≤ 2 USDC with 100 USDC balance → unchanged."""
+        assert clamp_size(1.5, 100.0) == 1.5
 
     def test_size_at_max_cap(self) -> None:
-        """Size = 25 USDC with 100 USDC balance → 25 USDC."""
-        assert clamp_size(25.0, 100.0) == 25.0
+        """Size = 2 USDC with 100 USDC balance → 2 USDC."""
+        assert clamp_size(2.0, 100.0) == 2.0
 
     def test_size_above_cap_clamped(self) -> None:
-        """Size = 50 USDC with 100 USDC balance → clamped to 25."""
-        assert clamp_size(50.0, 100.0) == 25.0
+        """Size = 50 USDC with 100 USDC balance → clamped to 2."""
+        assert clamp_size(50.0, 100.0) == 2.0
 
     def test_size_with_lower_balance(self) -> None:
-        """Size with 40 USDC balance → capped at 10 USDC (25%)."""
-        assert clamp_size(15.0, 40.0) == 10.0
+        """Size with 4 USDC balance → capped at 1 USDC (25%, below the 2 USDC cap)."""
+        assert clamp_size(15.0, 4.0) == 1.0
 
-    def test_balance_above_cap_still_caps_at_25(self) -> None:
-        """Balance above 100 USDC → still caps at 25 USDC."""
-        assert clamp_size(30.0, 120.0) == 25.0
+    def test_balance_above_cap_still_caps_at_2(self) -> None:
+        """Balance above 100 USDC → still caps at 2 USDC."""
+        assert clamp_size(30.0, 120.0) == 2.0
 
     def test_very_small_balance(self) -> None:
-        """Balance of 8 USDC → cap at 2 USDC (25%)."""
+        """Balance of 8 USDC → cap at 2 USDC (25 % equals the absolute cap)."""
         assert clamp_size(5.0, 8.0) == 2.0
 
     def test_zero_balance(self) -> None:
@@ -502,14 +502,12 @@ class TestTradeSizeCap:
     def test_constants_correct(self) -> None:
         """Verify WALLET_BALANCE_CAP and MAX_TRADE_SIZE constants."""
         assert WALLET_BALANCE_CAP == 100.0
-        assert MAX_TRADE_SIZE == 25.0
+        assert MAX_TRADE_SIZE == 2.0
 
     def test_trace_size_usdc_never_exceeds_cap(self) -> None:
-        """size_usdc in generated trace never exceeds min(25, 0.25 * wallet_balance)."""
-        # Test with various wallet balances
-        for balance in [100.0, 40.0, 120.0, 8.0]:
-            max_allowed = min(25.0, 0.25 * min(balance, 100.0))
-            # Simulate an oversized suggestion being clamped
+        """size_usdc in generated trace never exceeds min(2, 0.25 * wallet_balance)."""
+        for balance in [100.0, 40.0, 120.0, 8.0, 4.0]:
+            max_allowed = min(MAX_TRADE_SIZE, 0.25 * min(balance, WALLET_BALANCE_CAP))
             clamped = clamp_size(50.0, balance)
             assert clamped <= max_allowed, (
                 f"Clamped size {clamped} exceeds max {max_allowed} for balance {balance}"

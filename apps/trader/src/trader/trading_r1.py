@@ -23,7 +23,9 @@ DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
 
 # Wallet balance cap (hard rule from AGENTS.md).
 WALLET_BALANCE_CAP = 100.0  # USDC
-MAX_TRADE_SIZE = 25.0  # USDC — 25 % of the 100 USDC cap
+# Per-trade hard cap sized to hackathon-scale Polymarket deposits (~$8 USDC).
+# The 25 % wallet-balance rule still applies on top of this cap.
+MAX_TRADE_SIZE = 2.0  # USDC
 
 # Probability clamping bounds — Polymarket CLOB rejects prices outside
 # [0.001, 0.999]; we use [0.01, 0.99] to leave margin and avoid
@@ -48,12 +50,12 @@ def _model_name_short() -> str:
 
 
 def clamp_size(size_usdc: float, wallet_balance: float = WALLET_BALANCE_CAP) -> float:
-    """Clamp the trade size to 25 % of wallet balance, capped at 25 USDC.
+    """Clamp the trade size to 25 % of wallet balance, capped at 2 USDC.
 
     Rules (from AGENTS.md §Security guardrails):
     - wallet_balance_cap = 100 USDC
-    - max_trade = min(25, 0.25 * wallet_balance)
-    - If wallet_balance > 100, still cap at 25 USDC
+    - max_trade = min(2, 0.25 * wallet_balance)
+    - If wallet_balance > 100, still cap at 2 USDC
     """
     effective_balance = min(wallet_balance, WALLET_BALANCE_CAP)
     max_allowed = min(MAX_TRADE_SIZE, 0.25 * effective_balance)
