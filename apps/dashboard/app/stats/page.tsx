@@ -28,6 +28,8 @@ import {
   type DailyCount,
   type DailyFee,
   type DailyAvg,
+  type DailyLatency,
+  type DailyCalibrationGap,
 } from "@/lib/stats";
 import { StatsSparkline } from "@/components/ui/stats-sparkline";
 import { VerdictDistributionChart } from "@/components/ui/verdict-distribution-chart";
@@ -164,9 +166,9 @@ export default async function StatsPage() {
             subtitle="Median time from trace creation to sentinel verdict"
             icon={<Clock className="h-4 w-4" strokeWidth={1.8} />}
             tone="neutral"
-            sparklineData={stats.dailyVerdicts.map((d) => ({
+            sparklineData={stats.dailyLatency.map((d) => ({
               date: d.date,
-              value: d.count,
+              value: d.avgSeconds,
             }))}
           />
           <Tile
@@ -175,9 +177,9 @@ export default async function StatsPage() {
             subtitle="Good vs bad synthetic-trace verdict spread — must be >= 30 per hard rule"
             icon={<Target className="h-4 w-4" strokeWidth={1.8} />}
             tone={stats.calibrationGap >= 30 ? "good" : "warn"}
-            sparklineData={stats.dailyScores.map((d) => ({
+            sparklineData={stats.dailyCalibrationGap.map((d) => ({
               date: d.date,
-              value: d.avg,
+              value: d.gap,
             }))}
           />
         </div>
@@ -190,9 +192,9 @@ export default async function StatsPage() {
             subtitle="95th-percentile time from trace creation to verdict — tail latency"
             icon={<Clock className="h-4 w-4" strokeWidth={1.8} />}
             tone="neutral"
-            sparklineData={stats.dailyVerdicts.map((d) => ({
+            sparklineData={stats.dailyLatency.map((d) => ({
               date: d.date,
-              value: d.count,
+              value: d.avgSeconds,
             }))}
           />
         </div>

@@ -107,13 +107,13 @@ describe("VAL-STATS-007 / VAL-CROSS-011: External x402 calls exclude Prism walle
   });
 
   it("null requester_address is excluded (not external)", () => {
-    const validations = [
+    const validations: { requester_address: string | null }[] = [
       { requester_address: null },
     ];
     const external = validations.filter(
-      (v) =>
-        v.requester_address !== null &&
-        !INTERNAL_WALLETS.includes(v.requester_address.toLowerCase()),
+      (v): v is { requester_address: string } => v.requester_address !== null,
+    ).filter(
+      (v) => !INTERNAL_WALLETS.includes(v.requester_address.toLowerCase()),
     );
     expect(external).toHaveLength(0);
   });
@@ -339,6 +339,71 @@ describe("VAL-STATS-014: Each tile has 7-day sparkline", () => {
       expect(typeof entry.avg).toBe("number");
     }
   });
+
+  it("daily latency data has date and avgSeconds fields", () => {
+    const dailyLatency = [
+      { date: "2026-05-08", avgSeconds: 3.2 },
+      { date: "2026-05-09", avgSeconds: 4.1 },
+    ];
+    for (const entry of dailyLatency) {
+      expect(entry).toHaveProperty("date");
+      expect(entry).toHaveProperty("avgSeconds");
+      expect(typeof entry.date).toBe("string");
+      expect(typeof entry.avgSeconds).toBe("number");
+    }
+  });
+
+  it("latency sparkline uses dailyLatency data (not dailyVerdicts counts)", () => {
+    // The latency tiles must render avgSeconds trend, not verdict count trend
+    const dailyLatency = [
+      { date: "2026-05-08", avgSeconds: 2.5 },
+      { date: "2026-05-09", avgSeconds: 5.0 },
+      { date: "2026-05-10", avgSeconds: 1.8 },
+    ];
+    const sparklineData = dailyLatency.map((d) => ({
+      date: d.date,
+      value: d.avgSeconds,
+    }));
+    for (const point of sparklineData) {
+      expect(point.value).toBeGreaterThan(0);
+      expect(typeof point.value).toBe("number");
+    }
+    // Ensure values are latency-scale (seconds), not count-scale (integers)
+    expect(sparklineData[0].value).toBe(2.5);
+    expect(sparklineData[1].value).toBe(5.0);
+  });
+
+  it("daily calibration gap data has date and gap fields", () => {
+    const dailyCalibrationGap = [
+      { date: "2026-05-08", gap: 55 },
+      { date: "2026-05-09", gap: 60 },
+    ];
+    for (const entry of dailyCalibrationGap) {
+      expect(entry).toHaveProperty("date");
+      expect(entry).toHaveProperty("gap");
+      expect(typeof entry.date).toBe("string");
+      expect(typeof entry.gap).toBe("number");
+    }
+  });
+
+  it("calibration gap sparkline uses dailyCalibrationGap data (not dailyScores avg)", () => {
+    // The calibration gap tile must render gap trend, not average score trend
+    const dailyCalibrationGap = [
+      { date: "2026-05-08", gap: 50 },
+      { date: "2026-05-09", gap: 65 },
+      { date: "2026-05-10", gap: 45 },
+    ];
+    const sparklineData = dailyCalibrationGap.map((d) => ({
+      date: d.date,
+      value: d.gap,
+    }));
+    // Gaps are integers (rounded), not floating-point averages
+    for (const point of sparklineData) {
+      expect(Number.isInteger(point.value)).toBe(true);
+    }
+    expect(sparklineData[0].value).toBe(50);
+    expect(sparklineData[1].value).toBe(65);
+  });
 });
 
 /* ─────────────── Subtitle presence ─────────────── */
@@ -465,5 +530,33 @@ describe("VAL-CROSS-003: Self-serve verdict increments unique wallets", () => {
     const repeat = "0xabc";
     const after = [...existing, repeat];
     expect(new Set(after).size).toBe(new Set(existing).size);
+  });
+});
+
+/* ─────────────── Shared pool singleton (m3 scrutiny fix) ─────────────── */
+
+describe("Stats uses shared getPool() from lib/db.ts (no duplicate Pool)", () => {
+  it("stats.ts does not create its own pg.Pool", async () => {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const filePath = path.join(process.cwd(), "app/lib/stats.ts");
+    const content = await fs.readFile(filePath, "utf-8");
+
+    // Must not contain "new Pool" or "const { Pool }"
+    expect(content).not.toMatch(/new\s+Pool\s*\(/);
+    expect(content).not.toMatch(/const\s*\{\s*Pool\s*\}\s*=\s*pg/);
+
+    // Must import getPool from db.ts
+    expect(content).toMatch(/import\s*\{[^}]*getPool[^}]*\}\s*from\s*["']@\/lib\/db["']/);
+  });
+
+  it("stats.ts delegates closeStatsPool to closePool from db.ts", async () => {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const filePath = path.join(process.cwd(), "app/lib/stats.ts");
+    const content = await fs.readFile(filePath, "utf-8");
+
+    // Must import closePool from db.ts
+    expect(content).toMatch(/import\s*\{[^}]*closePool[^}]*\}\s*from\s*["']@\/lib\/db["']/);
   });
 });

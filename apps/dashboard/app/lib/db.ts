@@ -23,7 +23,7 @@ const IPFS_GATEWAY = process.env.IPFS_GATEWAY || "https://gateway.pinata.cloud/i
 /** Global pool instance (cached across server component invocations). */
 let pool: pg.Pool | null = null;
 
-function getPool(): pg.Pool {
+export function getPool(): pg.Pool {
   if (!pool) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {

@@ -4,39 +4,21 @@
  * Single source of truth — both surfaces read from the same Neon queries
  * so their numbers always reconcile (VAL-CROSS-010, VAL-WIDGETS-003).
  *
+ * Uses the shared pg.Pool singleton from lib/db.ts — no duplicate connections.
+ *
  * All queries are optimised with existing indexes:
  *   - validations_requester_idx on (requester_address)
  *   - traces/validations PKs on trace_id
  *   - Primary key lookups for JOINs
  */
 
-import pg from "pg";
-
-const { Pool } = pg;
+import { getPool, closePool } from "@/lib/db";
 
 /** Agent wallet addresses to exclude from "External x402 calls" metric. */
 const INTERNAL_WALLET_ADDRESSES = [
   "0xc960833ee26e23ca01dfc4d217a8942ea78b452b", // trader
   "0x56509b03e85f3cbae5ba2190ee99b945d2f0ac36", // sentinel
 ] as const;
-
-let pool: pg.Pool | null = null;
-
-function getPool(): pg.Pool {
-  if (!pool) {
-    const databaseUrl = process.env.DATABASE_URL;
-    if (!databaseUrl) {
-      throw new Error("DATABASE_URL environment variable is not set");
-    }
-    pool = new Pool({
-      connectionString: databaseUrl,
-      max: 5,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 10_000,
-    });
-  }
-  return pool;
-}
 
 /* ─────────────── Tile data types ─────────────── */
 
@@ -53,6 +35,18 @@ export interface DailyFee {
 export interface DailyAvg {
   date: string;
   avg: number;
+}
+
+export interface DailyLatency {
+  date: string;
+  /** Average latency in seconds for that day. */
+  avgSeconds: number;
+}
+
+export interface DailyCalibrationGap {
+  date: string;
+  /** Calibration gap (good_avg − bad_avg) for that day. */
+  gap: number;
 }
 
 export interface VerdictBucket {
@@ -94,6 +88,10 @@ export interface StatsData {
   dailyFees: DailyFee[];
   dailyX402Calls: DailyCount[];
   dailyScores: DailyAvg[];
+  /** Daily average latency in seconds — used by latency p50/p95 sparklines. */
+  dailyLatency: DailyLatency[];
+  /** Daily calibration gap — used by calibration-gap sparkline. */
+  dailyCalibrationGap: DailyCalibrationGap[];
 
   /** Verdict score distribution histogram (4 buckets: 0–25, 26–50, 51–75, 76–100). */
   verdictDistribution: VerdictBucket[];
@@ -128,6 +126,8 @@ export async function getStatsData(): Promise<StatsData> {
       dailyFeesResult,
       dailyX402Result,
       dailyScoresResult,
+      dailyLatencyResult,
+      dailyCalibrationGapResult,
       distributionResult,
     ] = await Promise.all([
       // ── Core aggregates ──
@@ -233,6 +233,26 @@ export async function getStatsData(): Promise<StatsData> {
           GROUP BY DATE(created_at)
           ORDER BY date`,
       ),
+      // Daily average latency for sparkline
+      client.query(
+        `SELECT DATE(v.created_at)::text AS date,
+                AVG(EXTRACT(EPOCH FROM (v.created_at - t.created_at)))::numeric(10,2) AS avg_seconds
+           FROM validations v
+           JOIN traces t ON t.trace_id = v.trace_id
+          WHERE v.created_at >= NOW() - INTERVAL '7 days'
+          GROUP BY DATE(v.created_at)
+          ORDER BY date`,
+      ),
+      // Daily calibration gap for sparkline
+      client.query(
+        `SELECT DATE(created_at)::text AS date,
+                COALESCE(AVG(verdict_score) FILTER (WHERE verdict_score >= 75), 0)
+                - COALESCE(AVG(verdict_score) FILTER (WHERE verdict_score <= 25), 0) AS gap
+           FROM validations
+          WHERE created_at >= NOW() - INTERVAL '7 days'
+          GROUP BY DATE(created_at)
+          ORDER BY date`,
+      ),
 
       // ── Verdict distribution histogram ──
       client.query(
@@ -280,6 +300,12 @@ export async function getStatsData(): Promise<StatsData> {
     const mapDailyAvg = (rows: Record<string, unknown>[]): DailyAvg[] =>
       rows.map((r) => ({ date: String(r.date), avg: Number(r.avg) }));
 
+    const mapDailyLatency = (rows: Record<string, unknown>[]): DailyLatency[] =>
+      rows.map((r) => ({ date: String(r.date), avgSeconds: Number(r.avg_seconds) }));
+
+    const mapDailyCalibrationGap = (rows: Record<string, unknown>[]): DailyCalibrationGap[] =>
+      rows.map((r) => ({ date: String(r.date), gap: Math.round(Number(r.gap)) }));
+
     const mapDistribution = (
       rows: Record<string, unknown>[],
     ): VerdictBucket[] => {
@@ -315,6 +341,8 @@ export async function getStatsData(): Promise<StatsData> {
       dailyFees: mapDailyFee(dailyFeesResult.rows),
       dailyX402Calls: mapDailyCount(dailyX402Result.rows),
       dailyScores: mapDailyAvg(dailyScoresResult.rows),
+      dailyLatency: mapDailyLatency(dailyLatencyResult.rows),
+      dailyCalibrationGap: mapDailyCalibrationGap(dailyCalibrationGapResult.rows),
       verdictDistribution: mapDistribution(distributionResult.rows),
     };
   } catch {
@@ -337,6 +365,8 @@ export async function getStatsData(): Promise<StatsData> {
       dailyFees: [],
       dailyX402Calls: [],
       dailyScores: [],
+      dailyLatency: [],
+      dailyCalibrationGap: [],
       verdictDistribution: [
         { label: "0–25", lower: 0, count: 0 },
         { label: "26–50", lower: 26, count: 0 },
@@ -432,10 +462,7 @@ export function formatFee(feeStr: string): string {
   return fee.toFixed(6).replace(/\.?0+$/, "");
 }
 
-/** Close the pool (for testing / shutdown). */
+/** Close the pool (for testing / shutdown). Delegates to the shared singleton in db.ts. */
 export async function closeStatsPool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-  }
+  await closePool();
 }
