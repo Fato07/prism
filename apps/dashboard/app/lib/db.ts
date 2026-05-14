@@ -452,6 +452,69 @@ export async function getHistoryEntries(
   return { entries, total };
 }
 
+/**
+ * Fetch verdicts filtered by requester_address (case-insensitive).
+ * Returns the same HistoryEntry shape as getHistoryEntries so the /me page
+ * can reuse the same card component as /history.
+ * Ordered by created_at DESC.
+ */
+export async function getVerdictsByAddress(
+  address: string,
+): Promise<HistoryEntry[]> {
+  const client = getPool();
+  const result = await client.query(
+    `SELECT t.trace_id,
+            t.market_id,
+            t.ipfs_cid,
+            t.created_at::text AS created_at,
+            v.verdict_score,
+            v.response_uri
+       FROM validations v
+       JOIN traces t ON t.trace_id = v.trace_id
+      WHERE LOWER(v.requester_address) = LOWER($1)
+      ORDER BY v.created_at DESC`,
+    [address],
+  );
+
+  const rows = result.rows as Record<string, unknown>[];
+
+  if (rows.length === 0) return [];
+
+  // Enrich with IPFS content for market_name and verdict_label
+  const entries = await Promise.all(
+    rows.map(async (row) => {
+      const cid = String(row.ipfs_cid ?? "");
+      const responseUri = String(row.response_uri ?? "");
+      const verdictCid = extractCid(responseUri) ?? (responseUri || null);
+
+      const [traceContent, verdictContent] = await Promise.all([
+        cid ? fetchTraceFromIPFS(cid) : Promise.resolve(null),
+        verdictCid ? fetchVerdictFromIPFS(verdictCid) : Promise.resolve(null),
+      ]);
+
+      const marketName =
+        (traceContent as Record<string, unknown> | null)?.market_question as string | null
+        ?? String(row.market_id ?? "");
+      const side =
+        (traceContent as Record<string, unknown> | null)?.action as string | null;
+      const verdictLabel =
+        (verdictContent as Record<string, unknown> | null)?.verdict_label as string | null;
+
+      return {
+        trace_id: String(row.trace_id),
+        market_name: marketName,
+        side,
+        verdict_score: Number(row.verdict_score),
+        verdict_label: verdictLabel,
+        created_at: String(row.created_at),
+        ipfs_cid: cid || null,
+      };
+    }),
+  );
+
+  return entries;
+}
+
 /** Close the pool (for testing / shutdown). */
 export async function closePool(): Promise<void> {
   if (pool) {
