@@ -93,14 +93,25 @@ describe("VAL-SUBMIT-002: Client-side CID regex rejects malformed inputs", () =>
 
 /* ─────────────── VAL-SUBMIT-003: Connect gate ────────────────── */
 
-describe("VAL-SUBMIT-003: Connect gate prompts wallet connection", () => {
-  it("SubmitForm references the disconnected state message", () => {
+describe("VAL-SUBMIT-003: Connect gate opens Reown modal when wallet disconnected", () => {
+  it("SubmitForm imports useAppKit from @reown/appkit/react for programmatic modal open", () => {
     const fs = require("fs");
     const path = require("path");
     const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
     const content = fs.readFileSync(formPath, "utf-8");
-    // When wallet is not connected, the form should prompt connection
-    expect(content).toContain("Please connect your wallet");
+    expect(content).toContain("useAppKit");
+    expect(content).toContain("@reown/appkit/react");
+  });
+
+  it("SubmitForm calls openAppKitModal() when wallet is disconnected and user clicks Validate", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    // The code should destructure open from useAppKit
+    expect(content).toContain("openAppKitModal");
+    // And call it in the disconnected branch
+    expect(content).toContain("void openAppKitModal()");
   });
 
   it("SubmitForm uses useAccount isConnected to gate submission", () => {
@@ -110,6 +121,21 @@ describe("VAL-SUBMIT-003: Connect gate prompts wallet connection", () => {
     const content = fs.readFileSync(formPath, "utf-8");
     expect(content).toContain("useAccount");
     expect(content).toContain("isConnected");
+  });
+
+  it("SubmitForm does NOT show an inline error for disconnected wallet", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    // The old pattern showed an inline error like "Please connect your wallet..."
+    // The new pattern opens the modal instead — verify the inline error for
+    // disconnection is NOT present
+    expect(content).not.toContain(
+      "Please connect your wallet before submitting",
+    );
+    // Verify the modal open call is present in the disconnected branch
+    expect(content).toContain("void openAppKitModal()");
   });
 });
 

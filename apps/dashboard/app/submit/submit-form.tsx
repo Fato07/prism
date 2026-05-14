@@ -5,7 +5,7 @@
  *
  * Flow:
  *   1. Visitor pastes an IPFS CID (client-side regex validation)
- *   2. If wallet not connected → clicking Validate opens Reown modal
+ *   2. If wallet not connected → clicking Validate opens Reown modal (appkit.open())
  *   3. If connected + valid CID → multi-step submit:
  *      a. Initiate: POST /api/validate/initiate → get payment requirements
  *      b. Sign: EIP-3009 transferWithAuthorization via viem walletClient
@@ -24,6 +24,7 @@
  */
 
 import { useAccount, useSwitchChain, useWalletClient } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
 import { useRouter } from "next/navigation";
 import { useState, useCallback, useId } from "react";
 import {
@@ -59,6 +60,7 @@ export function SubmitForm() {
   const { address, isConnected, chainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
+  const { open: openAppKitModal } = useAppKit();
   const router = useRouter();
 
   const inputId = useId();
@@ -103,11 +105,10 @@ export function SubmitForm() {
 
       // Step 1: Ensure wallet connected
       if (!isConnected) {
-        // VAL-SUBMIT-003: Trigger connect modal
-        // The Reown AppKit modal is opened by clicking the ConnectWalletButton.
-        // We show a message prompting the user to connect first.
-        setInlineError("Please connect your wallet before submitting a validation request.");
-        setPhase("error");
+        // VAL-SUBMIT-003: Open the Reown connect modal programmatically
+        // instead of showing an inline error. The user clicked "Validate"
+        // intentfully — guide them to connect rather than blocking silently.
+        void openAppKitModal();
         return;
       }
 
@@ -208,7 +209,7 @@ export function SubmitForm() {
         setPhase("error");
       }
     },
-    [cidInput, isConnected, walletClient, address, chainId, switchChainAsync, router],
+    [cidInput, isConnected, walletClient, address, chainId, switchChainAsync, router, openAppKitModal],
   );
 
   /* ── Derived state ─────────────────────────────────────────────── */
@@ -349,7 +350,7 @@ export function SubmitForm() {
             <p className="text-xs text-fg-faint leading-relaxed">
               {isConnected
                 ? "Enter an IPFS CID and click Validate. Your wallet will sign a 0.01 USDC payment on Base Sepolia via x402."
-                : "Connect your wallet first, then enter an IPFS CID to request an adversarial validation."}
+                : "Click Validate to connect your wallet, then sign a 0.01 USDC payment on Base Sepolia via x402."}
             </p>
           )}
         </CardContent>

@@ -154,3 +154,41 @@ describe("createAppKit features configuration", () => {
     expect(callArgs.features.swaps).toBe(false);
   });
 });
+
+// ── VAL-WALLET-009: Connect button hit target ≥ 32px on mobile ──────
+
+describe("VAL-WALLET-009: Connect button has minimum 32px hit target on mobile", () => {
+  it("ConnectWalletButton wraps w3m-button in a container with min-h-[32px]", () => {
+    const { readFileSync } = require("fs");
+    const { resolve } = require("path");
+    const filePath = resolve(
+      __dirname,
+      "../app/components/connect-wallet-button.tsx",
+    );
+    const content = readFileSync(filePath, "utf-8");
+    // The wrapper div must enforce the 32px minimum height
+    expect(content).toContain("min-h-[32px]");
+  });
+
+  it("ConnectWalletButton wrapper also enforces min-w-[32px] for square hit target", () => {
+    const { readFileSync } = require("fs");
+    const { resolve } = require("path");
+    const filePath = resolve(
+      __dirname,
+      "../app/components/connect-wallet-button.tsx",
+    );
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("min-w-[32px]");
+  });
+
+  it("ConnectWalletButton still renders the w3m-button custom element", () => {
+    const { readFileSync } = require("fs");
+    const { resolve } = require("path");
+    const filePath = resolve(
+      __dirname,
+      "../app/components/connect-wallet-button.tsx",
+    );
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("w3m-button");
+  });
+});
