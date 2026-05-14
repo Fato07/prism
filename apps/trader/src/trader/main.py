@@ -101,6 +101,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:
             logger.error("db_setup_failed", error=str(exc))
 
+    # Log effective TRADER_YIELD_MODE at startup
+    from trader.treasury import resolve_yield_mode
+
+    try:
+        yield_mode = resolve_yield_mode()
+        logger.info("yield_mode_resolved", yield_mode=yield_mode)
+    except ValueError as exc:
+        logger.error("yield_mode_invalid", error=str(exc))
+        sys.exit(1)
+
     # Auto-start pipeline scheduler when AUTO_PIPELINE=true
     if os.environ.get("AUTO_PIPELINE", "").strip().lower() in ("1", "true", "yes"):
         interval = int(os.environ.get("PIPELINE_INTERVAL_MINUTES", "5"))
@@ -334,6 +344,31 @@ async def _run_pipeline_internal() -> PipelineResponse:
 
     # Step 5: Trade via Polymarket gateway (only if sentinel verdict is PASS)
     if validation_status == "success" and validation and validation.get("verdict_label") == "PASS":
+        # Treasury hook: unpark before trade if yield mode is park/smart
+        try:
+            from decimal import Decimal as _Dec
+
+            from trader.treasury import resolve_yield_mode, should_unpark_before_trade, unpark_for_trade
+
+            yield_mode = resolve_yield_mode()
+            verdict_label = validation.get("verdict_label", "")
+            if should_unpark_before_trade(yield_mode, verdict_label):
+                trader_wallet_id = os.environ.get("CIRCLE_WALLET_TRADER_ID", "")
+                if trader_wallet_id:
+                    unpark_amount = _Dec(str(trace.size_usdc))
+                    unpark_result = await unpark_for_trade(
+                        wallet_id=trader_wallet_id,
+                        usdc_target=unpark_amount,
+                    )
+                    logger.info(
+                        "pipeline_treasury_unparked",
+                        usdc_target=str(unpark_amount),
+                        tx_hash=unpark_result.tx_hash,
+                        dry_run=unpark_result.dry_run,
+                    )
+        except Exception as exc:
+            logger.warning("pipeline_treasury_unpark_failed", error=str(exc))
+
         try:
             agent_id = int(os.environ.get("TRADER_AGENT_ID", "1"))
             side = "BUY" if trace.action == "BUY" else "SELL"
@@ -387,6 +422,51 @@ async def _run_pipeline_internal() -> PipelineResponse:
             else f"verdict_label={validation.get('verdict_label', 'N/A') if validation else 'N/A'}"
         )
         logger.info("pipeline_trade_skipped", reason=reason, trace_id=trace.trace_id)
+
+    # Treasury hook: park residual USDC after trace+verdict flow
+    try:
+        from decimal import Decimal as _Dec
+
+        from trader.treasury import park_idle_usdc, resolve_yield_mode, should_park_after_trace
+
+        yield_mode = resolve_yield_mode()
+        verdict_label_val: str | None = (
+            validation.get("verdict_label") if validation else None
+        )
+        # Estimate residual: wallet cap minus trade size (if trade executed)
+        # or full cap minus zero (if trade skipped). This is a conservative
+        # approximation — a real balance query would be more precise.
+        from trader.trading_r1 import WALLET_BALANCE_CAP
+
+        trade_executed = (
+            validation_status == "success"
+            and validation is not None
+            and validation.get("verdict_label") == "PASS"
+        )
+        estimated_residual = _Dec(str(WALLET_BALANCE_CAP)) - (
+            _Dec(str(trace.size_usdc)) if trade_executed else _Dec("0")
+        )
+
+        if should_park_after_trace(yield_mode, verdict_label_val, estimated_residual):
+            trader_wallet_id = os.environ.get("CIRCLE_WALLET_TRADER_ID", "")
+            if trader_wallet_id:
+                park_result = await park_idle_usdc(
+                    wallet_id=trader_wallet_id,
+                    usdc_amount=estimated_residual,
+                    rationale=(
+                        f"pipeline_post_trace yield_mode={yield_mode} "
+                        f"verdict={verdict_label_val or 'N/A'} "
+                        f"residual={estimated_residual}"
+                    ),
+                )
+                logger.info(
+                    "pipeline_treasury_parked",
+                    usdc_amount=str(estimated_residual),
+                    tx_hash=park_result.tx_hash,
+                    dry_run=park_result.dry_run,
+                )
+    except Exception as exc:
+        logger.warning("pipeline_treasury_park_failed", error=str(exc))
 
     # Trace is persisted regardless of sentinel outcome.
     return PipelineResponse(
