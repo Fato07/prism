@@ -20,6 +20,11 @@
     "@paper-design/shaders-react": "^0.0.76",
     "@prism/arc-contracts": "workspace:*",
     "@prism/schemas": "workspace:*",
+    "@reown/appkit": "^1.8.19",
+    "@reown/appkit-adapter-wagmi": "^1.8.19",
+    "@tanstack/react-query": "^5.100.10",
+    "@wagmi/core": "^3.4.11",
+    "accounts": "~0.10.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "geist": "^1.7.0",
@@ -30,6 +35,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.3.0",
+    "viem": "^2.48.11",
+    "wagmi": "^3.6.14",
     "zod": "^4.0.0"
   },
   "devDependencies": {

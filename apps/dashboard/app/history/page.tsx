@@ -15,6 +15,7 @@ import { ScoreDonut } from "@/components/ui/score-donut";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Separator } from "@/components/ui/separator";
+import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -164,6 +165,7 @@ function HistoryHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
+        <ConnectWalletButton />
         <a
           href="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm text-fg-muted transition-colors hover:text-fg"

@@ -43,6 +43,7 @@ import { ConfidenceCollision } from "@/components/dashboard/confidence-collision
 import { AdversarialDialogue } from "@/components/dashboard/adversarial-dialogue";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { BrandMark } from "@/components/brands/brand-mark";
+import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { ArrowUpRight, Activity } from "lucide-react";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
@@ -283,6 +284,7 @@ function DashboardHeader({
         </a>
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+          <ConnectWalletButton />
           <AutoRefresh intervalMs={8000} />
           <Separator orientation="vertical" className="h-4" />
           <Pill tone="info" emphasis="soft" size="sm">

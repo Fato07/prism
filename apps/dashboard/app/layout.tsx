@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import Web3Provider from "@/context/web3-provider";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -56,7 +58,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const headersList = await headers();
+  const cookies = headersList.get("cookie");
+
   return (
     <html
       lang="en"
@@ -64,7 +73,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body className="bg-canvas text-fg antialiased font-sans selection:bg-trader/30 selection:text-trader-fg">
-        {children}
+        <Web3Provider cookies={cookies}>{children}</Web3Provider>
       </body>
     </html>
   );

@@ -28,6 +28,7 @@ import { Pill } from "@/components/ui/pill";
 import { Separator } from "@/components/ui/separator";
 import { ArrowUpRight } from "lucide-react";
 import { BrandMark } from "@/components/brands/brand-mark";
+import { ConnectWalletButton } from "@/components/connect-wallet-button";
 
 export const dynamic = "force-dynamic";
 
@@ -181,6 +182,7 @@ function GlassNav() {
           <span>Prism</span>
         </a>
         <div className="flex items-center gap-2">
+          <ConnectWalletButton />
           <a
             href="/history"
             className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg focus-ring"
