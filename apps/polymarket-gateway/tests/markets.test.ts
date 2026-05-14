@@ -4,11 +4,18 @@
 - Response cached with 30-60s TTL
 - Two calls within TTL → 1 outbound request
 - Call after TTL → fresh fetch
+- tokenId and yesTokenId are extracted from the raw API tokens array
+- resolveTokenId resolves internal market IDs via fuzzy matching
 */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 
-import { fetchMarkets, invalidateMarketCache } from "../src/markets.js";
+import {
+  fetchMarkets,
+  invalidateMarketCache,
+  resolveTokenId,
+  isConditionId,
+} from "../src/markets.js";
 
 const sampleMarkets = [
   {
@@ -16,8 +23,17 @@ const sampleMarkets = [
     question: "Will Prism pass scrutiny validation?",
     active: true,
     tokens: [
-      { outcome: "Yes", price: 0.62 },
-      { outcome: "No", price: 0.38 },
+      { outcome: "Yes", price: 0.62, token_id: "21724971184084130220463928751225911389088428869686229328700041198682962586890" },
+      { outcome: "No", price: 0.38, token_id: "48331043329952076881274542254071239369484953430501484932375043687602679054079" },
+    ],
+  },
+  {
+    condition_id: "0xabcdef1234567890",
+    question: "Will Bitcoin exceed $150,000 before the end of 2026?",
+    active: true,
+    tokens: [
+      { outcome: "Yes", price: 0.45, token_id: "71321045978252263464351242973717930750633671251979332203087170846869688064221" },
+      { outcome: "No", price: 0.55, token_id: "29132820984415231366458791876233988279296549034696091698989893586871598072999" },
     ],
   },
 ];
@@ -49,8 +65,6 @@ describe("VAL-POLY-003: Market data fetch with caching", () => {
 
   it("each market has question, outcomes, and conditionId fields", async () => {
     const markets = await fetchMarkets();
-    // If the Polymarket API is reachable, check structure
-    // If not (no network in CI), the array may be empty — that's fine
     for (const m of markets) {
       expect(m).toHaveProperty("question");
       expect(m).toHaveProperty("outcomes");
@@ -62,7 +76,6 @@ describe("VAL-POLY-003: Market data fetch with caching", () => {
   it("caches the response and returns same data on second call", async () => {
     const first = await fetchMarkets();
     const second = await fetchMarkets();
-    // Verify data is the same (deep equality since cache may return same or new array)
     expect(second).toStrictEqual(first);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -71,11 +84,84 @@ describe("VAL-POLY-003: Market data fetch with caching", () => {
     const first = await fetchMarkets();
     invalidateMarketCache();
     const second = await fetchMarkets();
-    // May or may not be same data, but should be different references
-    // (new fetch even if same content)
-    // Actually if API returns same data, they could have same structure
-    // The key test is that the fetch function was called again
     expect(second).toStrictEqual(first);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Market token ID extraction", () => {
+  it("each outcome has a tokenId field", async () => {
+    const markets = await fetchMarkets();
+    for (const m of markets) {
+      for (const o of m.outcomes) {
+        expect(o).toHaveProperty("tokenId");
+        expect(typeof o.tokenId).toBe("string");
+        expect(o.tokenId.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("yesTokenId is extracted from the Yes outcome", async () => {
+    const markets = await fetchMarkets();
+    expect(markets[0].yesTokenId).toBe(
+      "21724971184084130220463928751225911389088428869686229328700041198682962586890",
+    );
+    expect(markets[1].yesTokenId).toBe(
+      "71321045978252263464351242973717930750633671251979332203087170846869688064221",
+    );
+  });
+});
+
+describe("isConditionId", () => {
+  it("returns true for 66-char hex strings", () => {
+    expect(
+      isConditionId("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+    ).toBe(true);
+  });
+
+  it("returns false for internal IDs", () => {
+    expect(isConditionId("0xbtc_150k_2026")).toBe(false);
+  });
+
+  it("returns false for short hex strings", () => {
+    expect(isConditionId("0x1234")).toBe(false);
+  });
+
+  it("returns false for non-hex strings", () => {
+    expect(isConditionId("not-a-hex-id")).toBe(false);
+  });
+});
+
+describe("resolveTokenId", () => {
+  it("returns marketId as-is when it is a real condition ID", async () => {
+    const conditionId =
+      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const result = await resolveTokenId(conditionId);
+    expect(result).toBe(conditionId);
+  });
+
+  it("resolves via fuzzy question match when marketQuestion is provided", async () => {
+    const result = await resolveTokenId(
+      "0xbtc_150k_2026",
+      "Will Bitcoin exceed $150,000 before the end of 2026?",
+    );
+    expect(result).toBe(
+      "71321045978252263464351242973717930750633671251979332203087170846869688064221",
+    );
+  });
+
+  it("resolves via internal ID heuristics when no marketQuestion", async () => {
+    const result = await resolveTokenId("0xbtc_150k_2026");
+    expect(result).toBe(
+      "71321045978252263464351242973717930750633671251979332203087170846869688064221",
+    );
+  });
+
+  it("returns null when no match found", async () => {
+    const result = await resolveTokenId(
+      "0xnonexistent_market_id",
+      "Will something that does not exist happen?",
+    );
+    expect(result).toBeNull();
   });
 });

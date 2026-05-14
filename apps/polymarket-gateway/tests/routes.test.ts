@@ -27,8 +27,8 @@ beforeAll(() => {
             question: "Will Prism pass scrutiny validation?",
             active: true,
             tokens: [
-              { outcome: "Yes", price: 0.62 },
-              { outcome: "No", price: 0.38 },
+              { outcome: "Yes", price: 0.62, token_id: "1112223334445556667778889990001112223334445556667778889990001111" },
+              { outcome: "No", price: 0.38, token_id: "9998887776665554443332221110009998887776665554443332221110009999" },
             ],
           },
         ]),

@@ -9,7 +9,7 @@ import pino from "pino";
 import { persistTrade } from "./db.js";
 import { getEnv } from "./env.js";
 import { checkGeofence } from "./geofence.js";
-import { fetchMarkets } from "./markets.js";
+import { fetchMarkets, resolveTokenId } from "./markets.js";
 import { placePrismOrder } from "./trade.js";
 import type { TradeSide } from "./trade.js";
 
@@ -65,6 +65,7 @@ export function createApp(): Hono {
     const sizeUsdc = body.sizeUsdc as number;
     const tokenId = body.tokenId as string | undefined;
     const priceLimit = body.priceLimit as number | undefined;
+    const marketQuestion = body.marketQuestion as string | undefined;
 
     if (!agentId || !traceId || !marketId || !side || sizeUsdc === undefined) {
       return c.json(
@@ -85,13 +86,43 @@ export function createApp(): Hono {
     }
 
     try {
+      // In live mode, resolve the real Polymarket token ID if not provided.
+      // Internal IDs like "0xbtc_150k_2026" are not valid ERC-1155 token IDs
+      // and will cause the SDK to crash with "Cannot read properties of
+      // undefined (reading 'toString')". We resolve via market data lookup.
+      let resolvedTokenId = tokenId;
+      if (env.PRISM_TRADE_MODE === "live" && !tokenId) {
+        resolvedTokenId = await resolveTokenId(
+          String(marketId),
+          marketQuestion ? String(marketQuestion) : undefined,
+        );
+        if (!resolvedTokenId) {
+          logger.error(
+            { marketId, marketQuestion },
+            "Could not resolve Polymarket token ID for live order",
+          );
+          return c.json(
+            {
+              error:
+                `Cannot resolve Polymarket token ID for marketId '${String(marketId)}'. ` +
+                "Provide a valid tokenId or marketQuestion in the request body.",
+            },
+            422,
+          );
+        }
+        logger.info(
+          { marketId, resolvedTokenId, marketQuestion },
+          "Resolved tokenId for live trade",
+        );
+      }
+
       const receipt = await placePrismOrder({
         agentId: Number(agentId),
         traceId: String(traceId),
         marketId: String(marketId),
         side: side as TradeSide,
         sizeUsdc,
-        tokenId,
+        tokenId: resolvedTokenId,
         priceLimit,
       });
 

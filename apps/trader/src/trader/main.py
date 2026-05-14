@@ -342,6 +342,7 @@ async def _run_pipeline_internal() -> PipelineResponse:
                 "agentId": agent_id,
                 "traceId": trace.trace_id,
                 "marketId": market_id,
+                "marketQuestion": market_question,
                 "side": side,
                 "sizeUsdc": trace.size_usdc,
                 "priceLimit": trace.final_probability,
