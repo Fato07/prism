@@ -30,6 +30,7 @@ import { ArrowUpRight } from "lucide-react";
 import { BrandMark } from "@/components/brands/brand-mark";
 import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { BuilderFeesStrip } from "@/components/landing/builder-fees-strip";
+import { TreasuryStrip } from "@/components/landing/treasury-strip";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,8 @@ export default async function LandingPage() {
         <LiveActivityStrip stats={stats} waitlistCount={waitlistCount} />
 
         <BuilderFeesStrip />
+
+        <TreasuryStrip />
 
         {/* Tech stack */}
         <section

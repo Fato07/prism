@@ -9,10 +9,12 @@ import {
   ValidationRowSchema,
   TradeRowSchema,
   AgentRowSchema,
+  TreasuryEventRowSchema,
   type TraceRow,
   type ValidationRow,
   type TradeRow,
   type AgentRow,
+  type TreasuryEventRow,
 } from "@/lib/schemas";
 
 const { Pool } = pg;
@@ -647,6 +649,103 @@ export async function getBuilderFeesTopN(
 ): Promise<BuilderFeesEntry[]> {
   const all = await getBuilderFeesLeaderboard();
   return all.slice(0, Math.max(1, Math.min(10, limit)));
+}
+
+/** Treasury aggregate data for the landing-page TreasuryStrip widget. */
+export interface TreasuryData {
+  /** Total USDC currently parked (sum of park.usdc_amount − sum of unpark.usdc_amount, floored at 0). */
+  totalParked: string;
+  /** Estimated yield earned on parked USDC (mocked at 4.5% APY — see treasury-strip.tsx comment). */
+  yieldEarned: string;
+  /** Most recent treasury event. Null when treasury_events is empty. */
+  lastEvent: {
+    event_type: "park" | "unpark";
+    usdc_amount: string;
+    created_at: string;
+  } | null;
+  /** Cumulative treasury events in the last 7 days. */
+  recentEventCount: number;
+  /** Daily parked USDC for the last 7 days (sparkline data). */
+  dailyParked: { date: string; amount: string }[];
+}
+
+/**
+ * Fetch treasury aggregate data for the TreasuryStrip widget.
+ * Returns zero-safe defaults if Neon is unreachable or treasury_events is empty.
+ */
+export async function getTreasuryData(): Promise<TreasuryData> {
+  try {
+    const client = getPool();
+
+    const [totalsResult, lastEventResult, recentCountResult, dailyResult] =
+      await Promise.all([
+        // Total parked = park USDC in − unpark USDC out (floored at 0)
+        client.query(
+          `SELECT
+             COALESCE(
+               GREATEST(0,
+                 COALESCE(SUM(usdc_amount) FILTER (WHERE event_type = 'park'), 0)
+               - COALESCE(SUM(usdc_amount) FILTER (WHERE event_type = 'unpark'), 0)
+               ), 0
+             )::numeric(20,6) AS total_parked`,
+        ),
+        // Most recent event
+        client.query(
+          `SELECT event_type, usdc_amount::text, created_at::text AS created_at
+             FROM treasury_events
+            ORDER BY created_at DESC
+            LIMIT 1`,
+        ),
+        // Events in the last 7 days
+        client.query(
+          `SELECT count(*)::int AS cnt FROM treasury_events WHERE created_at >= NOW() - INTERVAL '7 days'`,
+        ),
+        // Daily parked USDC for sparkline
+        client.query(
+          `SELECT DATE(created_at)::text AS date,
+                  COALESCE(SUM(usdc_amount) FILTER (WHERE event_type = 'park'), 0)
+                - COALESCE(SUM(usdc_amount) FILTER (WHERE event_type = 'unpark'), 0)::numeric(20,6) AS amount
+             FROM treasury_events
+            WHERE created_at >= NOW() - INTERVAL '7 days'
+            GROUP BY DATE(created_at)
+            ORDER BY date`,
+        ),
+      ]);
+
+    const totalParked = String(totalsResult.rows[0]?.total_parked ?? "0");
+    const lastEventRow = lastEventResult.rows[0] as
+      | Record<string, unknown>
+      | undefined;
+    const recentEventCount = Number(recentCountResult.rows[0]?.cnt ?? 0);
+    const dailyParked = (
+      dailyResult.rows as Record<string, unknown>[]
+    ).map((r) => ({
+      date: String(r.date),
+      amount: String(r.amount),
+    }));
+
+    return {
+      totalParked,
+      yieldEarned: "0",
+      lastEvent: lastEventRow
+        ? {
+            event_type: String(lastEventRow.event_type) as "park" | "unpark",
+            usdc_amount: String(lastEventRow.usdc_amount ?? "0"),
+            created_at: String(lastEventRow.created_at),
+          }
+        : null,
+      recentEventCount,
+      dailyParked,
+    };
+  } catch {
+    return {
+      totalParked: "0",
+      yieldEarned: "0",
+      lastEvent: null,
+      recentEventCount: 0,
+      dailyParked: [],
+    };
+  }
 }
 
 /** Close the pool (for testing / shutdown). */
