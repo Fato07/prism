@@ -25,6 +25,12 @@ DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
 WALLET_BALANCE_CAP = 100.0  # USDC
 MAX_TRADE_SIZE = 25.0  # USDC — 25 % of the 100 USDC cap
 
+# Probability clamping bounds — Polymarket CLOB rejects prices outside
+# [0.001, 0.999]; we use [0.01, 0.99] to leave margin and avoid
+# edge-case rejections from the exchange.
+_PROB_MIN = 0.01
+_PROB_MAX = 0.99
+
 
 def _model_id() -> str:
     """Return the Mirascope model ID for the configured Claude model."""
@@ -97,6 +103,21 @@ async def generate_and_post_process(
     # Parse the structured output into a TradingR1Trace via Mirascope's .parse().
     trace: TradingR1Trace = response.parse()
 
+    # Clamp probabilities to valid trading range.
+    # Polymarket CLOB rejects prices outside [0.001, 0.999]; we use
+    # [0.01, 0.99] to leave margin and avoid edge-case rejections.
+    clamped_raw = max(_PROB_MIN, min(_PROB_MAX, trace.raw_probability))
+    clamped_final = max(_PROB_MIN, min(_PROB_MAX, trace.final_probability))
+
+    if trace.raw_probability != clamped_raw or trace.final_probability != clamped_final:
+        logger.warning(
+            "probability_clamped",
+            raw_original=trace.raw_probability,
+            raw_clamped=clamped_raw,
+            final_original=trace.final_probability,
+            final_clamped=clamped_final,
+        )
+
     # Override auto-generated fields with deterministic values.
     trace = trace.model_copy(
         update={
@@ -107,6 +128,8 @@ async def generate_and_post_process(
             "model_name": _model_name_short(),
             "created_at": datetime.now(UTC),
             "size_usdc": clamp_size(trace.size_usdc, wallet_balance),
+            "raw_probability": clamped_raw,
+            "final_probability": clamped_final,
         }
     )
 

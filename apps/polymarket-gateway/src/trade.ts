@@ -28,6 +28,11 @@ const logger = pino({ name: "prism.trade" });
 const DEFAULT_WALLET_CAP_USDC = 100;
 const DEFAULT_LIVE_PRICE = 0.5;
 
+// Price clamping bounds — Polymarket CLOB rejects prices outside [0.001, 0.999];
+// we use [0.01, 0.99] as a safety net to leave margin and avoid edge-case rejections.
+const PRICE_MIN = 0.01;
+const PRICE_MAX = 0.99;
+
 export type TradeSide = "BUY" | "SELL";
 
 export type TradeStatus =
@@ -190,13 +195,19 @@ async function buildLiveReceipt(
   }
 
   let response: LiveOrderResponse;
+  // Safety-net clamping: ensure price is within [0.01, 0.99] even if
+  // upstream layers fail to clamp. Polymarket CLOB rejects prices
+  // outside [0.001, 0.999]; we use [0.01, 0.99] for extra margin.
+  const rawPrice = params.priceLimit ?? DEFAULT_LIVE_PRICE;
+  const price = Math.max(PRICE_MIN, Math.min(PRICE_MAX, rawPrice));
+
   try {
     response = await submitLiveOrder({
       tokenId,
       marketId: params.marketId,
       side: params.side,
       sizeUsdc: params.sizeUsdc,
-      price: params.priceLimit ?? DEFAULT_LIVE_PRICE,
+      price,
       builderCode,
     });
   } catch (err) {

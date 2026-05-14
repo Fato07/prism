@@ -174,18 +174,25 @@ async def run_pipeline(
         action = trigger_data.get("action", "BUY")
         side = "BUY" if action == "BUY" else "SELL" if action == "SELL" else "BUY"
         size_usdc = trigger_data.get("size_usdc", 5.0)
+        # Forward clamped final_probability as priceLimit for the gateway.
+        # Already clamped to [0.01, 0.99] by Layer 1 in trading_r1.
+        final_probability = trigger_data.get("final_probability")
 
         agent_id = int(os.environ.get("TRADER_AGENT_ID", "1"))
 
+        trade_body: dict = {
+            "agentId": agent_id,
+            "traceId": trace_id,
+            "marketId": market_id,
+            "side": side,
+            "sizeUsdc": size_usdc,
+        }
+        if final_probability is not None:
+            trade_body["priceLimit"] = final_probability
+
         trade_resp = await client.post(
             f"{GATEWAY_URL}/trade",
-            json={
-                "agentId": agent_id,
-                "traceId": trace_id,
-                "marketId": market_id,
-                "side": side,
-                "sizeUsdc": size_usdc,
-            },
+            json=trade_body,
         )
         if trade_resp.status_code not in (200, 202):
             logger.warning(

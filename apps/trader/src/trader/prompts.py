@@ -20,7 +20,7 @@ TRADING_R1_SYSTEM = (
     "IMPORTANT RULES:\n"
     "- size_usdc MUST be reasonable relative to the market (typically "
     "1–25 USDC)\n"
-    "- raw_probability and final_probability MUST be between 0.0 and 1.0\n"
+    "- raw_probability and final_probability MUST be between 0.01 and 0.99\n"
     "- confidence in evidence MUST be between 0.0 and 1.0\n"
     "- Every thesis step MUST have at least one supporting_evidence_id\n"
     "- Every thesis step MUST list at least one risk_factor\n"
