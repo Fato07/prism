@@ -288,6 +288,82 @@ export async function ensureWaitlistTable(): Promise<void> {
   `);
 }
 
+/** Fetch a trade by its trace_id. */
+export async function getTradeByTraceId(
+  traceId: string
+): Promise<TradeRow | null> {
+  const client = getPool();
+  const result = await client.query(
+    "SELECT order_id, trace_id, market_id, side, size::text, builder_code, status, polymarket_tx, created_at::text AS created_at FROM trades WHERE trace_id = $1 ORDER BY created_at DESC LIMIT 1",
+    [traceId]
+  );
+  if (result.rows.length === 0) return null;
+  return TradeRowSchema.parse(result.rows[0]);
+}
+
+/** Comprehensive data bundle for the trace detail page. */
+export interface TraceDetailData {
+  trace: TraceRow;
+  validation: ValidationRow | null;
+  trade: TradeRow | null;
+  traderAgent: AgentRow | null;
+  sentinelAgent: AgentRow | null;
+  /** IPFS-fetched trace content (Trading-R1 structured data). */
+  traceContent: Record<string, unknown> | null;
+  /** IPFS-fetched verdict content (SentinelVerdict structured data). */
+  verdictContent: Record<string, unknown> | null;
+}
+
+/** Extract a CID from an ipfs:// URI. Returns the raw string otherwise. */
+function extractCid(uri: string): string | null {
+  if (uri.startsWith("ipfs://")) return uri.slice(7);
+  if (/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[ya][a-z2-7]{40,})$/.test(uri))
+    return uri;
+  return null;
+}
+
+/**
+ * Fetch all data needed for the /trace/[id] detail page in one call.
+ * Returns null if the trace doesn't exist (caller should return notFound()).
+ */
+export async function getTraceDetailData(
+  traceId: string
+): Promise<TraceDetailData | null> {
+  const trace = await getTraceById(traceId);
+  if (!trace) return null;
+
+  const [validation, trade, agents] = await Promise.all([
+    getLatestValidation(traceId),
+    getTradeByTraceId(traceId),
+    getAgents(),
+  ]);
+
+  const [traceContent, verdictContent] = await Promise.all([
+    trace.ipfs_cid
+      ? fetchTraceFromIPFS(trace.ipfs_cid)
+      : Promise.resolve(null),
+    validation?.response_uri
+      ? fetchVerdictFromIPFS(extractCid(validation.response_uri) ?? validation.response_uri)
+      : Promise.resolve(null),
+  ]);
+
+  const traderAgent =
+    agents.find((a) => a.agent_id === trace.agent_id) ?? null;
+  const sentinelAgent = validation
+    ? agents.find((a) => a.agent_id === validation.sentinel_agent_id) ?? null
+    : null;
+
+  return {
+    trace,
+    validation,
+    trade,
+    traderAgent,
+    sentinelAgent,
+    traceContent,
+    verdictContent,
+  };
+}
+
 /** Close the pool (for testing / shutdown). */
 export async function closePool(): Promise<void> {
   if (pool) {

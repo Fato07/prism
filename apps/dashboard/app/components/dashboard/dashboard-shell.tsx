@@ -37,7 +37,8 @@ interface DockContextValue {
   setSide: (next: DockSide) => void;
 }
 
-const DockContext = createContext<DockContextValue>({
+/** Exported so other pages (e.g. /trace/[id]) can provide a DockContext for AdversarialDialogue. */
+export const DockContext = createContext<DockContextValue>({
   side: "none",
   setSide: () => {},
 });
