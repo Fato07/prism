@@ -328,7 +328,7 @@ def parse_jsonrpc_402_body(parsed: dict[str, Any]) -> dict[str, Any]:
 
 def to_v2_payment_requirements(req: dict[str, Any]) -> PaymentRequirements:
     """Lift Prism's custom 402 dict into a standard x402 v2 PaymentRequirements."""
-    expected_networks = {"base-sepolia", "base", CAIP2_BASE}
+    expected_networks = {"base-sepolia", "base", CAIP2_BASE, NETWORK}
     if req["network_raw"].lower() not in expected_networks:
         raise ValueError(
             f"Sentinel announced network {req['network_raw']!r}, but this client is "

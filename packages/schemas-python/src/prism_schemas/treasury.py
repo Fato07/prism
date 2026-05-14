@@ -43,5 +43,5 @@ class TreasuryEventResult(BaseModel):
     event_type: Literal["park", "unpark"]
     usdc_amount: Decimal = Field(max_digits=20, decimal_places=6)
     tx_hash: str | None = None
-    rationale: str
+    rationale: str | None = None
     dry_run: bool = False
