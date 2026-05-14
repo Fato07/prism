@@ -164,6 +164,11 @@ def _sentinel_url() -> str:
     return os.environ.get("SENTINEL_URL", "http://localhost:3202").rstrip("/")
 
 
+def _gateway_url() -> str:
+    """Return the Polymarket gateway base URL from env (default localhost)."""
+    return os.environ.get("GATEWAY_URL", "http://localhost:3203").rstrip("/")
+
+
 # ---------------------------------------------------------------------------
 # Background scheduler state
 # ---------------------------------------------------------------------------
@@ -326,6 +331,60 @@ async def _run_pipeline_internal() -> PipelineResponse:
     except Exception as exc:
         validation_status = "error"
         logger.error("pipeline_validation_error", error=str(exc))
+
+    # Step 5: Trade via Polymarket gateway (only if sentinel verdict is PASS)
+    if validation_status == "success" and validation and validation.get("verdict_label") == "PASS":
+        try:
+            agent_id = int(os.environ.get("TRADER_AGENT_ID", "1"))
+            side = "BUY" if trace.action == "BUY" else "SELL"
+
+            trade_body: dict = {
+                "agentId": agent_id,
+                "traceId": trace.trace_id,
+                "marketId": market_id,
+                "side": side,
+                "sizeUsdc": trace.size_usdc,
+                "priceLimit": trace.final_probability,
+            }
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                trade_resp = await client.post(
+                    f"{_gateway_url()}/trade",
+                    json=trade_body,
+                )
+
+                if trade_resp.status_code in (200, 202):
+                    trade_data = trade_resp.json()
+                    logger.info(
+                        "pipeline_trade_sent",
+                        trace_id=trace.trace_id,
+                        market_id=market_id,
+                        side=side,
+                        size_usdc=trace.size_usdc,
+                        price_limit=trace.final_probability,
+                        order_id=trade_data.get("receipt", {}).get("orderId"),
+                    )
+                else:
+                    logger.warning(
+                        "pipeline_trade_rejected",
+                        status_code=trade_resp.status_code,
+                        body=trade_resp.text[:500],
+                    )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            logger.warning(
+                "pipeline_trade_gateway_unreachable",
+                gateway_url=_gateway_url(),
+                error=str(exc),
+            )
+        except Exception as exc:
+            logger.error("pipeline_trade_error", error=str(exc))
+    else:
+        reason = (
+            f"validation_status={validation_status}"
+            if validation_status != "success"
+            else f"verdict_label={validation.get('verdict_label', 'N/A') if validation else 'N/A'}"
+        )
+        logger.info("pipeline_trade_skipped", reason=reason, trace_id=trace.trace_id)
 
     # Trace is persisted regardless of sentinel outcome.
     return PipelineResponse(
