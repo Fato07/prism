@@ -393,8 +393,8 @@ class TestGeofencing:
         """
         with (
             patch.dict(os.environ, {"LOCALE": "US"}, clear=False),
-            patch("trader.config.validate_env", return_value=[]),
-            patch("trader.config._validate_llm_family"),
+            patch("prism_schemas.startup.validate_env", return_value=[]),
+            patch("prism_schemas.startup._validate_llm_family"),
         ):
             # Simulate what _run_startup_gates does:
             # 1. startup_check("trader") — env + LLM family (patched to pass)
@@ -444,7 +444,7 @@ class TestLLMFamilyValidation:
         """TRADER_MODEL=gpt-4o → SystemExit with llm_family_mismatch."""
         with (
             patch.dict(os.environ, {"TRADER_MODEL": "gpt-4o"}, clear=False),
-            patch("trader.config.validate_env", return_value=[]),
+            patch("prism_schemas.startup.validate_env", return_value=[]),
             pytest.raises(SystemExit),
         ):
             startup_check("trader")
@@ -457,7 +457,7 @@ class TestLLMFamilyValidation:
                 {"TRADER_MODEL": "claude-sonnet-4-20250514", "LOCALE": "EE"},
                 clear=False,
             ),
-            patch("trader.config.validate_env", return_value=[]),
+            patch("prism_schemas.startup.validate_env", return_value=[]),
         ):
             # Should not raise
             startup_check("trader")

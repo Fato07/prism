@@ -493,7 +493,7 @@ class TestSettlementOnBase:
                 stop()
 
             assert resp.status_code == 402
-            assert resp.json()["network"] == "base"
+            assert resp.json()["network"] == "base-sepolia"
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +553,16 @@ class TestHealthOpen:
 
 class TestFacilitatorSettlement:
     def test_facilitator_success_returns_tx_hash_from_body(self) -> None:
+        import base64
+        import json
+
         import httpx
+
+        # The middleware base64-decodes the payment header then JSON-parses it.
+        # Build a valid base64-encoded JSON token so the decode step passes.
+        _b64_token = base64.b64encode(
+            json.dumps({"signature": "test-sig", "nonce": "001"}).encode()
+        ).decode()
 
         async def fake_post(self, url, json=None, **kwargs):
             request = httpx.Request("POST", url, json=json)
@@ -580,7 +589,7 @@ class TestFacilitatorSettlement:
                 resp = client.post(
                     "/validate",
                     json={"trace_uri": "ipfs://QmTestCID", "trace_hash": "0xabc"},
-                    headers={"x402-payment": "facilitator-payment-token-001"},
+                    headers={"x402-payment": _b64_token},
                 )
             finally:
                 stop()
@@ -589,7 +598,15 @@ class TestFacilitatorSettlement:
             assert resp.json()["payment_tx_hash"].startswith("0xfacilitatortx")
 
     def test_facilitator_non_success_returns_402(self) -> None:
+        import base64
+        import json
+
         import httpx
+
+        # Valid base64-encoded JSON token that passes the decode step.
+        _b64_token = base64.b64encode(
+            json.dumps({"signature": "test-sig", "nonce": "rejected"}).encode()
+        ).decode()
 
         async def fake_post(self, url, json=None, **kwargs):
             request = httpx.Request("POST", url, json=json)
@@ -613,7 +630,7 @@ class TestFacilitatorSettlement:
                 resp = client.post(
                     "/validate",
                     json={"trace_uri": "ipfs://QmTestCID", "trace_hash": "0xabc"},
-                    headers={"x402-payment": "facilitator-rejected-token-aaa"},
+                    headers={"x402-payment": _b64_token},
                 )
             finally:
                 stop()
@@ -622,7 +639,15 @@ class TestFacilitatorSettlement:
             assert resp.json()["error"] == "settlement_failed"
 
     def test_facilitator_http_error_returns_402(self) -> None:
+        import base64
+        import json
+
         import httpx
+
+        # Valid base64-encoded JSON token that passes the decode step.
+        _b64_token = base64.b64encode(
+            json.dumps({"signature": "test-sig", "nonce": "error"}).encode()
+        ).decode()
 
         async def fake_post(self, url, json=None, **kwargs):
             raise httpx.ConnectError("facilitator unreachable")
@@ -641,7 +666,7 @@ class TestFacilitatorSettlement:
                 resp = client.post(
                     "/validate",
                     json={"trace_uri": "ipfs://QmTestCID", "trace_hash": "0xabc"},
-                    headers={"x402-payment": "facilitator-error-token-aaa"},
+                    headers={"x402-payment": _b64_token},
                 )
             finally:
                 stop()
