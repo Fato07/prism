@@ -219,7 +219,15 @@ async function buildLiveReceipt(
   if (!response.success || !response.orderID) {
     const errorMsg = response.errorMsg ?? "polymarket order rejected";
     logger.warn(
-      { errorMsg, marketId: params.marketId, status: response.status },
+      {
+        errorMsg,
+        marketId: params.marketId,
+        status: response.status,
+        // Dump the full raw response so we can see what Polymarket actually
+        // returned (the SDK sometimes drops detail in errorMsg). This makes
+        // 403/400 debugging tractable without redeploys.
+        raw_response: JSON.stringify(response).slice(0, 800),
+      },
       "Live order rejected",
     );
     return {
