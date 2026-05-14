@@ -32,8 +32,8 @@ import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
 import { AdversarialDialogue } from "@/components/dashboard/adversarial-dialogue";
 import { TraceDetailProvider } from "@/components/trace-detail-provider";
+import { GlobalNav } from "@/components/global-nav";
 import {
-  ArrowLeft,
   ExternalLink,
   FileCode,
   ShieldAlert,
@@ -43,7 +43,6 @@ import {
   Activity,
 } from "lucide-react";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
 
 /* ─────────────── UUID validation ─────────────── */
 
@@ -200,26 +199,12 @@ export default async function TraceDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      {/* ── Header ── */}
-      <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-3 px-6 py-4">
-          <ConnectWalletButton />
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 text-sm text-fg-muted transition-colors hover:text-fg"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={2} />
-            Dashboard
-          </a>
-          <Separator orientation="vertical" className="h-4" />
-          <a
-            href="/history"
-            className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
-          >
-            History
-          </a>
-          <Separator orientation="vertical" className="h-4" />
+      {/* ── Global navigation ── */}
+      <GlobalNav currentPage="trace" />
 
+      {/* ── Trace sub-header (market-specific context) ── */}
+      <div className="border-b border-[var(--color-border)] bg-[var(--color-canvas)]/60">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 sm:px-6">
           {/* Market name */}
           <h1 className="max-w-lg truncate text-base font-semibold tracking-[var(--tracking-tight)] text-fg">
             {marketName}
@@ -271,7 +256,7 @@ export default async function TraceDetailPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-7xl px-6 pb-16 pt-8">
         {/* ── Workspace: Trader + Sentinel columns ── */}

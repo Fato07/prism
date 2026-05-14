@@ -14,10 +14,8 @@ import { getHistoryEntries } from "@/lib/db";
 import { ScoreDonut } from "@/components/ui/score-donut";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Separator } from "@/components/ui/separator";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
+import { GlobalNav } from "@/components/global-nav";
 import {
-  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -84,7 +82,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   if (entries.length === 0) {
     return (
       <div className="min-h-screen bg-canvas text-fg">
-        <HistoryHeader />
+        <GlobalNav currentPage="history" />
         <main className="mx-auto max-w-5xl px-6 pb-16 pt-8">
           <EmptyState
             title="No validated traces yet"
@@ -97,7 +95,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      <HistoryHeader />
+      <GlobalNav currentPage="history" />
 
       <main className="mx-auto max-w-5xl px-6 pb-16 pt-8">
         {/* Results summary */}
@@ -156,36 +154,6 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
         )}
       </main>
     </div>
-  );
-}
-
-/* ─────────────── Header ─────────────── */
-
-function HistoryHeader() {
-  return (
-    <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
-        <ConnectWalletButton />
-        <a
-          href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm text-fg-muted transition-colors hover:text-fg"
-        >
-          <ArrowLeft className="h-4 w-4" strokeWidth={2} />
-          Dashboard
-        </a>
-        <Separator orientation="vertical" className="h-4" />
-        <a
-          href="/history"
-          className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
-        >
-          History
-        </a>
-        <Separator orientation="vertical" className="h-4" />
-        <h1 className="text-base font-semibold tracking-[var(--tracking-tight)] text-fg">
-          History
-        </h1>
-      </div>
-    </header>
   );
 }
 

@@ -35,7 +35,7 @@ import { StatsSparkline } from "@/components/ui/stats-sparkline";
 import { VerdictDistributionChart } from "@/components/ui/verdict-distribution-chart";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
+import { GlobalNav } from "@/components/global-nav";
 import {
   ShieldCheck,
   Users,
@@ -61,7 +61,7 @@ export default async function StatsPage() {
 
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      <StatsNav />
+      <GlobalNav currentPage="stats" />
 
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8">
@@ -300,81 +300,3 @@ function Tile({ title, value, subtitle, icon, tone, sparklineData }: TileProps) 
   );
 }
 
-/* ─────────────── Nav ─────────────── */
-
-function StatsNav() {
-  return (
-    <nav className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
-          <a
-            href="/"
-            className="inline-flex items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
-          >
-            <Wordmark />
-            <span>Prism</span>
-          </a>
-          <span className="text-fg-faint">/</span>
-          <span className="text-mono text-xs uppercase tracking-[var(--tracking-wide)] text-fg-muted">
-            stats
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <ConnectWalletButton />
-          <a
-            href="/history"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg"
-          >
-            History
-          </a>
-          <a
-            href="/builder-fees"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg"
-          >
-            Fees
-          </a>
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg transition-colors hover:bg-[var(--color-panel)]"
-          >
-            Dashboard
-          </a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-function Wordmark() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 17L10 3L16 17Z"
-        stroke="url(#stats-prism-gradient)"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <defs>
-        <linearGradient
-          id="stats-prism-gradient"
-          x1="3"
-          y1="3"
-          x2="17"
-          y2="17"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="var(--color-trader)" />
-          <stop offset="0.6" stopColor="var(--color-sentinel)" />
-          <stop offset="1" stopColor="var(--color-verdict-good)" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}

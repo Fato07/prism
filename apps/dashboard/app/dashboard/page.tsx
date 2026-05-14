@@ -42,8 +42,8 @@ import { VerdictHistoryStrip } from "@/components/dashboard/verdict-history-stri
 import { ConfidenceCollision } from "@/components/dashboard/confidence-collision";
 import { AdversarialDialogue } from "@/components/dashboard/adversarial-dialogue";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { GlobalNav } from "@/components/global-nav";
 import { BrandMark } from "@/components/brands/brand-mark";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { ArrowUpRight, Activity } from "lucide-react";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
@@ -172,7 +172,7 @@ export default async function DashboardPage() {
   );
 
   return (
-    <div className="relative min-h-screen bg-canvas text-fg">
+    <div className="relative min-h-screen overflow-x-hidden bg-canvas text-fg">
       {/* Ambient corner shaders */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-32 -top-32 h-96 w-96 opacity-25">
@@ -183,10 +183,40 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <DashboardHeader
-        traderAgent={traderAgent}
-        sentinelAgent={sentinelAgent}
-        validationsCount={stats.validations}
+      <GlobalNav
+        currentPage="dashboard"
+        style={{ "--dashboard-header-h": "64px" } as React.CSSProperties}
+        rightExtra={
+          <>
+            <Separator orientation="vertical" className="h-4 hidden sm:block" />
+            <span className="hidden sm:inline-flex items-center gap-1.5">
+              <AgentBadge tone="trader" label="T" agent={traderAgent} />
+              <AgentBadge tone="sentinel" label="S" agent={sentinelAgent} />
+            </span>
+            <Separator orientation="vertical" className="h-4 hidden sm:block" />
+            <AutoRefresh intervalMs={8000} />
+            <Pill tone="info" emphasis="soft" size="sm" className="hidden sm:inline-flex">
+              <BrandMark name="arc" size={12} aria-label="Arc" />
+              <LiveDot tone="online" pulse size="sm" />
+              <span className="text-mono">Arc Testnet</span>
+            </Pill>
+            <Pill tone="neutral" emphasis="outline" size="sm" className="hidden sm:inline-flex">
+              <Activity className="h-3 w-3" strokeWidth={2} />
+              <span className="text-mono">
+                {stats.validations.toLocaleString()} verdicts
+              </span>
+            </Pill>
+            <a
+              href="https://testnet.arcscan.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1 text-mono text-xs text-fg-muted transition-colors hover:text-fg"
+            >
+              arcscan
+              <ArrowUpRight className="h-3 w-3" strokeWidth={2} />
+            </a>
+          </>
+        }
       />
 
       <DashboardShell
@@ -238,81 +268,6 @@ function ZoneLabel({ eyebrow, tagline }: { eyebrow: string; tagline?: string }) 
 
 /* ─────────────── Header ─────────────── */
 
-interface DashboardHeaderProps {
-  traderAgent?: { agent_id: number; wallet_address: string } | undefined;
-  sentinelAgent?: { agent_id: number; wallet_address: string } | undefined;
-  validationsCount: number;
-}
-
-function DashboardHeader({
-  traderAgent,
-  sentinelAgent,
-  validationsCount,
-}: DashboardHeaderProps) {
-  return (
-    <header
-      className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md"
-      // Expose header height to descendants so the docked aside can offset
-      // its sticky position correctly.
-      style={{ ["--dashboard-header-h" as string]: "64px" }}
-    >
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
-        <a
-          href="/"
-          className="inline-flex shrink-0 items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
-        >
-          <Wordmark />
-          <span>Prism</span>
-        </a>
-        <span className="text-fg-faint">/</span>
-        <span className="text-mono text-xs uppercase tracking-[var(--tracking-wide)] text-fg-muted">
-          dashboard
-        </span>
-
-        <Separator orientation="vertical" className="h-4" />
-
-        <AgentBadge tone="trader" label="T" agent={traderAgent} />
-        <AgentBadge tone="sentinel" label="S" agent={sentinelAgent} />
-
-        <Separator orientation="vertical" className="h-4" />
-
-        <a
-          href="/history"
-          className="inline-flex items-center gap-1 text-mono text-xs font-medium uppercase tracking-[var(--tracking-wide)] text-fg-muted transition-colors hover:text-fg"
-        >
-          History
-        </a>
-
-        <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
-          <ConnectWalletButton />
-          <AutoRefresh intervalMs={8000} />
-          <Separator orientation="vertical" className="h-4" />
-          <Pill tone="info" emphasis="soft" size="sm">
-            <BrandMark name="arc" size={12} aria-label="Arc" />
-            <LiveDot tone="online" pulse size="sm" />
-            <span className="text-mono">Arc Testnet</span>
-          </Pill>
-          <Pill tone="neutral" emphasis="outline" size="sm">
-            <Activity className="h-3 w-3" strokeWidth={2} />
-            <span className="text-mono">
-              {validationsCount.toLocaleString()} verdicts
-            </span>
-          </Pill>
-          <a
-            href="https://testnet.arcscan.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-mono text-xs text-fg-muted transition-colors hover:text-fg"
-          >
-            arcscan
-            <ArrowUpRight className="h-3 w-3" strokeWidth={2} />
-          </a>
-        </div>
-      </div>
-    </header>
-  );
-}
-
 function AgentBadge({
   tone,
   label,
@@ -347,40 +302,6 @@ function AgentBadge({
         size="xs"
       />
     </span>
-  );
-}
-
-function Wordmark() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 17L10 3L16 17Z"
-        stroke="url(#dashboard-prism-gradient)"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <defs>
-        <linearGradient
-          id="dashboard-prism-gradient"
-          x1="3"
-          y1="3"
-          x2="17"
-          y2="17"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="var(--color-trader)" />
-          <stop offset="0.6" stopColor="var(--color-sentinel)" />
-          <stop offset="1" stopColor="var(--color-verdict-good)" />
-        </linearGradient>
-      </defs>
-    </svg>
   );
 }
 

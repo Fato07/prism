@@ -12,9 +12,7 @@
  */
 
 import type { Metadata } from "next";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
-import { Separator } from "@/components/ui/separator";
-import { ArrowLeft } from "lucide-react";
+import { GlobalNav } from "@/components/global-nav";
 import { MeWalletPanel } from "./me-wallet-panel";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +26,7 @@ export const metadata: Metadata = {
 export default function MePage() {
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      <MeHeader />
+      <GlobalNav currentPage="me" />
 
       <main className="mx-auto max-w-5xl px-6 pb-16 pt-8">
         <MeWalletPanel />
@@ -37,32 +35,3 @@ export default function MePage() {
   );
 }
 
-/* ─────────────── Header ─────────────── */
-
-function MeHeader() {
-  return (
-    <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
-        <ConnectWalletButton />
-        <a
-          href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm text-fg-muted transition-colors hover:text-fg"
-        >
-          <ArrowLeft className="h-4 w-4" strokeWidth={2} />
-          Dashboard
-        </a>
-        <Separator orientation="vertical" className="h-4" />
-        <a
-          href="/history"
-          className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
-        >
-          History
-        </a>
-        <Separator orientation="vertical" className="h-4" />
-        <h1 className="text-base font-semibold tracking-[var(--tracking-tight)] text-fg">
-          My Verdicts
-        </h1>
-      </div>
-    </header>
-  );
-}

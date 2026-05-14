@@ -24,7 +24,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
 import { FeeSparkline } from "@/components/ui/fee-sparkline";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
+import { GlobalNav } from "@/components/global-nav";
 import { BrandMark } from "@/components/brands/brand-mark";
 import { DollarSign, Activity } from "lucide-react";
 
@@ -52,7 +52,7 @@ export default async function BuilderFeesPage() {
 
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      <BuilderFeesNav agents={agents} />
+      <GlobalNav currentPage="builder-fees" />
 
       <main className="mx-auto max-w-5xl px-6 py-10">
         <div className="mb-8">
@@ -224,85 +224,6 @@ function formatTimestamp(ts: string | null): string {
   } catch {
     return ts;
   }
-}
-
-/* ─────────────── Nav ─────────────── */
-
-function BuilderFeesNav({
-  agents,
-}: {
-  agents: { agent_id: number; role: string; wallet_address: string }[];
-}) {
-  const traderAgent = agents.find((a) => a.role === "trader");
-
-  return (
-    <nav className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
-          <a
-            href="/"
-            className="inline-flex items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
-          >
-            <Wordmark />
-            <span>Prism</span>
-          </a>
-          <span className="text-fg-faint">/</span>
-          <span className="text-mono text-xs uppercase tracking-[var(--tracking-wide)] text-fg-muted">
-            builder-fees
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <ConnectWalletButton />
-          <a
-            href="/history"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg"
-          >
-            History
-          </a>
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg transition-colors hover:bg-[var(--color-panel)]"
-          >
-            Dashboard
-          </a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-function Wordmark() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 17L10 3L16 17Z"
-        stroke="url(#bf-prism-gradient)"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <defs>
-        <linearGradient
-          id="bf-prism-gradient"
-          x1="3"
-          y1="3"
-          x2="17"
-          y2="17"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="var(--color-trader)" />
-          <stop offset="0.6" stopColor="var(--color-sentinel)" />
-          <stop offset="1" stopColor="var(--color-verdict-good)" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
 }
 
 /* ─────────────── Table primitives ─────────────── */

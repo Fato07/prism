@@ -24,11 +24,10 @@ import { Hero } from "@/components/landing/hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { WhyPrism } from "@/components/landing/why-prism";
 import { LiveActivityStrip } from "@/components/landing/live-activity-strip";
+import { GlobalNav } from "@/components/global-nav";
 import { Pill } from "@/components/ui/pill";
 import { Separator } from "@/components/ui/separator";
-import { ArrowUpRight } from "lucide-react";
 import { BrandMark } from "@/components/brands/brand-mark";
-import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { BuilderFeesStrip } from "@/components/landing/builder-fees-strip";
 import { TreasuryStrip } from "@/components/landing/treasury-strip";
 
@@ -106,7 +105,7 @@ export default async function LandingPage() {
 
   return (
     <div className="min-h-screen bg-canvas text-fg">
-      <GlassNav />
+      <GlobalNav currentPage="home" />
 
       <main>
         <Hero waitlistCount={waitlistCount} />
@@ -176,108 +175,17 @@ export default async function LandingPage() {
 
 /* ─────────────────────────────────────────────────────────────────────── */
 
-function GlassNav() {
-  return (
-    <nav className="sticky top-0 z-50 border-b border-[var(--color-border)] bg-[var(--color-canvas)]/70 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5">
-        <a
-          href="/"
-          className="group inline-flex items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
-        >
-          <Wordmark />
-          <span>Prism</span>
-        </a>
-        <div className="flex items-center gap-2">
-          <ConnectWalletButton />
-          <a
-            href="/history"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg focus-ring"
-          >
-            History
-          </a>
-          <a
-            href="https://github.com/Fato07/prism"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg focus-ring"
-          >
-            <GithubMark className="h-4 w-4" />
-          </a>
-          <a
-            href="/dashboard"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-canvas-raised)] px-3.5 py-1.5 text-sm font-medium text-fg transition-colors hover:bg-[var(--color-panel)] focus-ring"
-          >
-            Live dashboard
-            <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2} />
-          </a>
-        </div>
-      </div>
-    </nav>
-  );
-}
-
-function GithubMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.339-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0022 12.017C22 6.484 17.522 2 12 2z"
-      />
-    </svg>
-  );
-}
-
-function Wordmark() {
-  // Tiny prism mark — three diverging rays, mono-color, abstract.
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 17L10 3L16 17Z"
-        stroke="url(#prism-gradient)"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <defs>
-        <linearGradient
-          id="prism-gradient"
-          x1="3"
-          y1="3"
-          x2="17"
-          y2="17"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop stopColor="var(--color-trader)" />
-          <stop offset="0.6" stopColor="var(--color-sentinel)" />
-          <stop offset="1" stopColor="var(--color-verdict-good)" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
-
-
 function Footer() {
   return (
     <footer className="px-6 py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3 text-sm text-fg-muted">
-          <Wordmark />
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M4 17L10 3L16 17Z" stroke="url(#footer-prism-gradient)" strokeWidth="1.4" strokeLinejoin="round" />
+            <defs><linearGradient id="footer-prism-gradient" x1="3" y1="3" x2="17" y2="17" gradientUnits="userSpaceOnUse">
+              <stop stopColor="var(--color-trader)" /><stop offset="0.6" stopColor="var(--color-sentinel)" /><stop offset="1" stopColor="var(--color-verdict-good)" />
+            </linearGradient></defs>
+          </svg>
           <span className="text-mono text-xs">
             First adversarial AI validator on ERC-8004
           </span>
