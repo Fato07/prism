@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import Web3Provider from "@/context/web3-provider";
+import Web3ProviderDynamic from "@/context/web3-provider-ssr";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -73,7 +73,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="bg-canvas text-fg antialiased font-sans selection:bg-trader/30 selection:text-trader-fg">
-        <Web3Provider cookies={cookies}>{children}</Web3Provider>
+        <Web3ProviderDynamic cookies={cookies}>{children}</Web3ProviderDynamic>
       </body>
     </html>
   );
