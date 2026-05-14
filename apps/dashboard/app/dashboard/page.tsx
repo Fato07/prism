@@ -273,6 +273,15 @@ function DashboardHeader({
         <AgentBadge tone="trader" label="T" agent={traderAgent} />
         <AgentBadge tone="sentinel" label="S" agent={sentinelAgent} />
 
+        <Separator orientation="vertical" className="h-4" />
+
+        <a
+          href="/history"
+          className="inline-flex items-center gap-1 text-mono text-xs font-medium uppercase tracking-[var(--tracking-wide)] text-fg-muted transition-colors hover:text-fg"
+        >
+          History
+        </a>
+
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
           <AutoRefresh intervalMs={8000} />
           <Separator orientation="vertical" className="h-4" />

@@ -364,6 +364,94 @@ export async function getTraceDetailData(
   };
 }
 
+/** History entry for the /history page cards. */
+export interface HistoryEntry {
+  trace_id: string;
+  market_name: string | null;
+  side: string | null;
+  verdict_score: number;
+  verdict_label: string | null;
+  created_at: string;
+  ipfs_cid: string | null;
+}
+
+/**
+ * Fetch paginated history entries (traces + validations joined).
+ * Returns newest first, 20 per page by default.
+ * The `page` parameter is 1-based.
+ * Market names and verdict labels are enriched from IPFS content.
+ */
+export async function getHistoryEntries(
+  page: number = 1,
+  pageSize: number = 20,
+): Promise<{ entries: HistoryEntry[]; total: number }> {
+  const client = getPool();
+  const safePageSize = Math.max(1, Math.min(100, pageSize));
+  const offset = (Math.max(1, page) - 1) * safePageSize;
+
+  const countResult = await client.query(
+    `SELECT count(*) AS total
+       FROM traces t
+       JOIN validations v ON v.trace_id = t.trace_id`,
+  );
+  const total = Number(countResult.rows[0]?.total ?? 0);
+
+  if (total === 0) {
+    return { entries: [], total: 0 };
+  }
+
+  // Single query joining traces + validations to get all DB fields at once
+  const result = await client.query(
+    `SELECT t.trace_id,
+            t.market_id,
+            t.ipfs_cid,
+            t.created_at::text AS created_at,
+            v.verdict_score,
+            v.response_uri
+       FROM traces t
+       JOIN validations v ON v.trace_id = t.trace_id
+      ORDER BY t.created_at DESC
+      LIMIT $1 OFFSET $2`,
+    [safePageSize, offset],
+  );
+
+  const rows = result.rows as Record<string, unknown>[];
+
+  // Fetch IPFS content for market names and verdict labels in parallel
+  const entries = await Promise.all(
+    rows.map(async (row) => {
+      const cid = String(row.ipfs_cid ?? "");
+      const responseUri = String(row.response_uri ?? "");
+      const verdictCid = extractCid(responseUri) ?? (responseUri || null);
+
+      const [traceContent, verdictContent] = await Promise.all([
+        cid ? fetchTraceFromIPFS(cid) : Promise.resolve(null),
+        verdictCid ? fetchVerdictFromIPFS(verdictCid) : Promise.resolve(null),
+      ]);
+
+      const marketName =
+        (traceContent as Record<string, unknown> | null)?.market_question as string | null
+        ?? String(row.market_id ?? "");
+      const side =
+        (traceContent as Record<string, unknown> | null)?.action as string | null;
+      const verdictLabel =
+        (verdictContent as Record<string, unknown> | null)?.verdict_label as string | null;
+
+      return {
+        trace_id: String(row.trace_id),
+        market_name: marketName,
+        side,
+        verdict_score: Number(row.verdict_score),
+        verdict_label: verdictLabel,
+        created_at: String(row.created_at),
+        ipfs_cid: cid || null,
+      };
+    }),
+  );
+
+  return { entries, total };
+}
+
 /** Close the pool (for testing / shutdown). */
 export async function closePool(): Promise<void> {
   if (pool) {

@@ -210,6 +210,13 @@ export default async function TraceDetailPage({ params }: PageProps) {
             Dashboard
           </a>
           <Separator orientation="vertical" className="h-4" />
+          <a
+            href="/history"
+            className="inline-flex items-center gap-1 text-sm text-fg-muted transition-colors hover:text-fg"
+          >
+            History
+          </a>
+          <Separator orientation="vertical" className="h-4" />
 
           {/* Market name */}
           <h1 className="max-w-lg truncate text-base font-semibold tracking-[var(--tracking-tight)] text-fg">

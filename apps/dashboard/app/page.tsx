@@ -182,6 +182,12 @@ function GlassNav() {
         </a>
         <div className="flex items-center gap-2">
           <a
+            href="/history"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg focus-ring"
+          >
+            History
+          </a>
+          <a
             href="https://github.com/Fato07/prism"
             target="_blank"
             rel="noopener noreferrer"
