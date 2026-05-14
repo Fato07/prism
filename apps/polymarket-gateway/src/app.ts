@@ -90,12 +90,12 @@ export function createApp(): Hono {
       // Internal IDs like "0xbtc_150k_2026" are not valid ERC-1155 token IDs
       // and will cause the SDK to crash with "Cannot read properties of
       // undefined (reading 'toString')". We resolve via market data lookup.
-      let resolvedTokenId = tokenId;
+      let resolvedTokenId: string | undefined = tokenId;
       if (env.PRISM_TRADE_MODE === "live" && !tokenId) {
-        resolvedTokenId = await resolveTokenId(
+        resolvedTokenId = (await resolveTokenId(
           String(marketId),
           marketQuestion ? String(marketQuestion) : undefined,
-        );
+        )) ?? undefined;
         if (!resolvedTokenId) {
           logger.error(
             { marketId, marketQuestion },
@@ -122,7 +122,7 @@ export function createApp(): Hono {
         marketId: String(marketId),
         side: side as TradeSide,
         sizeUsdc,
-        tokenId: resolvedTokenId,
+        tokenId: resolvedTokenId ?? undefined,
         priceLimit,
       });
 
