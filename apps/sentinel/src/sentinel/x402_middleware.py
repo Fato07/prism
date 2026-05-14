@@ -230,10 +230,14 @@ async def _settle_payment(
     payment_token: str,
     *,
     request_context: dict[str, Any],
-) -> tuple[bool, str | None, str | None]:
+) -> tuple[bool, str | None, str | None, str | None]:
     """Settle the payment on Base via the configured x402 facilitator.
 
-    Returns (success, tx_hash, error_code).
+    Returns (success, tx_hash, error_code, payer).
+
+    The ``payer`` is the on-chain address that funded the settlement,
+    extracted from the facilitator's success response.  It is ``None``
+    in mock / error paths.
 
     Falls back to a deterministic mock tx hash when no facilitator URL or
     recipient address is configured. The mock path is intentional for
@@ -248,7 +252,7 @@ async def _settle_payment(
             "0x" + hashlib.sha256(f"x402-mock-settlement:{payment_token}".encode()).hexdigest()
         )
         logger.info("x402_settled_mock", tx_hash=mock_hash, **request_context)
-        return True, mock_hash, None
+        return True, mock_hash, None, None
 
     # The X-PAYMENT header value is base64-encoded JSON of an x402 v2
     # PaymentPayload. The facilitator's /settle endpoint expects the *decoded*
@@ -264,7 +268,7 @@ async def _settle_payment(
             error=str(exc),
             **request_context,
         )
-        return False, None, "invalid_payment_token"
+        return False, None, "invalid_payment_token", None
 
     net = _resolve_network()
     # USDC has 6 decimals on every EVM chain; convert decimal string to smallest unit.
@@ -304,7 +308,7 @@ async def _settle_payment(
                     body=resp.text[:400],
                     **request_context,
                 )
-                return False, None, "settlement_failed"
+                return False, None, "settlement_failed", None
             data = resp.json()
             if not data.get("success"):
                 # Log the structured error so we can debug rejection reasons
@@ -317,21 +321,23 @@ async def _settle_payment(
                     facilitator_network=data.get("network"),
                     **request_context,
                 )
-                return False, None, "settlement_failed"
+                return False, None, "settlement_failed", None
             tx_hash = (
                 data.get("transaction") or data.get("txHash") or data.get("hash")
             )
+            payer = data.get("payer")
             logger.info(
                 "x402_settlement_succeeded",
                 tx_hash=tx_hash,
+                payer=payer,
                 **request_context,
             )
-            return True, tx_hash, None
+            return True, tx_hash, None, payer
     except httpx.TimeoutException:
-        return False, None, "payment_settlement_timeout"
+        return False, None, "payment_settlement_timeout", None
     except httpx.HTTPError as exc:
         logger.error("x402_settlement_http_error", error=str(exc))
-        return False, None, "settlement_failed"
+        return False, None, "settlement_failed", None
 
 
 def _bypass_via_header(request: Request) -> bool:
@@ -540,11 +546,13 @@ async def x402_middleware(
 
     if is_x402_bypass_enabled():
         request.state.x402_payment_tx_hash = None
+        request.state.x402_payer_address = None
         return await call_next(request)
 
     if _bypass_via_header(request):
         logger.info("x402_internal_bypass", path=request.url.path)
         request.state.x402_payment_tx_hash = None
+        request.state.x402_payer_address = None
         return await call_next(request)
 
     payment_token = request.headers.get(X402_PAYMENT_HEADER, "").strip()
@@ -581,7 +589,7 @@ async def x402_middleware(
 
     timeout_s = get_x402_settlement_timeout_s()
     try:
-        success, tx_hash, settle_error = await asyncio.wait_for(
+        success, tx_hash, settle_error, payer = await asyncio.wait_for(
             _settle_payment(
                 payment_token,
                 request_context={"path": request.url.path},
@@ -628,5 +636,11 @@ async def x402_middleware(
         _consumed_payment_tokens.add(payment_token)
 
     request.state.x402_payment_tx_hash = tx_hash
-    logger.info("x402_payment_accepted", path=request.url.path, tx_hash=tx_hash)
+    request.state.x402_payer_address = payer
+    logger.info(
+        "x402_payment_accepted",
+        path=request.url.path,
+        tx_hash=tx_hash,
+        payer=payer,
+    )
     return await call_next(request)

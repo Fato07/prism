@@ -71,10 +71,22 @@ def update_agent_registration_tx_hash(tx_hash: str, dsn: str | None = None) -> N
     logger.info("agent_registration_tx_hash_updated", agent_id=_agent_id(), tx_hash=tx_hash)
 
 
-def persist_verdict(verdict: SentinelVerdict, dsn: str | None = None) -> None:
+def persist_verdict(
+    verdict: SentinelVerdict,
+    *,
+    requester_address: str | None = None,
+    dsn: str | None = None,
+) -> None:
     """Persist a verdict to the Neon ``validations`` table.
 
     Must be called after IPFS pinning succeeds (per VAL-SENTINEL-004).
+
+    Args:
+        verdict: The sentinel verdict to persist.
+        requester_address: The on-chain address of the x402 payer, captured
+            from the facilitator settlement response.  ``None`` when the
+            request came through the internal bypass channel.
+        dsn: Optional database connection string override.
     """
     dsn = dsn or _dsn()
     agent_id = _agent_id()
@@ -86,20 +98,27 @@ def persist_verdict(verdict: SentinelVerdict, dsn: str | None = None) -> None:
     except ValueError:
         request_hash = verdict.request_hash.encode("utf-8") if verdict.request_hash else b""
 
+    # Normalise requester_address to lowercase so DB lookups are
+    # case-insensitive (EIP-55 checksums vary but the DB stores only one).
+    norm_address: str | None = requester_address.lower() if requester_address else None
+
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             "INSERT INTO validations "
-            "(request_hash, trace_id, sentinel_agent_id, verdict_score, response_uri) "
-            "VALUES (%s, %s, %s, %s, %s) "
+            "(request_hash, trace_id, sentinel_agent_id, verdict_score, response_uri, "
+            "requester_address) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
             "ON CONFLICT (request_hash) DO UPDATE "
             "SET verdict_score = EXCLUDED.verdict_score, "
-            "response_uri = EXCLUDED.response_uri",
+            "response_uri = EXCLUDED.response_uri, "
+            "requester_address = COALESCE(validations.requester_address, EXCLUDED.requester_address)",
             (
                 request_hash,
                 verdict.trace_id,
                 agent_id,
                 verdict.verdict_score,
                 "",  # response_uri filled by caller after IPFS pin
+                norm_address,
             ),
         )
         conn.commit()
@@ -108,6 +127,7 @@ def persist_verdict(verdict: SentinelVerdict, dsn: str | None = None) -> None:
         trace_id=verdict.trace_id,
         verdict_score=verdict.verdict_score,
         verdict_label=verdict.verdict_label,
+        requester_address=norm_address,
     )
 
 

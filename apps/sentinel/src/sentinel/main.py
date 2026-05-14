@@ -172,8 +172,11 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
     """
     logger.info("validate_received", trace_uri=body.trace_uri)
 
-    # Pull the x402 settlement tx hash that the middleware stashed on state.
+    # Pull the x402 settlement tx hash and payer address that the middleware
+    # stashed on state.  Both are None when the request bypassed payment
+    # (internal trader→sentinel channel).
     payment_tx_hash: str | None = getattr(http_request.state, "x402_payment_tx_hash", None)
+    requester_address: str | None = getattr(http_request.state, "x402_payer_address", None)
 
     # Compute request_hash from the trace_uri and trace_hash
     request_hash = hashlib.sha256(f"{body.trace_uri}:{body.trace_hash}".encode()).hexdigest()
@@ -230,7 +233,7 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
 
     # Persist to Neon DB (only after successful IPFS pin per VAL-SENTINEL-004)
     try:
-        persist_verdict(verdict)
+        persist_verdict(verdict, requester_address=requester_address)
         update_verdict_response_uri(request_hash, f"ipfs://{ipfs_cid}")
     except Exception as exc:
         logger.error("db_persist_failed", error=str(exc))
