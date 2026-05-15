@@ -29,21 +29,35 @@ if (!_rawProjectId) {
 export const projectId: string = _rawProjectId;
 
 /**
- * Arc Testnet with proxy-aware RPC URL.
+ * Absolute Arc Testnet RPC URL.
  *
- * Server (SSR) uses the direct Arc RPC URL — no CORS in Node.js.
- * Browser uses the same-origin proxy (/api/rpc/arc) to bypass
- * CORS restrictions on the Arc Testnet RPC endpoint.
+ * This MUST be an absolute, publicly accessible HTTPS URL because
+ * MetaMask uses it when calling wallet_addEthereumChain for custom
+ * chains. A relative URL like /api/rpc/arc is NOT resolvable by
+ * MetaMask's extension background process and causes silent chain-
+ * addition failures (the root cause of the MetaMask auth bug).
+ *
+ * Server and client both use the absolute URL in the chain definition.
+ * CORS is handled separately: wagmi's HTTP transport uses the same-
+ * origin proxy (/api/rpc/arc) to bypass CORS, while MetaMask calls
+ * the RPC from its own background context (no CORS restriction).
  */
-const arcRpcUrl =
-  typeof window === "undefined"
-    ? (process.env.ARC_RPC_URL ?? process.env.NEXT_PUBLIC_ARC_RPC_URL!)
-    : "/api/rpc/arc";
+const arcPublicRpcUrl =
+  process.env.ARC_RPC_URL ?? process.env.NEXT_PUBLIC_ARC_RPC_URL!;
+
+/**
+ * Same-origin proxy URL for wagmi's browser-side HTTP transport.
+ * Bypasses CORS restrictions on the Arc Testnet RPC endpoint.
+ * Only used in the WagmiAdapter transports config, NOT in the
+ * chain definition's rpcUrls (which MetaMask reads).
+ */
+const arcProxyRpcUrl =
+  typeof window === "undefined" ? arcPublicRpcUrl : "/api/rpc/arc";
 
 export const arcTestnet = defineChain({
   ...arcTestnetBase,
   rpcUrls: {
-    default: { http: [arcRpcUrl] },
+    default: { http: [arcPublicRpcUrl] },
   },
 });
 
@@ -67,7 +81,10 @@ export const wagmiAdapter = new WagmiAdapter({
   projectId,
   networks,
   transports: {
-    [arcTestnet.id]: http(arcRpcUrl),
+    // Arc Testnet uses the CORS-bypassing proxy on the browser,
+    // or the direct URL on the server. MetaMask's wallet_addEthereumChain
+    // reads rpcUrls from the chain definition (absolute URL), NOT this transport.
+    [arcTestnet.id]: http(arcProxyRpcUrl),
   },
 });
 

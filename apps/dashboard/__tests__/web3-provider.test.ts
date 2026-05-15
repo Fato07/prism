@@ -136,6 +136,7 @@ describe("createAppKit features configuration", () => {
       projectId: "test-project-id-1234567890abcdef",
       wagmiAdapter: { wagmiConfig: {} },
       networks: [{ id: 5042002, name: "Arc Testnet" }],
+      arcTestnet: { id: 5042002, name: "Arc Testnet" },
       config: {},
     }));
 

@@ -15,8 +15,10 @@
  */
 
 import { wagmiAdapter, projectId, networks } from "@/config";
+import { baseSepolia } from "@reown/appkit/networks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
+import { ArcChainGuard } from "@/components/arc-chain-guard";
 import type { ReactNode } from "react";
 import { cookieToInitialState, WagmiProvider } from "wagmi";
 import type { Config } from "wagmi";
@@ -35,11 +37,23 @@ const metadata = {
 // ── Initialize AppKit modal (singleton side-effect) ──────────────────
 // createAppKit must be called inside a client component file.
 // It registers the <w3m-button> / <appkit-button> custom elements globally.
+//
+// defaultNetwork is set to baseSepolia (a well-known chain) so that
+// MetaMask can connect without immediately rejecting the session.
+// Arc Testnet is a custom chain (ID 5042002) that MetaMask doesn't
+// recognize natively. After connection, wagmi's switchChain triggers
+// wallet_addEthereumChain with the absolute RPC URL from the chain
+// definition, prompting MetaMask to add Arc Testnet.
+//
+// allowUnsupportedChain prevents AppKit from blocking interaction
+// when the wallet is on a chain not in the `networks` array (e.g.,
+// Ethereum Mainnet after a fresh MetaMask install).
 createAppKit({
   adapters: [wagmiAdapter],
   projectId,
   networks,
-  defaultNetwork: networks[0],
+  defaultNetwork: baseSepolia,
+  allowUnsupportedChain: true,
   metadata,
   features: {
     analytics: true,
@@ -68,7 +82,10 @@ function Web3Provider({ children, cookies }: Web3ProviderProps) {
       config={wagmiAdapter.wagmiConfig as Config}
       initialState={initialState}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <ArcChainGuard />
+        {children}
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }
