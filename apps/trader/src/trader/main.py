@@ -436,8 +436,6 @@ async def _run_pipeline_internal() -> PipelineResponse:
         # Estimate residual: wallet cap minus trade size (if trade executed)
         # or full cap minus zero (if trade skipped). This is a conservative
         # approximation — a real balance query would be more precise.
-        from trader.trading_r1 import WALLET_BALANCE_CAP
-
         trade_executed = (
             validation_status == "success"
             and validation is not None
