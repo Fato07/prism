@@ -33,11 +33,8 @@ RUN mkdir -p /app/apps/dashboard/public
 # Build from the dashboard directory (outputFileTracingRoot = monorepo root)
 WORKDIR /app/apps/dashboard
 # NEXT_PUBLIC_* vars are client-side (non-secret) and must be baked into the client JS at build time.
-# These are inlined by Next.js during next build and cannot be overridden at runtime.
-ENV NEXT_PUBLIC_REOWN_PROJECT_ID=0169b238a503068cc520097200b51458
-ENV NEXT_PUBLIC_ARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED
-ENV NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs
-ENV NEXT_PUBLIC_SITE_URL=https://prism-dashboard-production-e6e3.up.railway.app
+# Turbopack does not inline Docker ENV into the client bundle — .env.local is the reliable path.
+RUN printf 'NEXT_PUBLIC_REOWN_PROJECT_ID=0169b238a503068cc520097200b51458\nNEXT_PUBLIC_ARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED\nNEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs\nNEXT_PUBLIC_SITE_URL=https://prism-dashboard-production-e6e3.up.railway.app\n' > .env.local
 RUN pnpm build
 
 # --- Runner ---
