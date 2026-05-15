@@ -3,12 +3,6 @@
 # so that pnpm workspace packages (@prism/schemas, @prism/arc-contracts) resolve.
 
 FROM node:22-slim AS base
-# NEXT_PUBLIC_* vars must be available at build time for Next.js client bundle inlining.
-# Railway auto-passes these as build args from the service's env vars.
-ARG NEXT_PUBLIC_REOWN_PROJECT_ID=""
-ARG NEXT_PUBLIC_ARC_RPC_URL=""
-ARG NEXT_PUBLIC_IPFS_GATEWAY=""
-ARG NEXT_PUBLIC_SITE_URL=""
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
@@ -38,11 +32,12 @@ COPY apps/dashboard/ apps/dashboard/
 RUN mkdir -p /app/apps/dashboard/public
 # Build from the dashboard directory (outputFileTracingRoot = monorepo root)
 WORKDIR /app/apps/dashboard
-# Expose NEXT_PUBLIC vars to the build so Next.js inlines them into client JS
-ENV NEXT_PUBLIC_REOWN_PROJECT_ID=$NEXT_PUBLIC_REOWN_PROJECT_ID
-ENV NEXT_PUBLIC_ARC_RPC_URL=$NEXT_PUBLIC_ARC_RPC_URL
-ENV NEXT_PUBLIC_IPFS_GATEWAY=$NEXT_PUBLIC_IPFS_GATEWAY
-ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+# NEXT_PUBLIC_* vars are client-side (non-secret) and must be baked into the client JS at build time.
+# These are inlined by Next.js during next build and cannot be overridden at runtime.
+ENV NEXT_PUBLIC_REOWN_PROJECT_ID=0169b238a503068cc520097200b51458
+ENV NEXT_PUBLIC_ARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED
+ENV NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs
+ENV NEXT_PUBLIC_SITE_URL=https://prism-dashboard-production-e6e3.up.railway.app
 RUN pnpm build
 
 # --- Runner ---
