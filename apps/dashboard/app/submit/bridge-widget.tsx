@@ -84,10 +84,104 @@ const BRIDGE_AMOUNT = "0.05";
 
 type BridgePhase = "idle" | "bridging" | "success" | "error";
 
+type BridgeSourceStatus =
+  | { kind: "supported"; sourceChain: BridgeChain; sourceChainName: string }
+  | { kind: "same-destination"; sourceChainName: string }
+  | { kind: "unsupported"; sourceChainName: string };
+
+/** Map an EVM chain ID to Circle App Kit's BridgeChain enum. */
+export function chainIdToBridgeChain(chainId: number | undefined): BridgeChain | null {
+  switch (chainId) {
+    case 84532:
+      return BridgeChain.Base_Sepolia;
+    case 8453:
+      return BridgeChain.Base;
+    case 5042002:
+      return BridgeChain.Arc_Testnet;
+    case 11155111:
+      return BridgeChain.Ethereum_Sepolia;
+    case 421614:
+      return BridgeChain.Arbitrum_Sepolia;
+    case 43113:
+      return BridgeChain.Avalanche_Fuji;
+    case 11155420:
+      return BridgeChain.Optimism_Sepolia;
+    default:
+      return null;
+  }
+}
+
+/** Human-readable name for supported source/destination chains. */
+function bridgeChainName(chain: BridgeChain | null): string {
+  switch (chain) {
+    case BridgeChain.Base_Sepolia:
+      return "Base Sepolia";
+    case BridgeChain.Base:
+      return "Base";
+    case BridgeChain.Arc_Testnet:
+      return "Arc Testnet";
+    case BridgeChain.Ethereum_Sepolia:
+      return "Ethereum Sepolia";
+    case BridgeChain.Arbitrum_Sepolia:
+      return "Arbitrum Sepolia";
+    case BridgeChain.Avalanche_Fuji:
+      return "Avalanche Fuji";
+    case BridgeChain.Optimism_Sepolia:
+      return "Optimism Sepolia";
+    default:
+      return "this network";
+  }
+}
+
+/** True for testnet bridge routes that can plausibly fund testnet x402. */
+function isTestnetBridgeSource(chain: BridgeChain): boolean {
+  return [
+    BridgeChain.Arc_Testnet,
+    BridgeChain.Base_Sepolia,
+    BridgeChain.Ethereum_Sepolia,
+    BridgeChain.Arbitrum_Sepolia,
+    BridgeChain.Avalanche_Fuji,
+    BridgeChain.Optimism_Sepolia,
+  ].includes(chain);
+}
+
+/**
+ * Decide whether the current wallet network can be used as a source for
+ * the destination x402 payment chain.
+ *
+ * Critical UX guard: never call Circle App Kit with from === to. Circle
+ * correctly rejects Base Sepolia → Base Sepolia with "route not supported";
+ * in that case the right action is funding the destination chain directly.
+ */
+export function getBridgeSourceStatus(
+  sourceChainId: number | undefined,
+  destinationChain: BridgeChain,
+): BridgeSourceStatus {
+  const sourceChain = chainIdToBridgeChain(sourceChainId);
+  const sourceChainName = bridgeChainName(sourceChain);
+
+  if (!sourceChain) {
+    return { kind: "unsupported", sourceChainName };
+  }
+
+  if (sourceChain === destinationChain) {
+    return { kind: "same-destination", sourceChainName };
+  }
+
+  // Public x402 settles on Base Sepolia today. Do not suggest mainnet→testnet
+  // bridging (e.g. Base → Base Sepolia); Circle/AppKit won't support that and
+  // it confuses users who simply need testnet USDC from a faucet.
+  if (destinationChain === BridgeChain.Base_Sepolia && !isTestnetBridgeSource(sourceChain)) {
+    return { kind: "unsupported", sourceChainName };
+  }
+
+  return { kind: "supported", sourceChain, sourceChainName };
+}
+
 /* ─────────────── Component ─────────────── */
 
 export function BridgeWidget() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const { data: walletClient } = useWalletClient();
 
   const destinationChainId = getDestinationChainId();
@@ -131,30 +225,19 @@ export function BridgeWidget() {
       const kit = new AppKit();
 
       const destinationChain = getDestinationChain();
-      // Source chain = whatever chain the wallet is currently on
-      const sourceChainId = walletClient.chain?.id;
-      // Map the wallet's current chain ID to a BridgeChain identifier
-      let sourceChain: BridgeChain;
-      switch (sourceChainId) {
-        case 84532:
-          sourceChain = BridgeChain.Base_Sepolia;
-          break;
-        case 8453:
-          sourceChain = BridgeChain.Base;
-          break;
-        case 5042002:
-          sourceChain = BridgeChain.Arc_Testnet;
-          break;
-        case 11155111:
-          sourceChain = BridgeChain.Ethereum_Sepolia;
-          break;
-        case 421614:
-          sourceChain = BridgeChain.Arbitrum_Sepolia;
-          break;
-        default:
-          // Fallback to Base Sepolia as a reasonable source chain
-          sourceChain = BridgeChain.Base_Sepolia;
+      // Source chain = whatever chain the wallet is currently on. Prefer
+      // wagmi's reactive account chainId; walletClient.chain can be undefined
+      // for WalletConnect/Reown sessions and previously fell back to Base
+      // Sepolia, causing invalid Base Sepolia → Base Sepolia bridge attempts.
+      const sourceStatus = getBridgeSourceStatus(chainId ?? walletClient.chain?.id, destinationChain);
+      if (sourceStatus.kind !== "supported") {
+        throw new Error(
+          sourceStatus.kind === "same-destination"
+            ? `You're already on ${bridgeChainName(destinationChain)}. Add testnet USDC directly instead of bridging.`
+            : `${sourceStatus.sourceChainName} cannot bridge into ${bridgeChainName(destinationChain)} for this testnet payment flow.`,
+        );
       }
+      const sourceChain = sourceStatus.sourceChain;
 
       const result = await kit.bridge({
         from: { adapter, chain: sourceChain },
@@ -183,7 +266,7 @@ export function BridgeWidget() {
       setBridgeError(message);
       setPhase("error");
     }
-  }, [walletClient, address, refetch]);
+  }, [walletClient, address, chainId, refetch]);
 
   /* ── Determine visibility ───────────────────────────────────── */
 
@@ -205,8 +288,10 @@ export function BridgeWidget() {
 
   /* ── Derive display names ─────────────────────────────────────── */
 
-  const destinationChainName =
-    getDestinationChain() === BridgeChain.Arc_Testnet ? "Arc Testnet" : "Base Sepolia";
+  const destinationChain = getDestinationChain();
+  const destinationChainName = bridgeChainName(destinationChain);
+  const sourceStatus = getBridgeSourceStatus(chainId ?? walletClient?.chain?.id, destinationChain);
+  const canBridge = sourceStatus.kind === "supported";
 
   /* ── Render ─────────────────────────────────────────────────── */
 
@@ -224,13 +309,17 @@ export function BridgeWidget() {
                 Insufficient USDC on {destinationChainName}
               </h3>
               <p className="text-xs text-fg-faint">
-                Bridge {BRIDGE_AMOUNT} USDC to proceed with validation
+                {canBridge
+                  ? `Bridge ${BRIDGE_AMOUNT} USDC to proceed with validation`
+                  : sourceStatus.kind === "same-destination"
+                    ? "You are already on the payment chain. Add testnet USDC directly, then refresh."
+                    : `${sourceStatus.sourceChainName} cannot fund this testnet payment route. Switch to a supported testnet source or use the faucet.`}
               </p>
             </div>
           </div>
 
-          {/* Bridge button */}
-          {phase === "idle" && (
+          {/* Bridge button / same-chain funding guidance */}
+          {phase === "idle" && canBridge && (
             <button
               type="button"
               onClick={handleBridge}
@@ -243,8 +332,35 @@ export function BridgeWidget() {
               `}
             >
               <ArrowRightLeft className="h-3.5 w-3.5" strokeWidth={2} />
-              Bridge {BRIDGE_AMOUNT} USDC to {destinationChainName}
+              Bridge {BRIDGE_AMOUNT} USDC from {sourceStatus.sourceChainName} to {destinationChainName}
             </button>
+          )}
+
+          {phase === "idle" && !canBridge && (
+            <div className="flex flex-col gap-2 rounded-lg border border-[var(--border)] bg-elevated/40 px-3 py-2">
+              <p className="text-xs text-fg-muted">
+                {sourceStatus.kind === "same-destination"
+                  ? `Because your wallet is already on ${destinationChainName}, there is no cross-chain route to run. Fund ${destinationChainName} USDC directly, then refresh this balance check.`
+                  : `This payment flow settles on ${destinationChainName}. ${sourceStatus.sourceChainName} is not a supported source for that testnet route.`}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href="https://faucet.circle.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-[36px] items-center justify-center rounded-lg bg-[var(--color-trader)] px-3 text-xs font-medium text-canvas hover:bg-[var(--color-trader)]/90"
+                >
+                  Open Circle faucet
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void refetch()}
+                  className="inline-flex min-h-[36px] items-center justify-center rounded-lg border border-[var(--border)] px-3 text-xs font-medium text-fg-muted transition-colors hover:text-fg"
+                >
+                  Refresh balance
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Bridging in progress */}

@@ -12,6 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeAll } from "vitest";
+import { BridgeChain } from "@circle-fin/app-kit";
+import { chainIdToBridgeChain, getBridgeSourceStatus } from "../app/submit/bridge-widget";
 
 /* ─────────────── VAL-BRIDGE-001: @circle-fin/app-kit installed ── */
 
@@ -101,6 +103,33 @@ describe("VAL-BRIDGE-002: Bridge widget mounts only when USDC < 0.01 on target c
 
 /* ─────────────── VAL-BRIDGE-003: Destination chain defaults ──── */
 
+describe("VAL-BRIDGE-002b: Bridge source route guards", () => {
+  it("maps Base Sepolia chainId to Circle's Base_Sepolia bridge enum", () => {
+    expect(chainIdToBridgeChain(84532)).toBe(BridgeChain.Base_Sepolia);
+  });
+
+  it("marks Base Sepolia → Base Sepolia as same-destination, not a bridgeable route", () => {
+    const status = getBridgeSourceStatus(84532, BridgeChain.Base_Sepolia);
+    expect(status.kind).toBe("same-destination");
+  });
+
+  it("does not treat Base mainnet as a supported source for Base Sepolia testnet payments", () => {
+    const status = getBridgeSourceStatus(8453, BridgeChain.Base_Sepolia);
+    expect(status.kind).toBe("unsupported");
+    expect(status.sourceChainName).toBe("Base");
+  });
+
+  it("allows supported testnet sources to bridge into Base Sepolia", () => {
+    const status = getBridgeSourceStatus(421614, BridgeChain.Base_Sepolia);
+    expect(status.kind).toBe("supported");
+    if (status.kind === "supported") {
+      expect(status.sourceChain).toBe(BridgeChain.Arbitrum_Sepolia);
+    }
+  });
+});
+
+/* ─────────────── VAL-BRIDGE-003: Destination chain defaults ──── */
+
 describe("VAL-BRIDGE-003: Bridge widget defaults destination to the active x402 settlement chain", () => {
   it("defaults to Base_Sepolia when X402_FACILITATOR_MODE is public or unset", () => {
     const fs = require("fs");
@@ -118,6 +147,16 @@ describe("VAL-BRIDGE-003: Bridge widget defaults destination to the active x402 
     const content = fs.readFileSync(widgetPath, "utf-8");
     expect(content).toContain("BridgeChain.Arc_Testnet");
     expect(content).toContain('"circle"');
+  });
+
+  it("guards against same-chain bridge attempts before calling AppKit", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const widgetPath = path.resolve(__dirname, "../app/submit/bridge-widget.tsx");
+    const content = fs.readFileSync(widgetPath, "utf-8");
+    expect(content).toContain("same-destination");
+    expect(content).toContain("from === to");
+    expect(content).toContain("Open Circle faucet");
   });
 
   it("uses the AppKit bridge method with proper from/to structure", () => {
