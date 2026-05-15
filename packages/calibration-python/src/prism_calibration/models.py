@@ -39,6 +39,8 @@ class CorpusProvenance(BaseModel):
         """Require parent metadata for mutated rows."""
         if self.source_type == "mutated" and not self.parent_row_id:
             raise ValueError("parent_row_id is required when source_type is mutated")
+        if self.source_type == "mutated" and not self.mutation_type:
+            raise ValueError("mutation_type is required when source_type is mutated")
         return self
 
 

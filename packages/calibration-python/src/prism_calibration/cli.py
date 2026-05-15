@@ -17,11 +17,19 @@ from prism_calibration.layout import (
     bootstrap_corpus_root,
     layout_payload,
 )
+from prism_calibration.lineage import (
+    LineageValidationError,
+    inspect_row_summary,
+    load_lineage_context,
+    load_row_reference,
+    row_index,
+    validate_lineage_integrity,
+    validate_mutation_lineage,
+)
+from prism_calibration.splits import build_deterministic_splits
 from prism_calibration.validation import (
     RowLoadError,
     format_validation_errors,
-    load_row,
-    row_summary,
 )
 
 CommandHandler = Callable[[argparse.Namespace], int]
@@ -67,7 +75,23 @@ def _handle_build(args: argparse.Namespace) -> int:
     root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
     seed = _namespace_int(args, "seed")
     layout = bootstrap_corpus_root(root)
-    _write_json(layout_payload(layout, seed=seed))
+    try:
+        split_manifest = build_deterministic_splits(layout.root, seed=seed)
+    except RowLoadError as error:
+        _write_error(str(error))
+        return 1
+    except ValidationError as error:
+        _write_error("Schema validation failed while building deterministic splits:")
+        for message in format_validation_errors(error):
+            _write_error(f"- {message}")
+        return 1
+    except LineageValidationError as error:
+        _write_error(str(error))
+        return 1
+
+    payload = layout_payload(layout, seed=seed)
+    payload["split_manifest"] = split_manifest
+    _write_json(payload)
     return 0
 
 
@@ -93,11 +117,28 @@ def _handle_validate(args: argparse.Namespace) -> int:
                 + ", ".join(str(path) for path in missing)
             )
             return 1
+        try:
+            rows = load_lineage_context(root)
+            validate_lineage_integrity(rows)
+        except RowLoadError as error:
+            _write_error(str(error))
+            return 1
+        except ValidationError as error:
+            _write_error("Schema validation failed for local calibration rows:")
+            for message in format_validation_errors(error):
+                _write_error(f"- {message}")
+            return 1
+        except LineageValidationError as error:
+            _write_error(str(error))
+            return 1
         _write_json({"authority": "local", "root": str(layout.root), "status": "valid"})
         return 0
 
     try:
-        row = load_row(row_path)
+        loaded = load_row_reference(row_path, root)
+        if loaded.row.provenance.source_type == "mutated":
+            context = load_lineage_context(root, loaded.path)
+            validate_mutation_lineage(loaded, row_index(context))
     except RowLoadError as error:
         _write_error(str(error))
         return 1
@@ -106,8 +147,11 @@ def _handle_validate(args: argparse.Namespace) -> int:
         for message in format_validation_errors(error):
             _write_error(f"- {message}")
         return 1
+    except LineageValidationError as error:
+        _write_error(str(error))
+        return 1
 
-    _write_json({"row_id": row.row_id, "status": "valid"})
+    _write_json({"row_id": loaded.row.row_id, "status": "valid"})
     return 0
 
 
@@ -128,7 +172,9 @@ def _handle_inspect(args: argparse.Namespace) -> int:
         return 0
 
     try:
-        row = load_row(row_path)
+        loaded = load_row_reference(row_path, root)
+        context = load_lineage_context(root, loaded.path)
+        summary = inspect_row_summary(loaded, context)
     except RowLoadError as error:
         _write_error(str(error))
         return 1
@@ -137,8 +183,11 @@ def _handle_inspect(args: argparse.Namespace) -> int:
         for message in format_validation_errors(error):
             _write_error(f"- {message}")
         return 1
+    except LineageValidationError as error:
+        _write_error(str(error))
+        return 1
 
-    _write_json(row_summary(row))
+    _write_json(summary)
     return 0
 
 

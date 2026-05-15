@@ -1,0 +1,63 @@
+{
+  "provenance": {
+    "content_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "created_at": "2026-05-15T12:00:00Z",
+    "lineage_id": "lineage-sample-row-001",
+    "mutation_type": "weakened-evidence",
+    "parent_row_id": "sample-row-001",
+    "run_id": "sample-bootstrap-20260515",
+    "source_ref": "data/calibration/sample/rows/sample-mutated-row-001.json",
+    "source_type": "mutated"
+  },
+  "review": {
+    "failure_tags": [
+      "weak-evidence"
+    ],
+    "notes": "Publishable mutated fixture showing local parent lineage inspection.",
+    "rubric_version": "prism-calibration-v1",
+    "status": "unreviewed"
+  },
+  "row_id": "sample-mutated-row-001",
+  "schema_version": "1.0",
+  "split": {
+    "assigned_at": "2026-05-15T12:00:00Z",
+    "name": "sample",
+    "policy": "publishable sample mutation fixture",
+    "seed": 0
+  },
+  "trace": {
+    "action": "BUY",
+    "agent_id": 4140,
+    "created_at": "2026-05-15T12:00:00Z",
+    "evidence": [
+      {
+        "claim": "The sample mutation weakens the original evidence while preserving trace shape.",
+        "confidence": 0.48,
+        "source": "local-fixture",
+        "timestamp": "2026-05-15T12:00:00Z"
+      }
+    ],
+    "final_probability": 0.56,
+    "market_id": "polymarket-sample-001",
+    "market_question": "Will the sample calibration row validate locally?",
+    "model_family": "anthropic-claude",
+    "model_name": "claude-opus-4-7",
+    "price_limit": 0.56,
+    "rationale": "This derivative intentionally lowers confidence to exercise lineage inspection.",
+    "raw_probability": 0.58,
+    "size_usdc": 5.0,
+    "thesis": [
+      {
+        "proposition": "The CLI should validate publishable sample rows offline.",
+        "risk_factors": [
+          "The evidence quality has been weakened for mutation testing."
+        ],
+        "supporting_evidence_ids": [
+          0
+        ]
+      }
+    ],
+    "trace_id": "sample-trace-001-mutated-weak-evidence",
+    "volatility_adjustment": -0.02
+  }
+}
