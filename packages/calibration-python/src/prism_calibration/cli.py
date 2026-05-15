@@ -11,6 +11,14 @@ from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
+from prism_calibration.freeze import (
+    FrozenExportError,
+    freeze_slice,
+    freeze_summary,
+    frozen_validation_summary,
+    parse_slice_name,
+    validate_frozen_export,
+)
 from prism_calibration.layout import (
     DEFAULT_CORPUS_ROOT,
     CorpusLayout,
@@ -96,7 +104,7 @@ def _handle_build(args: argparse.Namespace) -> int:
 
 
 def _handle_validate(args: argparse.Namespace) -> int:
-    """Validate a row file, frozen export placeholder, or local root layout."""
+    """Validate a row file, frozen export, or local root layout."""
     row_path = _namespace_path(args, "row")
     frozen_path = _namespace_path(args, "frozen")
     root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
@@ -105,8 +113,13 @@ def _handle_validate(args: argparse.Namespace) -> int:
         _write_error("validate accepts either --row or --frozen, not both.")
         return 2
     if frozen_path is not None:
-        _write_error("frozen export validation is implemented by the freeze milestone.")
-        return 2
+        try:
+            validation = validate_frozen_export(frozen_path)
+        except FrozenExportError as error:
+            _write_error(str(error))
+            return 1
+        _write_json(frozen_validation_summary(validation))
+        return 0
     if row_path is None:
         layout = CorpusLayout(root=root)
         missing = layout.missing_paths()
@@ -191,6 +204,28 @@ def _handle_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_freeze(args: argparse.Namespace) -> int:
+    """Freeze a named local slice into a portable export."""
+    root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
+    try:
+        slice_name = parse_slice_name(getattr(args, "slice_name", None))
+        export = freeze_slice(root, slice_name)
+    except RowLoadError as error:
+        _write_error(str(error))
+        return 1
+    except ValidationError as error:
+        _write_error("Schema validation failed while freezing the local slice:")
+        for message in format_validation_errors(error):
+            _write_error(f"- {message}")
+        return 1
+    except (LineageValidationError, FrozenExportError) as error:
+        _write_error(str(error))
+        return 1
+
+    _write_json(freeze_summary(export))
+    return 0
+
+
 def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:
     """Return a handler for commands reserved by later mission milestones."""
 
@@ -250,8 +285,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     freeze.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
-    freeze.add_argument("--slice", dest="slice_name")
-    freeze.set_defaults(handler=_deferred_handler("freeze", "corpus-foundation freeze"))
+    freeze.add_argument("--slice", dest="slice_name", required=True)
+    freeze.set_defaults(handler=_handle_freeze)
 
     sync = subparsers.add_parser(
         "sync",
@@ -284,7 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = subparsers.add_parser(
         "validate",
-        help="Validate a row file or local corpus layout.",
+        help="Validate a row file, frozen export, or local corpus layout.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     validate.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
