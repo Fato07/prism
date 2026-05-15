@@ -1,0 +1,7 @@
+# Private calibration artifacts are gated local state.
+*
+
+# Publishable fixtures live here.
+!.gitignore
+!sample/
+!sample/**

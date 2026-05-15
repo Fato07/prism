@@ -2,7 +2,7 @@
 name = "prism-workspace"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["prism-calibration"]
 
 [dependency-groups]
 dev = [
@@ -13,6 +13,7 @@ dev = [
 ]
 
 [tool.uv.sources]
+prism-calibration = { workspace = true }
 prism-schemas = { path = "packages/schemas-python", editable = true }
 prism-trader = { path = "apps/trader", editable = true }
 prism-sentinel = { path = "apps/sentinel", editable = true }
@@ -21,6 +22,7 @@ prism-mcp = { path = "apps/mcp", editable = true }
 [tool.uv.workspace]
 members = [
     "packages/schemas-python",
+    "packages/calibration-python",
     "apps/trader",
     "apps/sentinel",
     "apps/mcp",
