@@ -34,7 +34,7 @@ RUN mkdir -p /app/apps/dashboard/public
 WORKDIR /app/apps/dashboard
 # NEXT_PUBLIC_* vars are client-side (non-secret) and must be baked into the client JS at build time.
 # Turbopack does not inline Docker ENV into the client bundle — .env.local is the reliable path.
-RUN printf 'NEXT_PUBLIC_REOWN_PROJECT_ID=0169b238a503068cc520097200b51458\nNEXT_PUBLIC_ARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED\nNEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs\nNEXT_PUBLIC_SITE_URL=https://prism-dashboard-production-e6e3.up.railway.app\n' > .env.local
+RUN printf 'NEXT_PUBLIC_REOWN_PROJECT_ID=0169b238a503068cc520097200b51458\nARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED\nNEXT_PUBLIC_ARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED\nNEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs\nNEXT_PUBLIC_SITE_URL=https://prism-dashboard-production-e6e3.up.railway.app\n' > .env.local
 RUN pnpm build
 
 # --- Runner ---
@@ -50,5 +50,8 @@ COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/stat
 COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
 
 EXPOSE 3200
+# Server-side Arc RPC URL — available at runtime for the /api/rpc/arc proxy route.
+# Not a secret; the same URL is already inlined into the client bundle via NEXT_PUBLIC_ARC_RPC_URL.
+ENV ARC_RPC_URL=https://rpc.testnet.arc-node.thecanteenapp.com/v1/ARC_RPC_TOKEN_REDACTED
 # server.js is at apps/dashboard/server.js in the standalone output
 CMD ["node", "apps/dashboard/server.js"]

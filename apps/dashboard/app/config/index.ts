@@ -11,7 +11,8 @@
 import { cookieStorage, createStorage } from "@wagmi/core";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { baseSepolia, base } from "@reown/appkit/networks";
-import { arcTestnet } from "@prism/arc-contracts";
+import { defineChain } from "viem";
+import { arcTestnet as arcTestnetBase } from "@prism/arc-contracts";
 
 /** Reown project ID — public-safe, no secret. Guaranteed string after guard. */
 const _rawProjectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID;
@@ -22,6 +23,25 @@ if (!_rawProjectId) {
   );
 }
 export const projectId: string = _rawProjectId;
+
+/**
+ * Arc Testnet with proxy-aware RPC URL.
+ *
+ * Server (SSR) uses the direct Arc RPC URL — no CORS in Node.js.
+ * Browser uses the same-origin proxy (/api/rpc/arc) to bypass
+ * CORS restrictions on the Arc Testnet RPC endpoint.
+ */
+const arcRpcUrl =
+  typeof window === "undefined"
+    ? (process.env.ARC_RPC_URL ?? process.env.NEXT_PUBLIC_ARC_RPC_URL!)
+    : "/api/rpc/arc";
+
+const arcTestnet = defineChain({
+  ...arcTestnetBase,
+  rpcUrls: {
+    default: { http: [arcRpcUrl] },
+  },
+});
 
 /** Networks available in the AppKit modal. */
 const networks = [arcTestnet, baseSepolia, base];
