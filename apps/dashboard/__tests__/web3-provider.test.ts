@@ -67,6 +67,7 @@ describe("ConnectWalletButton", () => {
     vi.doMock("@/config", () => ({
       projectId: "test-project-id-1234567890abcdef",
       wagmiAdapter: { wagmiConfig: {} },
+      networks: [{ id: 5042002, name: "Arc Testnet" }],
       config: {},
     }));
 
@@ -134,6 +135,7 @@ describe("createAppKit features configuration", () => {
     vi.doMock("@/config", () => ({
       projectId: "test-project-id-1234567890abcdef",
       wagmiAdapter: { wagmiConfig: {} },
+      networks: [{ id: 5042002, name: "Arc Testnet" }],
       config: {},
     }));
 

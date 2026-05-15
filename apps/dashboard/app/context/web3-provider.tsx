@@ -14,11 +14,9 @@
  * Reference: https://docs.reown.com/appkit/next/core/installation
  */
 
-import { wagmiAdapter, projectId } from "@/config";
+import { wagmiAdapter, projectId, networks } from "@/config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
-import { baseSepolia, base } from "@reown/appkit/networks";
-import { arcTestnet } from "@prism/arc-contracts";
 import type { ReactNode } from "react";
 import { cookieToInitialState, WagmiProvider } from "wagmi";
 import type { Config } from "wagmi";
@@ -40,8 +38,8 @@ const metadata = {
 createAppKit({
   adapters: [wagmiAdapter],
   projectId,
-  networks: [arcTestnet, baseSepolia, base],
-  defaultNetwork: arcTestnet,
+  networks,
+  defaultNetwork: networks[0],
   metadata,
   features: {
     analytics: true,

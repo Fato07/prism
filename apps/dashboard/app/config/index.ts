@@ -8,10 +8,14 @@
  * Pattern: https://docs.reown.com/appkit/next/core/installation
  */
 
-import { cookieStorage, createStorage } from "@wagmi/core";
+import { cookieStorage, createStorage, http } from "@wagmi/core";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
-import { baseSepolia, base } from "@reown/appkit/networks";
-import { defineChain } from "viem";
+import {
+  baseSepolia,
+  base,
+  defineChain,
+  type AppKitNetwork,
+} from "@reown/appkit/networks";
 import { arcTestnet as arcTestnetBase } from "@prism/arc-contracts";
 
 /** Reown project ID — public-safe, no secret. Guaranteed string after guard. */
@@ -36,7 +40,7 @@ const arcRpcUrl =
     ? (process.env.ARC_RPC_URL ?? process.env.NEXT_PUBLIC_ARC_RPC_URL!)
     : "/api/rpc/arc";
 
-const arcTestnet = defineChain({
+export const arcTestnet = defineChain({
   ...arcTestnetBase,
   rpcUrls: {
     default: { http: [arcRpcUrl] },
@@ -44,7 +48,11 @@ const arcTestnet = defineChain({
 });
 
 /** Networks available in the AppKit modal. */
-const networks = [arcTestnet, baseSepolia, base];
+export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
+  arcTestnet,
+  baseSepolia,
+  base,
+];
 
 /**
  * WagmiAdapter — the bridge between wagmi and Reown AppKit.
@@ -58,6 +66,9 @@ export const wagmiAdapter = new WagmiAdapter({
   ssr: true,
   projectId,
   networks,
+  transports: {
+    [arcTestnet.id]: http(arcRpcUrl),
+  },
 });
 
 /** Typed wagmi config — re-exported for convenience. */
