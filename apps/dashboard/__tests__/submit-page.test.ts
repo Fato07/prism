@@ -371,10 +371,10 @@ describe("x402 client: EIP-3009 typed data construction", () => {
     expect(mod.DEFAULT_X402_NETWORK).toBe("base-sepolia");
   });
 
-  it("X402NetworkId type covers both networks", async () => {
+  it("X402NetworkId type covers all three networks", async () => {
     const mod = await import("@/submit/lib/x402-client");
-    const networkIds: Array<"base-sepolia" | "base"> = ["base-sepolia", "base"];
-    expect(networkIds).toHaveLength(2);
+    const networkIds: Array<"base-sepolia" | "base" | "arc-testnet"> = ["base-sepolia", "base", "arc-testnet"];
+    expect(networkIds).toHaveLength(3);
     // Verify the type is exported
     expect(typeof mod.DEFAULT_X402_NETWORK).toBe("string");
   });
@@ -468,14 +468,16 @@ describe("API routes: input validation", () => {
 /* ─────────────── Chain switching ──────────────────────────────── */
 
 describe("Chain switching for x402 payment", () => {
-  it("SubmitForm checks chainId and prompts switch to Base Sepolia", () => {
+  it("SubmitForm checks chainId and prompts switch using dynamic network from initiate response", () => {
     const fs = require("fs");
     const path = require("path");
     const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
     const content = fs.readFileSync(formPath, "utf-8");
     expect(content).toContain("chainId");
     expect(content).toContain("switchChainAsync");
-    expect(content).toContain("Base Sepolia");
+    // Dynamic chain switch using initiate response network, not hardcoded
+    expect(content).toContain("targetNetwork");
+    expect(content).toContain("targetChainId");
   });
 
   it("SubmitForm uses useSwitchChain for chain switching", () => {
@@ -484,5 +486,108 @@ describe("Chain switching for x402 payment", () => {
     const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
     const content = fs.readFileSync(formPath, "utf-8");
     expect(content).toContain("useSwitchChain");
+  });
+
+  it("SubmitForm chain switch happens after initiate call", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    // The switchChainAsync call should appear after the initiate fetch
+    const initiateIdx = content.indexOf("initiateResp");
+    const switchIdx = content.indexOf("switchChainAsync({ chainId: targetChainId }");
+    expect(initiateIdx).toBeGreaterThan(-1);
+    expect(switchIdx).toBeGreaterThan(-1);
+    expect(switchIdx).toBeGreaterThan(initiateIdx);
+  });
+
+  it("SubmitForm chain label adapts to target network (Arc Testnet vs Base Sepolia)", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    expect(content).toContain("networkLabel");
+    expect(content).toContain("Arc Testnet");
+    expect(content).toContain("Base Sepolia");
+  });
+});
+
+/* ─────────────── Dynamic network selection (Bug 2 fix) ─────────── */
+
+describe("Dynamic network selection for x402 payment", () => {
+  it("signX402Payment uses initiateData.paymentRequirements.network, not DEFAULT_X402_NETWORK", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    // The signX402Payment call should pass targetNetwork (from initiate response)
+    // NOT DEFAULT_X402_NETWORK
+    expect(content).toContain("targetNetwork");
+    expect(content).toContain("signX402Payment");
+    // Verify the call uses targetNetwork as the last argument
+    const signCallMatch = content.match(
+      /signX402Payment\(\s*walletClient,\s*address,\s*initiateData\.paymentRequirements,\s*targetNetwork/m,
+    );
+    expect(signCallMatch).not.toBeNull();
+  });
+
+  it("SubmitForm does NOT import DEFAULT_X402_NETWORK", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    // DEFAULT_X402_NETWORK should not appear in the import statement
+    const importLine = content
+      .split("\n")
+      .find((line: string) => line.includes("from \"./lib/x402-client\""));
+    expect(importLine).toBeDefined();
+    expect(importLine).not.toContain("DEFAULT_X402_NETWORK");
+  });
+
+  it("SubmitForm imports X402NetworkId type for dynamic network cast", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    expect(content).toContain("X402NetworkId");
+  });
+
+  it("X402_NETWORKS includes arc-testnet entry with correct chainId and USDC address", async () => {
+    const mod = await import("@/submit/lib/x402-client");
+    expect(mod.X402_NETWORKS["arc-testnet"]).toBeDefined();
+    expect(mod.X402_NETWORKS["arc-testnet"].chainId).toBe(5042002);
+    expect(mod.X402_NETWORKS["arc-testnet"].usdcAddress).toBe(
+      "0x3600000000000000000000000000000000000000",
+    );
+    expect(mod.X402_NETWORKS["arc-testnet"].domainName).toBe("USDC");
+    expect(mod.X402_NETWORKS["arc-testnet"].domainVersion).toBe("2");
+  });
+
+  it("X402NetworkId type now covers arc-testnet", async () => {
+    const mod = await import("@/submit/lib/x402-client");
+    // Verify the arc-testnet key exists in the networks object
+    const networkKeys = Object.keys(mod.X402_NETWORKS);
+    expect(networkKeys).toContain("arc-testnet");
+    expect(networkKeys).toContain("base-sepolia");
+    expect(networkKeys).toContain("base");
+    expect(networkKeys).toHaveLength(3);
+  });
+
+  it("Unsupported network from initiate response throws friendly error", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    expect(content).toContain("Unsupported payment network");
+  });
+
+  it("paymentRequirements.network is cast to X402NetworkId from initiate response", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const formPath = path.resolve(__dirname, "../app/submit/submit-form.tsx");
+    const content = fs.readFileSync(formPath, "utf-8");
+    expect(content).toContain(
+      "initiateData.paymentRequirements.network as X402NetworkId",
+    );
   });
 });

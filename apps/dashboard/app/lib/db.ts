@@ -687,7 +687,8 @@ export async function getTreasuryData(): Promise<TreasuryData> {
                  COALESCE(SUM(usdc_amount) FILTER (WHERE event_type = 'park'), 0)
                - COALESCE(SUM(usdc_amount) FILTER (WHERE event_type = 'unpark'), 0)
                ), 0
-             )::numeric(20,6) AS total_parked`,
+             )::numeric(20,6) AS total_parked
+           FROM treasury_events`,
         ),
         // Most recent event
         client.query(

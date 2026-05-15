@@ -31,11 +31,10 @@ import {
   validateCid,
   signX402Payment,
   computeTraceHash,
-  DEFAULT_X402_NETWORK,
   X402_NETWORKS,
+  type X402NetworkId,
   type PaymentRequirements,
 } from "./lib/x402-client";
-import { baseSepolia } from "@reown/appkit/networks";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Loader2,
@@ -118,20 +117,6 @@ export function SubmitForm() {
         return;
       }
 
-      // Step 2: Ensure correct chain (Base Sepolia for x402 payment)
-      const requiredChainId = X402_NETWORKS[DEFAULT_X402_NETWORK].chainId;
-      if (chainId !== requiredChainId) {
-        try {
-          await switchChainAsync({ chainId: requiredChainId });
-        } catch {
-          setInlineError(
-            "Please switch your wallet to Base Sepolia to sign the payment.",
-          );
-          setPhase("error");
-          return;
-        }
-      }
-
       // Clear previous errors
       setInlineError(null);
       setCidError(null);
@@ -141,7 +126,7 @@ export function SubmitForm() {
         const traceHash = await computeTraceHash(cid);
         const traceUri = `ipfs://${cid}`;
 
-        // Phase 1: Initiate — get payment requirements
+        // Phase 1: Initiate — get payment requirements (includes the target network)
         setPhase("initiating");
 
         const initiateResp = await fetch("/api/validate/initiate", {
@@ -162,14 +147,39 @@ export function SubmitForm() {
           paymentRequirements: PaymentRequirements;
         };
 
-        // Phase 2: Sign EIP-3009 payment via wallet
+        // Step 2: Ensure correct chain — use the network from the initiate response,
+        // not a hardcoded default. This fixes the bug where signing against
+        // base-sepolia (DEFAULT_X402_NETWORK) caused domain/chain ID mismatch
+        // when the sentinel is configured for Arc Testnet.
+        const targetNetwork = initiateData.paymentRequirements.network as X402NetworkId;
+        const targetChainId = X402_NETWORKS[targetNetwork]?.chainId;
+        if (!targetChainId) {
+          throw new Error(
+            `Unsupported payment network: ${initiateData.paymentRequirements.network}`,
+          );
+        }
+        if (chainId !== targetChainId) {
+          try {
+            await switchChainAsync({ chainId: targetChainId });
+          } catch {
+            const networkLabel = targetNetwork === "arc-testnet" ? "Arc Testnet" : "Base Sepolia";
+            setInlineError(
+              `Please switch your wallet to ${networkLabel} to sign the payment.`,
+            );
+            setPhase("error");
+            return;
+          }
+        }
+
+        // Phase 2: Sign EIP-3009 payment via wallet using the network
+        // from the initiate response — NOT the hardcoded DEFAULT_X402_NETWORK.
         setPhase("signing");
 
         const xPaymentBase64 = await signX402Payment(
           walletClient,
           address,
           initiateData.paymentRequirements,
-          DEFAULT_X402_NETWORK,
+          targetNetwork,
         );
 
         // Phase 3: Confirm — send signed payment to sentinel
@@ -349,8 +359,8 @@ export function SubmitForm() {
           {!isSubmitting && phase !== "success" && !inlineError && (
             <p className="text-xs text-fg-faint leading-relaxed">
               {isConnected
-                ? "Enter an IPFS CID and click Validate. Your wallet will sign a 0.01 USDC payment on Base Sepolia via x402."
-                : "Click Validate to connect your wallet, then sign a 0.01 USDC payment on Base Sepolia via x402."}
+                ? "Enter an IPFS CID and click Validate. Your wallet will sign a 0.01 USDC payment via x402."
+                : "Click Validate to connect your wallet, then sign a 0.01 USDC payment via x402."}
             </p>
           )}
         </CardContent>

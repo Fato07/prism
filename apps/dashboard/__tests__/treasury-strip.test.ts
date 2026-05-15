@@ -398,6 +398,17 @@ describe("TreasuryData DB query shape", () => {
     expect(requiredFields.length).toBe(5);
   });
 
+  it("getTreasuryData total_parked query includes FROM treasury_events clause", async () => {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const filePath = path.join(process.cwd(), "app/lib/db.ts");
+    const content = await fs.readFile(filePath, "utf-8");
+    // Bug 1 fix: The total_parked query must include FROM treasury_events
+    // Without it, Postgres raises 'column usdc_amount does not exist'
+    // which is silently caught and returns zero defaults.
+    expect(content).toMatch(/AS total_parked[\s\S]*FROM treasury_events/);
+  });
+
   it("getTreasuryData returns zero-safe defaults on error", async () => {
     const fs = await import("fs/promises");
     const path = await import("path");

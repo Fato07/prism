@@ -32,6 +32,12 @@ export const X402_NETWORKS = {
     domainName: "USD Coin",
     domainVersion: "2",
   },
+  "arc-testnet": {
+    chainId: 5042002,
+    usdcAddress: "0x3600000000000000000000000000000000000000" as const,
+    domainName: "USDC",
+    domainVersion: "2",
+  },
 } as const;
 
 export type X402NetworkId = keyof typeof X402_NETWORKS;
