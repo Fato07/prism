@@ -110,8 +110,8 @@ Both agents are registered on Arc testnet's ERC-8004 IdentityRegistry:
 
 | Agent | agentId | Role |
 |-------|---------|------|
-| Trader | **4062** | Generates Trading-R1 traces, requests validation, executes paper trades, treasury operations |
-| Sentinel | **4070** | Adversarially validates traces, submits verdicts on-chain |
+| Trader | **4140** | Generates Trading-R1 traces, requests validation, executes paper trades, treasury operations |
+| Sentinel | **4148** | Adversarially validates traces, submits verdicts on-chain |
 
 **Contract Addresses (Arc Testnet, chain 5042002):**
 
