@@ -48,13 +48,8 @@ logger = structlog.get_logger("prism.mcp")
 MCP_SERVER_NAME = "prism-sentinel"
 
 
-def _payment_tx_hash_from_http_context() -> str | None:
-    """Return the x402 settlement tx hash stashed on the current HTTP request.
-
-    The sentinel ``x402_middleware`` stores the settled Base tx hash on
-    ``request.state.x402_payment_tx_hash`` before dispatching to the MCP
-    sub-app. We surface it on the tool result so MCP callers receive the
-    same ``payment_tx_hash`` field the HTTP ``/validate`` endpoint emits.
+def _http_state_string(name: str) -> str | None:
+    """Return a string value stashed on the current FastMCP HTTP request state.
 
     Returns ``None`` for in-process MCP clients (e.g. unit tests using
     ``fastmcp.Client(server)``) where no HTTP request exists.
@@ -63,8 +58,24 @@ def _payment_tx_hash_from_http_context() -> str | None:
         req = get_http_request()
     except RuntimeError:
         return None
-    tx = getattr(req.state, "x402_payment_tx_hash", None)
-    return tx if isinstance(tx, str) else None
+    value = getattr(req.state, name, None)
+    return value if isinstance(value, str) else None
+
+
+def _payment_tx_hash_from_http_context() -> str | None:
+    """Return the x402 settlement tx hash stashed on the current HTTP request.
+
+    The sentinel ``x402_middleware`` stores the settled Base tx hash on
+    ``request.state.x402_payment_tx_hash`` before dispatching to the MCP
+    sub-app. We surface it on the tool result so MCP callers receive the
+    same ``payment_tx_hash`` field the HTTP ``/validate`` endpoint emits.
+    """
+    return _http_state_string("x402_payment_tx_hash")
+
+
+def _payer_address_from_http_context() -> str | None:
+    """Return the x402 payer address stashed on the current HTTP request."""
+    return _http_state_string("x402_payer_address")
 
 
 class ValidateMcpResult(BaseModel):
@@ -348,8 +359,10 @@ async def _run_validation(
         logger.error("mcp_ipfs_pin_failed", error=str(exc))
         raise ToolError(f"ipfs_pin_failed: {exc}") from exc
 
+    requester_address = _payer_address_from_http_context()
+
     try:
-        persist_verdict(verdict)
+        persist_verdict(verdict, requester_address=requester_address)
         update_verdict_response_uri(request_hash, f"ipfs://{ipfs_cid}")
     except Exception as exc:
         logger.error("mcp_db_persist_failed", error=str(exc))
@@ -393,6 +406,7 @@ async def _run_validation(
         ipfs_cid=ipfs_cid,
         tx_hash=tx_hash,
         payment_tx_hash=payment_tx_hash,
+        requester_address=requester_address,
     )
 
     return ValidateMcpResult(
