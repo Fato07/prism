@@ -145,6 +145,26 @@ describe("VAL-BRIDGE-004: Bridge-hidden state does not break submit form layout"
     expect(content).toContain("return null");
   });
 
+  it("does not declare React hooks after visibility early returns", () => {
+    const fs = require("fs");
+    const path = require("path");
+    const widgetPath = path.resolve(__dirname, "../app/submit/bridge-widget.tsx");
+    const content = fs.readFileSync(widgetPath, "utf-8");
+    const componentStartIndex = content.indexOf("export function BridgeWidget()");
+    const firstNullReturnIndex = content.indexOf("return null", componentStartIndex);
+    const componentBeforeRender = content.slice(
+      firstNullReturnIndex,
+      content.indexOf("/* ── Render", firstNullReturnIndex),
+    );
+
+    // React error #310 is thrown when a render path returns before later hooks,
+    // then a later render reaches those hooks. Keep useCallback/useMemo/useEffect
+    // and custom hooks above the null-return visibility guards.
+    expect(componentStartIndex).toBeGreaterThanOrEqual(0);
+    expect(firstNullReturnIndex).toBeGreaterThanOrEqual(0);
+    expect(componentBeforeRender).not.toMatch(/\buse[A-Z][A-Za-z0-9_]*\s*\(/);
+  });
+
   it("the /submit page imports BridgeWidget above SubmitForm", () => {
     const fs = require("fs");
     const path = require("path");
