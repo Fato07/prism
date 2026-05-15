@@ -13,6 +13,8 @@ FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 # Copy gateway package.json
 COPY apps/polymarket-gateway/package.json apps/polymarket-gateway/
+COPY packages/builder-codes/package.json packages/builder-codes/
+COPY packages/builder-codes/src/ packages/builder-codes/src/
 # Install ALL workspace dependencies (including devDeps for tsc)
 RUN pnpm install --frozen-lockfile || pnpm install
 

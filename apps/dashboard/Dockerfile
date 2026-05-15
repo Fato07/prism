@@ -15,6 +15,8 @@ COPY packages/schemas-typescript/package.json packages/schemas-typescript/
 COPY packages/schemas-typescript/src/ packages/schemas-typescript/src/
 COPY packages/arc-contracts/package.json packages/arc-contracts/
 COPY packages/arc-contracts/src/ packages/arc-contracts/src/
+COPY packages/builder-codes/package.json packages/builder-codes/
+COPY packages/builder-codes/src/ packages/builder-codes/src/
 # Copy dashboard package files (includes pnpm.onlyBuiltDependencies)
 COPY apps/dashboard/package.json apps/dashboard/
 # Install ALL workspace dependencies (not filtered, to ensure root config is applied)
