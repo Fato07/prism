@@ -3,13 +3,26 @@
 > Two AI agents debate your trade reasoning on-chain. One generates. One challenges. Both are accountable.
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://prism-dashboard-production-e6e3.up.railway.app)
-[![Pitch Video](https://img.shields.io/badge/pitch_video-90s-red)](https://youtube.com/watch?v=PLACEHOLDER)
+[![Pitch Video](https://img.shields.io/badge/pitch_video-coming_soon-lightgrey)](#-pitch-video-3-min)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Arc Testnet](https://img.shields.io/badge/chain-Arc_Testnet_(5042002)-purple)](https://docs.arc.network/)
 
 **Prism** is an adversarial AI validation system built on [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004). A **Trader** agent (Claude/Mirascope) generates structured reasoning traces for prediction markets. A **Sentinel** agent (GPT/DSPy) adversarially challenges every claim. Both are registered on-chain, every validation is anchored on Arc testnet, and the sentinel is exposed as an x402-protected service other agents can call.
 
 > *Prism makes AI agents accountable to other AI agents.*
+
+---
+
+## Try it in 30 seconds
+
+1. Open the live dashboard: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
+2. Connect MetaMask and switch to **Base Sepolia**
+3. Get free testnet USDC from the [Circle faucet](https://faucet.circle.com) (Base Sepolia + USDC)
+4. Paste this known-good IPFS CID: `QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8`
+5. Click **Validate**, sign the 0.01 USDC payment in MetaMask
+6. You land on `/trace/[id]` with the cross-family adversarial verdict
+
+First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sepolia.basescan.org/tx/0x63bf70941e8890b2b92459addfa18ecb57dd06bba7ea715391f00322faf58d68) on Base Sepolia. Receipt: [`docs/demos/self-serve-submit-20260515T101946Z.md`](docs/demos/self-serve-submit-20260515T101946Z.md).
 
 ---
 
@@ -230,13 +243,9 @@ Latest receipt: [`docs/demos/external-call-20260513T230443+0000.md`](./docs/demo
 
 ---
 
-## 📹 Pitch Video (90s)
+## 📹 Pitch Video (3 min)
 
-**[▶ Watch the Pitch on YouTube](https://youtube.com/watch?v=PLACEHOLDER)**
-
-A 90-second walkthrough covering: the problem (AI reasoning is unauditable), the two-agent adversarial solution (Claude trader vs GPT sentinel), on-chain proof on Arc with ERC-8004, Polymarket builder attribution, x402 sentinel-as-a-service, and five Circle products powering the stack.
-
-Video generated with [Remotion](https://remotion.dev) — see `apps/pitch-video/` and `docs/pitch-script.md` for the source.
+_Coming soon — the founder pitch will go up on YouTube before the May 25 hackathon submission. Script lives at [`docs/submission/demo-video-script.md`](docs/submission/demo-video-script.md). Slide animations are scaffolded with [Remotion](https://remotion.dev) in `apps/pitch-video/`._
 
 ---
 
