@@ -192,13 +192,13 @@ tx = await circle_client.createContractExecutionTransaction({
 
 ---
 
-## Differences from MISSION.md Assumptions
+## Differences from Early Planning Assumptions
 
-| What MISSION.md assumes | Actual (EIP-8004 spec) | Impact |
+| Early planning assumption | Actual (EIP-8004 spec) | Impact |
 |---|---|---|
 | `register(string agentCardUri)` | `register(string)` — param name is `agentURI` not `agentCardUri` | **No impact** — same ABI signature, param name doesn't affect encoding |
 | `getAgentCard(uint256 agentId)` | `tokenURI(uint256)` — standard ERC-721 tokenURI | **Must use `tokenURI` not `getAgentCard`** |
-| ReputationRegistry `giveFeedback` with param names from AGENTS.md | Confirmed exact match: `giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)` | ✅ Matches |
+| ReputationRegistry `giveFeedback` with expected param order | Confirmed exact match: `giveFeedback(uint256,int128,uint8,string,string,string,string,bytes32)` | ✅ Matches |
 | ValidationRegistry signatures | Confirmed exact match for both `validationRequest` and `validationResponse` | ✅ Matches |
 | — | `getSummary` has different signatures in Reputation vs Validation registries | Be careful: Reputation has `(uint256,address[],string,string)`, Validation has `(uint256,address[],string)` |
 
@@ -208,7 +208,7 @@ tx = await circle_client.createContractExecutionTransaction({
 
 1. **Self-dealing prevention**: `giveFeedback` will REVERT if called by the agent's owner or approved operator. Prism's oracle-wallet MUST be a different wallet than the trader-wallet.
 
-2. **No `getAgentCard` function**: The function name from MISSION.md doesn't exist. Use standard ERC-721 `tokenURI(uint256)` instead.
+2. **No `getAgentCard` function**: That early planning function name doesn't exist. Use standard ERC-721 `tokenURI(uint256)` instead.
 
 3. **Gas costs**: On Arc, gas is ~0.006 USDC per transaction. All functions are non-payable (no ETH/USDC value attached to calls).
 

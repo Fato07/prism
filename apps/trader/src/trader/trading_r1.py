@@ -21,7 +21,7 @@ logger = structlog.get_logger("prism.trader.trading_r1")
 # Default model — overridden by TRADER_MODEL env var.
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-20250514"
 
-# Wallet balance cap (hard rule from AGENTS.md).
+# Wallet balance cap.
 WALLET_BALANCE_CAP = 100.0  # USDC
 # Per-trade hard cap sized to hackathon-scale Polymarket deposits (~$8 USDC).
 # The 25 % wallet-balance rule still applies on top of this cap.
@@ -52,7 +52,7 @@ def _model_name_short() -> str:
 def clamp_size(size_usdc: float, wallet_balance: float = WALLET_BALANCE_CAP) -> float:
     """Clamp the trade size to 25 % of wallet balance, capped at 2 USDC.
 
-    Rules (from AGENTS.md §Security guardrails):
+    Safety rules:
     - wallet_balance_cap = 100 USDC
     - max_trade = min(2, 0.25 * wallet_balance)
     - If wallet_balance > 100, still cap at 2 USDC

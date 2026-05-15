@@ -245,7 +245,7 @@ Latest receipt: [`docs/demos/external-call-20260513T230443+0000.md`](./docs/demo
 
 ## 📹 Pitch Video (3 min)
 
-_Coming soon — the founder pitch will go up on YouTube before the May 25 hackathon submission. Script lives at [`docs/submission/demo-video-script.md`](docs/submission/demo-video-script.md). Slide animations are scaffolded with [Remotion](https://remotion.dev) in `apps/pitch-video/`._
+_Coming soon — the founder pitch will go up on YouTube before the May 25 hackathon submission. Slide animations are scaffolded with [Remotion](https://remotion.dev) in `apps/pitch-video/`._
 
 ---
 

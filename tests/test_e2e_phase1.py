@@ -1319,21 +1319,16 @@ class TestJudgeExperienceStructure:
         has_dashboard = (dashboard_app / "dashboard" / "page.tsx").exists()
         assert has_dashboard, "Dashboard page must exist at /dashboard"
 
-    def test_pitch_video_script_exists(self) -> None:
-        """VAL-VIDEO-003: Pitch video script exists with >=500 words."""
+    def test_pitch_video_scaffold_exists(self) -> None:
+        """VAL-VIDEO-003: Pitch video Remotion scaffold exists."""
         import pathlib
 
-        script_path = pathlib.Path("/Users/fathindosunmu/DEV/MyProjects/prism/docs/pitch-script.md")
-        if not script_path.exists():
-            # Try alternate path
-            script_path = pathlib.Path("/Users/fathindosunmu/DEV/MyProjects/prism/docs/demo-script.md")
+        pitch_video_root = pathlib.Path("/Users/fathindosunmu/DEV/MyProjects/prism/apps/pitch-video")
+        if not pitch_video_root.exists():
+            pytest.skip("Pitch video scaffold not found (may be created separately)")
 
-        if script_path.exists():
-            text = script_path.read_text(encoding="utf-8")
-            word_count = len(text.split())
-            assert word_count >= 500, f"Pitch script needs >=500 words, got {word_count}"
-        else:
-            pytest.skip("Pitch video script not found (may be created separately)")
+        assert (pitch_video_root / "src" / "PrismPitch.tsx").exists()
+        assert (pitch_video_root / "package.json").exists()
 
     def test_readme_contains_video_link(self) -> None:
         """VAL-VIDEO-004: README links to the pitch video."""

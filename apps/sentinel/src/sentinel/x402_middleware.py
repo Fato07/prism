@@ -37,15 +37,12 @@ Env vars:
 Circle facilitator on Arc Testnet — gap note (VAL-X402-CIRCLE-006):
   As of 2026-05-15 the Circle facilitator endpoint for Arc Testnet USDC
   settlement is **not publicly documented** with a stable URL or API
-  contract. The Arc 101 stream (see ``docs/research/2026-05-13-arc-101-stream.md``)
-  confirms the *concept* exists (Circle Gateway + submitBatch) but the
-  exact facilitator endpoint for programmatic x402-style verify/settle
-  on Arc Testnet is not available. When ``X402_FACILITATOR_MODE=circle``
-  and ``X402_CIRCLE_FACILITATOR_URL`` is unset, the middleware logs a
-  clear warning and falls back to mock settlement (same as dev mode).
-  Do NOT stub fake on-chain transactions — the gap must be documented
-  honestly and resolved post-hackathon once Circle publishes the Arc
-  Testnet facilitator endpoint. See ``docs/research/arc-testnet-circle-gap.md``.
+  contract. The public x402 path therefore defaults to Base Sepolia.
+  When ``X402_FACILITATOR_MODE=circle`` and
+  ``X402_CIRCLE_FACILITATOR_URL`` is unset, the middleware logs a clear
+  warning and falls back to mock settlement (same as dev mode). Do NOT
+  stub fake on-chain transactions — resolve this once Circle publishes
+  the Arc Testnet facilitator endpoint.
 """
 
 from __future__ import annotations
@@ -230,8 +227,7 @@ def get_x402_facilitator_url() -> str | None:
                 "x402_circle_facilitator_url_missing",
                 message=(
                     "X402_CIRCLE_FACILITATOR_URL is not set. "
-                    "Circle facilitator on Arc Testnet is not yet documented — "
-                    "see docs/research/arc-testnet-circle-gap.md. "
+                    "Circle facilitator on Arc Testnet is not yet documented. "
                     "Falling back to mock settlement."
                 ),
             )

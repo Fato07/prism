@@ -9,8 +9,8 @@ When ``USYC_ARC_TESTNET_ADDRESS`` is unset or empty, the module switches to
 *dry-run* mode: on-chain calls are skipped, a structured log is emitted, and
 the ``treasury_events`` row is still inserted with ``tx_hash = NULL``.
 
-See ``docs/research/usyc-arc-testnet-gap.md`` for the USYC Arc Testnet
-deployment status.
+When the Arc Testnet USYC address is published, set
+``USYC_ARC_TESTNET_ADDRESS`` to enable real on-chain park/unpark calls.
 """
 
 from __future__ import annotations
@@ -182,7 +182,7 @@ async def park_idle_usdc(
             wallet_id=wallet_id,
             usdc_amount=str(usdc_amount),
             rationale=rationale,
-            gap_doc="docs/research/usyc-arc-testnet-gap.md",
+            gap_reason="USYC_ARC_TESTNET_ADDRESS is unset",
         )
         event = TreasuryEventCreate(
             agent_id=agent_id,
@@ -314,7 +314,7 @@ async def unpark_for_trade(
             "treasury_unpark_dry_run",
             wallet_id=wallet_id,
             usdc_target=str(usdc_target),
-            gap_doc="docs/research/usyc-arc-testnet-gap.md",
+            gap_reason="USYC_ARC_TESTNET_ADDRESS is unset",
         )
         event = TreasuryEventCreate(
             agent_id=agent_id,

@@ -626,7 +626,7 @@ def parse_args() -> argparse.Namespace:
         "facilitator on Base Sepolia (default behavior). 'arc-testnet-circle' "
         "targets Arc Testnet USDC via Circle's facilitator (requires "
         "X402_CIRCLE_FACILITATOR_URL on the sentinel; falls back to mock "
-        "settlement if unavailable — see docs/research/arc-testnet-circle-gap.md).",
+        "settlement if unavailable).",
     )
     return p.parse_args()
 

@@ -45,6 +45,19 @@ uv.lock.bak
 # Local-only state (script keys, scratch files)
 .local/
 
+# Internal strategy / hackathon alpha docs (kept local, not public)
+AGENTS.md
+BRIEF.md
+MISSION.md
+SETUP.md
+docs/droid-missions/
+docs/missions-index.md
+docs/pitch-script*.md
+docs/research/
+docs/submission/
+docs/traction-plan.md
+packages/research-*.md
+
 # Pitch-video rendered output (regenerate with pnpm render)
 apps/pitch-video/out/*.mp4
 apps/pitch-video/out/*.webm

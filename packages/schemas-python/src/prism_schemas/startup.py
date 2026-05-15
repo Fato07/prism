@@ -51,7 +51,7 @@ REQUIRED_ORACLE = REQUIRED_COMMON + [
 
 # Polymarket's restricted countries (33 total, as of April 2026).
 # Source: https://help.polymarket.com/en/articles/13364163-geographic-restrictions
-# Estonia (EE) is NOT in this list — it is explicitly allowed per MISSION.md.
+# Estonia (EE) is NOT in this list and is allowed.
 POLYMARKET_RESTRICTED_COUNTRIES = frozenset(
     {
         "AU",  # Australia

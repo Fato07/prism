@@ -237,8 +237,8 @@ sequenceDiagram
 
 The `builderCode` is a 32-byte hex value Prism owns; **every order created
 through this gateway includes it**, so when the order fills, Prism gets
-builder-fee revenue. AGENTS.md requires this — it's enforced in
-`gateway.ts`, not as a manual reminder.
+builder-fee revenue. Prism enforces this in `gateway.ts`, not as a manual
+reminder.
 
 ---
 
@@ -295,8 +295,8 @@ erDiagram
 ```
 
 All services connect to the **same Neon database** over the pooled
-connection string (`-pooler` suffix). Per AGENTS.md hard rule #12,
-unpooled URLs are reserved for migrations only.
+connection string (`-pooler` suffix). Unpooled URLs are reserved for
+migrations only.
 
 ---
 
@@ -314,8 +314,7 @@ unpooled URLs are reserved for migrations only.
 | Polymarket builder code | Polygon mainnet | `0x9e599436ce291bcda25bd18c611e46eb54bd7dd12bead05d0027802a9ef30c2e` |
 
 The three Arc wallets are **Circle Developer-Controlled Wallets** with
-`accountType=EOA`. SCA migration is post-hackathon work (see `AGENTS.md`
-"Circle SDK usage" notes and `SETUP.md` §1b).
+`accountType=EOA`. SCA migration is post-hackathon work.
 
 ### Circle Developer-Controlled Wallets — detail
 
@@ -347,9 +346,9 @@ Three design decisions worth flagging:
 ### 1. Cross-family adversarial validation (not single-model self-review)
 
 The trader is Anthropic Claude. The sentinel is OpenAI GPT. These are
-two independent training corpora and RLHF pipelines. Per AGENTS.md hard
-rule #2, this is configured via env vars and **validated at startup** —
-if the two services land on the same model family, the process exits.
+two independent training corpora and RLHF pipelines. This is configured
+via env vars and **validated at startup** — if the two services land on
+the same model family, the process exits.
 
 This is the central thesis: an agent reviewing its own reasoning is
 hindsight-biased and shares the same blind spots. Two cross-family
@@ -358,7 +357,7 @@ agents disagreeing is signal that capital should not move.
 Calibration evidence: synthetic-trace test
 (`apps/sentinel/src/tests/test_calibration.py`) shows good=65, mediocre=42,
 bad=20 — a **45-point spread** between good and bad reasoning, well above
-the 30-point bar from rule #11.
+the 30-point calibration bar.
 
 ### 2. ERC-8004 + Circle Wallets, not a custom registry
 
@@ -366,11 +365,10 @@ We **deploy zero Solidity**. All on-chain reads and writes go through
 Arc's deployed `IdentityRegistry`, `ValidationRegistry`, and
 `ReputationRegistry`. All transactions are signed by Circle
 Developer-Controlled Wallets, which means no raw private keys appear in
-the codebase (AGENTS.md hard rule #6).
+the codebase.
 
 The trade-off: every contract call costs ~0.003 USDC of gas (EOA pays
-from balance; Gas Station sponsorship would require SCA migration —
-see `AGENTS.md` Circle SDK notes).
+from balance; Gas Station sponsorship would require SCA migration).
 
 ### 3. x402-protected sentinel-as-a-service
 

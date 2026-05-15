@@ -28,7 +28,7 @@
  *    at least one deposit to its Polymarket proxy. Otherwise the auth
  *    call returns a 403 with "user not registered".
  * 3. Locale during KYC must not be in Polymarket's restricted
- *    jurisdictions (Estonia is allowed per AGENTS.md hard rule #10).
+ *    jurisdictions (Estonia is allowed).
  *
  * What this does NOT do
  * =====================

@@ -528,7 +528,7 @@ def build_mcp_server() -> FastMCP:
             "calibration test results that prove the cross-family adversarial "
             "validation discriminates correctly between good, mediocre, and "
             "bad reasoning traces. The gap between good and bad scores must "
-            "be ≥ 30 points (per AGENTS.md hard rule #11)."
+            "be ≥ 30 points."
         ),
     )
     async def get_calibration() -> GetCalibrationResult:
