@@ -35,8 +35,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3203
 
-# Copy gateway package.json and install dependencies standalone (no workspace)
-COPY apps/polymarket-gateway/package.json ./
+# Copy workspace config + package.jsons for both gateway and builder-codes
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/polymarket-gateway/package.json apps/polymarket-gateway/
+COPY packages/builder-codes/package.json packages/builder-codes/
+# Copy builder-codes source (needed for workspace install)
+COPY --from=builder /app/packages/builder-codes/src/ packages/builder-codes/src/
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install --prod
 
 # Copy compiled output
