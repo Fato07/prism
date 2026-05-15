@@ -118,9 +118,28 @@ export interface TransferAuthData {
   nonce: string;
 }
 
+export interface X402AcceptedRequirements {
+  scheme: string;
+  network: string;
+  asset: string;
+  amount: string;
+  payTo: string;
+  maxTimeoutSeconds: number;
+  extra: {
+    name: string;
+    version: string;
+  };
+}
+
 export interface X402PaymentPayload {
-  transferAuth: TransferAuthData;
-  signature: string;
+  x402Version: 2;
+  payload: {
+    authorization: TransferAuthData;
+    signature: string;
+  };
+  accepted: X402AcceptedRequirements;
+  resource: null;
+  extensions: null;
 }
 
 /**
@@ -148,9 +167,10 @@ export async function signX402Payment(
   crypto.getRandomValues(nonceBytes);
   const nonce: `0x${string}` = bytesToHex(nonceBytes);
 
-  // Valid window: now → 10 minutes from now
+  // Valid window: now → 10 minutes from now. Match the x402 Python SDK
+  // shape closely: validAfter is the current timestamp, not zero.
   const nowSec = BigInt(Math.floor(Date.now() / 1000));
-  const validAfter = BigInt(0);
+  const validAfter = nowSec;
   const validBefore = nowSec + BigInt(600); // 10 minutes
 
   const typedData = buildTransferWithAuthorizationTypedData(
@@ -172,21 +192,39 @@ export async function signX402Payment(
     message: typedData.message,
   });
 
-  // Construct x402 v2 payment payload
-  // Note: the property is named "authorization" in the x402 protocol spec,
-  // but we use "transferAuth" internally to avoid false-positive secret
-  // scanner matches. The API route remaps this before sending to the
-  // sentinel facilitator.
-  const payload: X402PaymentPayload = {
-    transferAuth: {
-      from: visitorAddress,
-      to: requirements.recipient,
-      value: amountSmallest.toString(),
-      validAfter: validAfter.toString(),
-      validBefore: validBefore.toString(),
-      nonce,
+  // Construct the full x402 v2 PaymentPayload shape emitted by the
+  // official Python SDK's `create_payment_payload(...).model_dump_json(by_alias=True)`.
+  // The public facilitator rejects minimal authorization-only objects with
+  // `No facilitator registered for x402 version: undefined`.
+  const accepted: X402AcceptedRequirements = {
+    scheme: requirements.scheme,
+    network: `eip155:${net.chainId}`,
+    asset: net.usdcAddress,
+    amount: amountSmallest.toString(),
+    payTo: requirements.recipient,
+    maxTimeoutSeconds: 120,
+    extra: {
+      name: net.domainName,
+      version: net.domainVersion,
     },
-    signature,
+  };
+
+  const payload: X402PaymentPayload = {
+    x402Version: 2,
+    payload: {
+      authorization: {
+        from: visitorAddress,
+        to: requirements.recipient,
+        value: amountSmallest.toString(),
+        validAfter: validAfter.toString(),
+        validBefore: validBefore.toString(),
+        nonce,
+      },
+      signature,
+    },
+    accepted,
+    resource: null,
+    extensions: null,
   };
 
   // Base64-encode for X-PAYMENT header

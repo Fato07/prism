@@ -371,6 +371,44 @@ describe("x402 client: EIP-3009 typed data construction", () => {
     expect(mod.DEFAULT_X402_NETWORK).toBe("base-sepolia");
   });
 
+  it("signX402Payment emits full x402 v2 SDK-compatible payload shape", async () => {
+    const mod = await import("@/submit/lib/x402-client");
+    const fakeWalletClient = {
+      signTypedData: async () => "0x" + "11".repeat(65),
+    };
+
+    const encoded = await mod.signX402Payment(
+      fakeWalletClient as unknown as Parameters<typeof mod.signX402Payment>[0],
+      "0x0000000000000000000000000000000000000001",
+      {
+        amount: "0.01",
+        asset: "USDC",
+        scheme: "exact",
+        network: "base-sepolia",
+        recipient: "0x0000000000000000000000000000000000000002",
+      },
+      "base-sepolia",
+    );
+
+    const decoded = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    expect(decoded.x402Version).toBe(2);
+    expect(decoded.payload.authorization.from).toBe("0x0000000000000000000000000000000000000001");
+    expect(decoded.payload.authorization.to).toBe("0x0000000000000000000000000000000000000002");
+    expect(decoded.payload.authorization.value).toBe("10000");
+    expect(decoded.payload.signature).toMatch(/^0x11/);
+    expect(decoded.accepted).toEqual({
+      scheme: "exact",
+      network: "eip155:84532",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      amount: "10000",
+      payTo: "0x0000000000000000000000000000000000000002",
+      maxTimeoutSeconds: 120,
+      extra: { name: "USDC", version: "2" },
+    });
+    expect(decoded.resource).toBeNull();
+    expect(decoded.extensions).toBeNull();
+  });
+
   it("X402NetworkId type covers all three networks", async () => {
     const mod = await import("@/submit/lib/x402-client");
     const networkIds: Array<"base-sepolia" | "base" | "arc-testnet"> = ["base-sepolia", "base", "arc-testnet"];
