@@ -3,6 +3,12 @@
 # so that pnpm workspace packages (@prism/schemas, @prism/arc-contracts) resolve.
 
 FROM node:22-slim AS base
+# NEXT_PUBLIC_* vars must be available at build time for Next.js client bundle inlining.
+# Railway auto-passes these as build args from the service's env vars.
+ARG NEXT_PUBLIC_REOWN_PROJECT_ID=""
+ARG NEXT_PUBLIC_ARC_RPC_URL=""
+ARG NEXT_PUBLIC_IPFS_GATEWAY=""
+ARG NEXT_PUBLIC_SITE_URL=""
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
 
@@ -32,6 +38,11 @@ COPY apps/dashboard/ apps/dashboard/
 RUN mkdir -p /app/apps/dashboard/public
 # Build from the dashboard directory (outputFileTracingRoot = monorepo root)
 WORKDIR /app/apps/dashboard
+# Expose NEXT_PUBLIC vars to the build so Next.js inlines them into client JS
+ENV NEXT_PUBLIC_REOWN_PROJECT_ID=$NEXT_PUBLIC_REOWN_PROJECT_ID
+ENV NEXT_PUBLIC_ARC_RPC_URL=$NEXT_PUBLIC_ARC_RPC_URL
+ENV NEXT_PUBLIC_IPFS_GATEWAY=$NEXT_PUBLIC_IPFS_GATEWAY
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 RUN pnpm build
 
 # --- Runner ---
