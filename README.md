@@ -34,17 +34,19 @@
   Trader Agent (Python)                    Sentinel Agent (Python)
   Mirascope · Claude family                DSPy · GPT-4o-mini
   Trading-R1 trace generation              TraceAdversary + MIPROv2
+  Treasury (park/unpark USDC into USYC)              │
            │                                        │
   Polymarket V2 SDK                                 ▼
   (builder code)                           x402-protected MCP
            │                               ($0.01 USDC/validation)
-           ▼                                        │
+           ▵                                        │
   Polymarket CLOB (Polygon)                         │
                                                       │
                               ┌───────────────────────┘
                               ▼
                     Dashboard (Next.js 16)
                     split-screen dialogue + on-chain receipts
+                    wallet-connected · self-serve validation
 ```
 
 ---
@@ -55,6 +57,36 @@
 
 ---
 
+## What's Live
+
+### Dashboard Routes
+
+| Route | Description |
+|-------|-------------|
+| `/` | Split-screen trace + verdict dialogue, on-chain receipts |
+| `/trace/[id]` | Trace detail page — server component with structured layout and dynamic OG image |
+| `/history` | Paginated history of all traces and verdicts |
+| `/me` | Wallet-connected verdict history (wagmi v2 + Reown AppKit) |
+| `/submit` | Self-serve x402 validation — sign EIP-3009 transfers from the browser; shows Circle App Kit Bridge widget when USDC balance < 0.01 |
+| `/builder-fees` | HMAC-attributed leaderboard of Polymarket builder codes |
+| `/stats` | Platform analytics — 10 metric tiles with sparklines (traces, verdicts, validations, fill rate, etc.) |
+
+### Infrastructure
+
+- **Web3 wallet connection** — Reown AppKit + wagmi v2 across all pages; connected address available in `/me` and `/submit`
+- **Circle App Kit Bridge** — conditional bridge widget on `/submit` when wallet USDC < 0.01 (bridge USDC from other chains to Base Sepolia for x402 payments)
+- **Treasury module** — trader service parks/unparks USDC into USYC on Arc Testnet for yield optimization; tracked via `treasury_events` table
+- **Dual x402 facilitator mode** — sentinel accepts payments on Base Sepolia (public x402.org facilitator) **and** Arc Testnet (Circle facilitator), configured via `X402_FACILITATOR_MODE`
+- **@prism/builder-codes** — shared workspace package for HMAC-based builder code extraction from ERC-8004 agent IDs
+- **Remotion pitch video** — 90s parameterized composition at `apps/pitch-video/`, served on port 3001
+- **3 Neon migrations** — `001_fill_price`, `002_requester_address`, `003_treasury_events`
+
+### External x402 + MCP Endpoint
+
+The sentinel is a paid public service: any external agent can pay $0.01 USDC and get an adversarial verdict. See the [Call the Sentinel Yourself](#call-the-sentinel-yourself--external-x402--mcp-demo) section below for the 3-command demo.
+
+---
+
 ## What's Open / What's Gated
 
 | Open | Gated (not in this repo) |
@@ -62,10 +94,13 @@
 | ERC-8004 client & validator SDK scaffolding | Full calibration corpus (eval ground truth) |
 | Agent harness & trace generation pipeline | Production sentinel prompts (MIPROv2-optimized) |
 | Sample reasoning traces | HMAC seed material |
-| Dashboard (split-screen dialogue + receipts) | Circle Entity Secret & wallet private keys |
+| Dashboard (all 7 routes + wallet connection) | Circle Entity Secret & wallet private keys |
+| Self-serve x402 validation page | |
+| Builder fees leaderboard | |
 | Contract addresses & ABIs | |
-| x402 middleware setup | |
+| x402 middleware setup (dual facilitator mode) | |
 | DSPy `TraceAdversary` signature | |
+| Treasury module (USYC park/unpark) | |
 
 ---
 
@@ -75,7 +110,7 @@ Both agents are registered on Arc testnet's ERC-8004 IdentityRegistry:
 
 | Agent | agentId | Role |
 |-------|---------|------|
-| Trader | **4062** | Generates Trading-R1 traces, requests validation, executes paper trades |
+| Trader | **4062** | Generates Trading-R1 traces, requests validation, executes paper trades, treasury operations |
 | Sentinel | **4070** | Adversarially validates traces, submits verdicts on-chain |
 
 **Contract Addresses (Arc Testnet, chain 5042002):**
@@ -95,7 +130,7 @@ Dashboard deployed on Railway:
 
 **[https://prism-dashboard-production-e6e3.up.railway.app](https://prism-dashboard-production-e6e3.up.railway.app)**
 
-The split-screen view shows the trader's reasoning trace on the left and the sentinel's adversarial challenges on the right, with on-chain validation receipts below.
+The split-screen view shows the trader's reasoning trace on the left and the sentinel's adversarial challenges on the right, with on-chain validation receipts below. Connect your wallet to view your verdict history (`/me`) or submit a trace for validation (`/submit`).
 
 ---
 
@@ -175,7 +210,7 @@ diagram. The short version:
    `PaymentPayload` in the `X-PAYMENT` header
 5. **Sentinel forwards** to the x402.org facilitator which submits the
    USDC transfer on Base, then runs the DSPy adversarial verdict and
-   returns the result (as MCP `tools/call` SSE/JSON response)
+  returns the result (as MCP `tools/call` SSE/JSON response)
 
 Latest receipt: [`docs/demos/external-call-20260513T230443+0000.md`](./docs/demos/external-call-20260513T230443+0000.md)
 
@@ -216,9 +251,10 @@ Video generated with [Remotion](https://remotion.dev) — see `apps/pitch-video/
 | IPFS | Pinata (pinning) + ipfs.io (gateway) |
 | Database | Neon serverless Postgres |
 | MCP | [FastMCP](https://github.com/jlowin/fastmcp) |
-| Payments | [x402](https://x402.org) protocol — HTTP-native USDC micropayments |
+| Payments | [x402](https://x402.org) protocol — HTTP-native USDC micropayments (dual facilitator: Base Sepolia + Arc Testnet) |
 | Polymarket | `@polymarket/clob-client-v2` (V2 SDK) |
-| Dashboard | Next.js 16 · React 19 · Tailwind · shadcn/ui |
+| Dashboard | Next.js 16 · React 19 · Tailwind · shadcn/ui · wagmi v2 · Reown AppKit |
+| Treasury | USYC (Arc Testnet yield token) — park/unpark USDC |
 | Deployment | Railway (services) + Neon (DB) |
 | Python toolchain | `uv` · Python 3.12+ · FastAPI · ruff · mypy |
 | Node toolchain | `pnpm` · Node 20 LTS · Hono · TypeScript strict |
@@ -231,11 +267,12 @@ Video generated with [Remotion](https://remotion.dev) — see `apps/pitch-video/
 
 | Service | Stack | Key Endpoints |
 |---------|-------|---------------|
-| **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health` |
+| **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health`, `POST /treasury/park`, `POST /treasury/unpark` |
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
-| **Dashboard** | Next.js 16, React 19 | Split-screen trace + verdict view |
+| **Dashboard** | Next.js 16, React 19 | 7 routes — see [What's Live](#whats-live) |
+| **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
 ---
 
@@ -269,12 +306,25 @@ cp .env.example .env
 #   - TRADER_AGENT_ID, SENTINEL_AGENT_ID (ERC-8004 token IDs, after registration)
 #   - X402_FACILITATOR_URL, X402_NETWORK, X402_PRICE_USDC, X402_RECIPIENT_ADDRESS (x402 config)
 #   - PRISM_TRADE_MODE (paper or live — default: paper)
+#   - NEXT_PUBLIC_REOWN_PROJECT_ID (Reown AppKit project ID for wallet connection)
+#   - NEXT_PUBLIC_ARC_RPC_URL (Arc RPC URL exposed to the dashboard frontend)
+#   - TRADER_YIELD_MODE (park or idle — controls USYC treasury behavior)
+#   - X402_FACILITATOR_MODE (circle or public — dual facilitator mode for Arc Testnet vs Base Sepolia)
+#   - X402_ARC_RECIPIENT_ADDRESS (USDC recipient on Arc Testnet when facilitator mode is circle)
+#   - USYC_ARC_TESTNET_ADDRESS (USYC token contract address on Arc Testnet for treasury)
 
 # 3. Install Python dependencies
 uv sync
 
 # 4. Install Node dependencies
 pnpm install
+
+# 5. Run database migrations
+#    Apply the three Neon migrations in order:
+uv run python -m prism_schemas.migrations 001_fill_price
+uv run python -m prism_schemas.migrations 002_requester_address
+uv run python -m prism_schemas.migrations 003_treasury_events
+#    Or apply all at once via Neon's SQL editor / psql using the SQL files in packages/schemas-python/migrations/
 ```
 
 ### Running Services
@@ -288,6 +338,7 @@ cd apps/trader && uv run uvicorn trader.main:app --port 3201          # Trader
 cd apps/sentinel && uv run uvicorn sentinel.main:app --port 3202      # Sentinel
 cd apps/polymarket-gateway && pnpm dev                                  # Gateway
 cd apps/dashboard && pnpm dev                                           # Dashboard
+cd apps/pitch-video && pnpm dev                                         # Pitch video (port 3001)
 ```
 
 ---
@@ -303,6 +354,15 @@ cd apps/polymarket-gateway && pnpm test
 cd apps/dashboard && pnpm test
 ```
 
+**Current test counts:**
+
+| Suite | Tests |
+|-------|-------|
+| Dashboard | 444 |
+| Sentinel | 118 |
+| Trader | 156 |
+| **Total** | **718** |
+
 ---
 
 ## Project Structure
@@ -310,15 +370,16 @@ cd apps/dashboard && pnpm test
 ```
 prism/
 ├── apps/
-│   ├── trader/                   # Python · Claude · Mirascope
-│   ├── sentinel/                 # Python · GPT · DSPy
+│   ├── trader/                   # Python · Claude · Mirascope · Treasury (USYC)
+│   ├── sentinel/                 # Python · GPT · DSPy · Dual x402 facilitator
 │   ├── polymarket-gateway/       # Node · Hono · V2 SDK
-│   ├── dashboard/                # Next.js 16 · React 19
+│   ├── dashboard/                # Next.js 16 · React 19 · wagmi · Reown AppKit
 │   └── pitch-video/              # Remotion 90s pitch
 ├── packages/
 │   ├── schemas-python/           # Pydantic v2 models (Trace, Verdict, Feedback)
 │   ├── schemas-typescript/       # Zod mirrors of Python schemas
-│   └── arc-contracts/            # Contract addresses + ABIs
+│   ├── arc-contracts/            # Contract addresses + ABIs
+│   └── builder-codes/           # HMAC-based builder code extraction from ERC-8004 agent IDs
 ├── tests/                        # E2E pipeline integration
 ├── docs/                         # Architecture, demo script, traction log
 └── infra/                        # Circle setup, Arc CLI wrappers
@@ -330,11 +391,13 @@ prism/
 
 | Product | Usage |
 |---------|-------|
-| **Programmable Wallets** | Every ERC-8004 tx goes through a Developer-Controlled Wallet (SCA on Arc) |
+| **Programmable Wallets** | Every ERC-8004 tx goes through a Developer-Controlled Wallet (EOA on Arc Testnet) |
 | **Contract Execution** | `register`, `validationRequest`, `validationResponse`, `giveFeedback` via Circle SDK |
 | **Native USDC** (Arc) | Gas token — all costs denominated in USDC |
-| **Gas Station** | Gasless trader contract executions (Phase 1) |
+| **Gas Station** | Gasless trader contract executions (Phase 1 — EOA wallets pay own gas in Phase 0) |
 | **Nanopayments** (x402) | Sentinel charges $0.01 USDC/validation via HTTP 402 + Circle settlement |
+| **App Kit Bridge** | Conditional bridge widget on `/submit` — bridges USDC to Base Sepolia when wallet balance < 0.01 |
+| **Circle Facilitator** | Arc Testnet x402 facilitator mode — USDC settlement on Arc in addition to Base Sepolia public facilitator |
 
 ---
 
@@ -348,9 +411,25 @@ Full Pydantic models in [`packages/schemas-python/`](packages/schemas-python/).
 
 ---
 
+## Database Migrations
+
+Three Neon migrations ship with the traction sprint:
+
+| Migration | Description |
+|-----------|-------------|
+| `001_fill_price` | Adds `fill_price` column to trades table for tracking paper/live fill prices |
+| `002_requester_address` | Adds `requester_address` column to validations table for wallet-connected attribution |
+| `003_treasury_events` | Creates `treasury_events` table for USYC park/unpark audit trail |
+
+Apply them in order via the migration runner or directly through Neon's SQL editor using the files in `packages/schemas-python/migrations/`.
+
+---
+
 ## ERC-8004 ↔ Polymarket Identity Bridge
 
 Polymarket lives on Polygon, not Arc. Prism uses a **deterministic mapping**: the builder code is computed as the last 32 bytes of an HMAC over `(agentId, salt)`. The agent card pinned to IPFS publishes the salt, so anyone can verify which Arc `agentId` corresponds to which Polymarket builder attribution — on-chain identity surfaces in off-chain systems via deterministic derivation, not custodial bridging.
+
+The shared `@prism/builder-codes` package (`packages/builder-codes/`) provides the HMAC extraction logic for both Python and TypeScript consumers.
 
 ---
 
@@ -371,9 +450,9 @@ Prism is built for the **Agora Agent Hackathon** (Canteen × Circle × Arc), May
 | Criterion | Weight | Prism's Strength |
 |-----------|--------|-----------------|
 | Agentic Sophistication | 30% | Two-agent adversarial system, cross-model validation, MCP-as-a-service |
-| Traction | 30% | X threads, Discord engagement, waitlist, sentinel calls from external agents |
-| Circle Tool Usage | 20% | Programmable Wallets, contract execution, native USDC, Paymaster, Nanopayments |
-| Innovation | 20% | First adversarial AI validator on ERC-8004, first identity bridge to prediction markets |
+| Traction | 30% | X threads, Discord engagement, waitlist, sentinel calls from external agents, self-serve validation page |
+| Circle Tool Usage | 20% | Programmable Wallets, contract execution, native USDC, Paymaster, Nanopayments, App Kit Bridge, Circle facilitator |
+| Innovation | 20% | First adversarial AI validator on ERC-8004, first identity bridge to prediction markets, self-serve x402 validation |
 
 ---
 
@@ -384,6 +463,7 @@ Prism is built for the **Agora Agent Hackathon** (Canteen × Circle × Arc), May
 - All chain ops via Circle Programmable Wallets — **no raw private keys in code**
 - API keys in `.env` (gitignored), `.env.example` as template
 - Polymarket geofencing enforced at startup
+- EIP-3009 signed transfers only — no raw key exposure in the browser
 
 ---
 
