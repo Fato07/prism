@@ -317,6 +317,27 @@ The three Arc wallets are **Circle Developer-Controlled Wallets** with
 `accountType=EOA`. SCA migration is post-hackathon work (see `AGENTS.md`
 "Circle SDK usage" notes and `SETUP.md` §1b).
 
+### Circle Developer-Controlled Wallets — detail
+
+- **Wallet set:** Single wallet set containing 3 wallets, managed via
+  `CIRCLE_WALLET_SET_ID`.
+- **Account type:** EOA (not SCA). Verified May 13, 2026 via Circle API.
+  Gas Station sponsorship requires SCA — post-hackathon work. Current gas
+  cost: ~0.003–0.005 USDC per contract execution on Arc Testnet.
+- **Key management:** Circle holds encrypted key shares; entity secret
+  (operator-controlled) required for transaction signing. No raw private
+  keys in codebase.
+- **SDK package:** `circle-developer-controlled-wallets` (PyPI). Import
+  path: `circle.web3`. Synchronous SDK — wrapped with `asyncio.to_thread()`
+  in the trader.
+- **Blockchain identifier:** `ARC-TESTNET` in Circle API calls.
+
+| Wallet | Circle Wallet ID env var | Arc Testnet Address | Role |
+|---|---|---|---|
+| Trader | `CIRCLE_WALLET_TRADER_ID` | [`0xc960833ee26e23ca01dfc4d217a8942ea78b452b`](https://testnet.arcscan.app/address/0xc960833ee26e23ca01dfc4d217a8942ea78b452b) | Signs validationRequest, executes trades, parks/unparks USYC |
+| Sentinel | `CIRCLE_WALLET_SENTINEL_ID` | [`0x56509b03e85f3cbae5ba2190ee99b945d2f0ac36`](https://testnet.arcscan.app/address/0x56509b03e85f3cbae5ba2190ee99b945d2f0ac36) | Signs validationResponse, receives x402 payments (Arc mode) |
+| Oracle | `CIRCLE_WALLET_ORACLE_ID` | [`0xc95dfe848354482830805cdd8b8233a918cd16f7`](https://testnet.arcscan.app/address/0xc95dfe848354482830805cdd8b8233a918cd16f7) | Submits giveFeedback to ReputationRegistry (read-mostly) |
+
 ---
 
 ## Why this shape
@@ -375,11 +396,224 @@ log of a real settlement.
 
 ---
 
+## Dashboard API routes
+
+All 6 Next.js API routes live under `apps/dashboard/app/api/`.
+
+| Route | Method | Purpose | Key details |
+|---|---|---|---|
+| `/api/rpc/arc` | POST | Server-side CORS proxy for Arc Testnet RPC | Arc RPC returns no CORS headers; this same-origin proxy lets wagmi's browser-side HTTP transport bypass CORS. Forwards JSON-RPC body verbatim. Reads `ARC_RPC_URL` or `NEXT_PUBLIC_ARC_RPC_URL`. |
+| `/api/validate/initiate` | POST | Start MCP + x402 validation flow | Performs 3-step MCP handshake (initialize → notifications/initialized → unpaid tools/call). Sentinel's x402 middleware returns 402 with payment requirements. Route extracts and returns those requirements + MCP session ID. |
+| `/api/validate/confirm` | POST | Complete paid MCP validation | Receives signed x402 payment payload (EIP-3009 transferWithAuthorization) from client, forwards to sentinel via X-PAYMENT header. Sentinel settles payment via facilitator, then runs DSPy validation. Returns traceId, verdictScore, verdictLabel, ipfsCid, paymentTxHash. Remaps client's `transferAuth` to x402's canonical `authorization` key. 3-min timeout for slow DSPy runs. |
+| `/api/verdicts/by-address` | GET | Look up verdicts by requester address | Query param `address=0x...` (case-insensitive). Returns `HistoryEntry[]` shape matching the dashboard's history cards. Validates address format with regex. |
+| `/api/waitlist` | POST | Email waitlist signup | Validates with zod, upserts into `waitlist` table (ON CONFLICT DO NOTHING). Returns friendly "You're on the list!" or "Already on the list!". |
+| `/api/waitlist/count` | GET | Waitlist signup count | Returns `{ count: number }`. |
+
+### /submit page x402 payment flow
+
+```mermaid
+sequenceDiagram
+    participant Browser as Browser (MetaMask)
+    participant Init as POST /api/validate/initiate
+    participant Confirm as POST /api/validate/confirm
+    participant Sentinel as prism-sentinel (/mcp/)
+    participant Fac as x402.org facilitator
+    participant BaseSep as Base Sepolia
+
+    Browser->>Init: { traceUri, traceHash }
+    Init->>Sentinel: MCP initialize
+    Sentinel-->>Init: 200 + mcp-session-id
+    Init->>Sentinel: notifications/initialized
+    Sentinel-->>Init: 202 Accepted
+    Init->>Sentinel: tools/call validate (no X-PAYMENT)
+    Sentinel-->>Init: 402 Payment Required + payment requirements
+    Init-->>Browser: { sessionId, paymentRequirements }
+
+    Note over Browser: User signs EIP-3009 transferWithAuthorization<br/>in MetaMask (0.01 USDC on Base Sepolia)
+
+    Browser->>Confirm: { sessionId, xPayment, traceUri, traceHash }
+    Confirm->>Sentinel: tools/call validate + X-PAYMENT header
+    Sentinel->>Fac: POST /settle (paymentPayload, paymentRequirements)
+    Fac->>BaseSep: submit transferWithAuthorization
+    BaseSep-->>Fac: tx_hash
+    Fac-->>Sentinel: { success: true, transaction: 0x... }
+    Sentinel->>Sentinel: DSPy ChainOfThought adversarial verdict
+    Sentinel-->>Confirm: 200 + verdict (traceId, score, label, ipfsCid)
+    Confirm-->>Browser: { traceId, verdictScore, verdictLabel, ipfsCid, paymentTxHash }
+```
+
+---
+
+## Treasury module — idle USDC yield routing
+
+The trader's idle USDC can be parked into USYC (a yield-bearing stablecoin
+on Arc Testnet) and unparked when capital is needed for trades.
+
+- **Control:** `TRADER_YIELD_MODE` env var: `off` (default) | `park` | `smart`
+- **Dry-run mode:** When `USYC_ARC_TESTNET_ADDRESS` is unset (currently
+  true — USYC is not deployed on Arc Testnet yet), the module skips
+  on-chain calls, logs structured rationale, and persists `treasury_events`
+  rows with `tx_hash = NULL`.
+- **Park threshold:** Residual USDC > 5.0 triggers a park in `park` mode.
+  In `smart` mode, parks only on REJECT/WARN verdicts.
+- **Unpark:** On PASS verdict, unparks USYC back to USDC to ensure liquid
+  capital for trading.
+
+```mermaid
+flowchart TD
+    Start[Pipeline tick] --> Trace[Generate trace via Claude]
+    Trace --> Validate[Sentinel validates trace]
+    Validate --> Verdict{Verdict label?}
+
+    Verdict -->|PASS| Trade[Execute Polymarket order]
+    Verdict -->|REJECT/WARN| ParkCheck{Yield mode?}
+
+    ParkCheck -->|smart| ShouldPark{Residual USDC > 5?}
+    ParkCheck -->|park| ShouldPark2{Residual USDC > 5?}
+    ParkCheck -->|off| NoPark[No treasury action]
+
+    ShouldPark -->|yes| Park[Park USDC → USYC<br/>via Circle SDK]
+    ShouldPark -->|no| NoPark
+    ShouldPark2 -->|yes| Park
+    ShouldPark2 -->|no| NoPark
+
+    Trade --> UnparkCheck{Yield mode ≠ off?}
+    UnparkCheck -->|yes| Unpark[Unpark USYC → USDC<br/>via Circle SDK]
+    UnparkCheck -->|no| Done[Done]
+
+    Park --> Done
+    Unpark --> Done
+    NoPark --> Done
+
+    style Park fill:#f9f,stroke:#333
+    style Unpark fill:#bbf,stroke:#333
+    style Done fill:#bfb,stroke:#333
+```
+
+**DB table:** `treasury_events` — id (uuid), agent_id, wallet_address,
+event_type (park/unpark), usdc_amount, usyc_amount, rationale, tx_hash
+(NULL in dry-run), created_at.
+
+**Current status:** Dry-run only. USYC contract not yet deployed on Arc
+Testnet. See `apps/trader/src/trader/treasury.py`.
+
+---
+
+## Dashboard wallet connection (Reown AppKit)
+
+**Stack:** Reown AppKit + wagmi + ArcChainGuard component
+
+**Configuration** (in `apps/dashboard/app/config/index.ts`):
+
+- `defineChain` imported from `@reown/appkit/networks` (NOT viem —
+  AppKit's version includes `caipNetworkId` and `chainNamespace` fields)
+- Networks: Arc Testnet (custom chain 5042002), Base Sepolia, Base mainnet
+- Default network: Base Sepolia (Arc Testnet is unknown to MetaMask, so
+  initial connection lands on a well-known chain)
+- `allowUnsupportedChain: true` — prevents errors when wallet is on an
+  unrecognized chain
+
+**CORS proxy pattern:**
+
+- Arc Testnet RPC returns no CORS headers → browser-side wagmi transport
+  cannot call it directly
+- Solution: `/api/rpc/arc` server-side proxy (same-origin, no CORS
+  restriction)
+- Chain definition uses absolute public RPC URL (needed by MetaMask's
+  `wallet_addEthereumChain`, which runs in the extension's background
+  context — cannot resolve relative URLs)
+- wagmi transport uses proxy URL (`/api/rpc/arc`) in browser, direct URL
+  on server (`typeof window === "undefined"` check)
+
+**ArcChainGuard** (`apps/dashboard/app/components/arc-chain-guard.tsx`):
+
+- Side-effect-only component (renders null)
+- After wallet connects on Base Sepolia, auto-prompts MetaMask to switch
+  to Arc Testnet via `wallet_addEthereumChain`
+- `switchChain` stored in `useRef` (not useEffect deps) to prevent
+  infinite re-render loop (React #310)
+- `promptedRef` ensures one prompt per connection session
+- Non-blocking: if user rejects switch, app continues on current chain;
+  submit form handles chain switch at transaction time
+
+**Cookie-based SSR:** `cookieStorage` + `ssr: true` in WagmiAdapter config
+avoids hydration mismatches between server and client renders.
+
+---
+
+## Environment variable cross-reference
+
+All env vars grouped by service. Required vars must be set on Railway;
+optional vars have sensible defaults or activate dormant features.
+
+### Dashboard (prism-dashboard)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_REOWN_PROJECT_ID` | Yes | Reown AppKit project ID (public-safe) |
+| `NEXT_PUBLIC_ARC_RPC_URL` | Yes | Arc Testnet RPC URL (client-side) |
+| `ARC_RPC_URL` | Yes | Arc Testnet RPC URL (server-side, takes precedence over NEXT_PUBLIC_*) |
+| `NEXT_PUBLIC_SITE_URL` | Yes | Site URL for OAuth callbacks |
+| `NEXT_PUBLIC_IPFS_GATEWAY` | Yes | IPFS gateway for trace/verdict reads |
+| `IPFS_GATEWAY` | No | Server-side IPFS gateway override |
+| `SENTINEL_BASE_URL` | Yes* | Sentinel service base URL (*or `SENTINEL_MCP_URL`) |
+| `SENTINEL_MCP_URL` | Yes* | Sentinel MCP endpoint URL (overrides `SENTINEL_BASE_URL`) |
+| `DATABASE_URL` | Yes | Neon pooled connection string |
+| `NEXT_PUBLIC_X402_FACILITATOR_MODE` | Yes | `public` (Base Sepolia) or `circle` (Arc Testnet) |
+| `X402_FACILITATOR_MODE` | No | Server-side mirror of facilitator mode |
+
+### Sentinel (prism-sentinel)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | Yes | GPT family LLM for adversarial validation |
+| `CIRCLE_API_KEY` | Yes | Circle SDK authentication |
+| `CIRCLE_ENTITY_SECRET` | Yes | Circle entity secret for wallet signing |
+| `CIRCLE_WALLET_SENTINEL_ID` | Yes | Sentinel Circle wallet ID |
+| `CIRCLE_WALLET_SENTINEL_ADDRESS` | Yes | Sentinel wallet address |
+| `DATABASE_URL` | Yes | Neon pooled connection string |
+| `PINATA_JWT` | Yes | IPFS pinning |
+| `X402_FACILITATOR_URL` | Yes | x402 facilitator endpoint |
+| `X402_NETWORK` | Yes | Settlement network (base-sepolia) |
+| `X402_PRICE_USDC` | Yes | Price per validation (0.01) |
+| `X402_RECIPIENT_ADDRESS` | Yes | USDC recipient address |
+| `SENTINEL_AGENT_ID` | Yes | ERC-8004 agent ID |
+
+### Trader (prism-trader)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes | Claude family LLM for trace generation |
+| `CIRCLE_API_KEY` | Yes | Circle SDK authentication |
+| `CIRCLE_ENTITY_SECRET` | Yes | Circle entity secret for wallet signing |
+| `CIRCLE_WALLET_SET_ID` | Yes | Circle wallet set ID |
+| `CIRCLE_WALLET_TRADER_ID` | Yes | Trader Circle wallet ID |
+| `CIRCLE_WALLET_TRADER_ADDRESS` | Yes | Trader wallet address |
+| `DATABASE_URL` | Yes | Neon pooled connection string |
+| `PINATA_JWT` | Yes | IPFS pinning |
+| `ARC_RPC_URL` | Yes | Arc Testnet RPC URL |
+| `TRADER_AGENT_ID` | Yes | ERC-8004 agent ID |
+| `SENTINEL_BASE_URL` | Yes | Sentinel service URL (internal bypass) |
+| `PRISM_TRADE_MODE` | Yes | `paper` or `live` |
+| `TRADER_YIELD_MODE` | No | `off`/`park`/`smart` (default: off) |
+| `USYC_ARC_TESTNET_ADDRESS` | No | USYC contract address (empty = dry-run) |
+
+### Polymarket Gateway (prism-polymarket-gateway)
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `POLY_BUILDER_CODE` | Yes | Builder attribution code |
+| `BUILDER_HMAC_SECRET` | Yes | HMAC for deriving builder codes from agentIds |
+| `DATABASE_URL` | Yes | Neon pooled connection string |
+| `PRISM_TRADE_MODE` | Yes | `paper` or `live` |
+
+---
+
 ## What's measurably true vs. aspirational
 
 Honest snapshot to keep posts and submissions grounded.
 
-| Claim | Status as of May 14, 2026 |
+| Claim | Status as of May 15, 2026 |
 |---|---|
 | Trader auto-pipeline running 24/7 | ✅ True, ticks every 5 min on Railway |
 | Cross-family adversarial validation | ✅ True (anthropic-claude × openai-gpt verified in startup logs) |
@@ -391,6 +625,11 @@ Honest snapshot to keep posts and submissions grounded.
 | Calibration discrimination ≥ 30 points | ✅ True (45-point gap on synthetic traces) |
 | Gas Station sponsorship | ❌ Wallets are EOA; Gas Station only sponsors SCA (Phase 1 work) |
 | MCP service deployed | ✅ True, as ASGI sub-app inside sentinel at `/mcp/` |
+| Dashboard wallet connection (MetaMask) | ✅ True — Base Sepolia connect + ArcChainGuard auto-switch to Arc Testnet |
+| CORS proxy for Arc RPC | ✅ True — /api/rpc/arc same-origin proxy bypasses CORS |
+| /submit x402 payment flow | ⚠ Code path live, initiate returns 402 + payment requirements. Full end-to-end (sign + settle + verdict) pending live wallet test. |
+| Treasury USDC→USYC parking | ⚠ Code path live in dry-run mode. USYC contract not deployed on Arc Testnet yet. |
+| Reown AppKit modal | ✅ True — networks aligned, chain metadata includes blockExplorers + imageUrl fallbacks |
 
 ---
 
@@ -409,4 +648,4 @@ Honest snapshot to keep posts and submissions grounded.
 
 ---
 
-*Last updated: May 14, 2026 (Day 3 of the @CanteenApp × @BuildOnArc hackathon).*
+*Last updated: May 15, 2026 (Day 4 of the @CanteenApp × @BuildOnArc hackathon).*
