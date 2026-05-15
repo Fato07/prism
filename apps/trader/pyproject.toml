@@ -15,6 +15,7 @@ dependencies = [
     "opentelemetry-sdk",
     "fastapi",
     "uvicorn[standard]",
+    "braintrust>=0.21.0",
 ]
 
 [project.optional-dependencies]

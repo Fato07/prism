@@ -111,7 +111,7 @@ class TestTriggerEndpoint:
 
         with (
             patch(
-                "trader.main.generate_and_post_process",
+                "trader.main._generate_and_post_process",
                 new_callable=AsyncMock,
                 return_value=mock_trace,
             ),

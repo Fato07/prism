@@ -22,6 +22,8 @@
 *secret*
 *seed*
 .DS_Store
+.bt/
+.claude/
 .agents/
 .env
 .env.*

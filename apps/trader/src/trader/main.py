@@ -22,10 +22,16 @@ automatically on startup (5-minute interval by default).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import shutil
+import subprocess
 import sys
+from contextlib import suppress
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import braintrust
 import httpx
 import structlog
 
@@ -46,7 +52,6 @@ from trader.persistence import (
     update_trace_ipfs_cid,
     update_trace_tx_hash,
 )
-from trader.trading_r1 import WALLET_BALANCE_CAP, generate_and_post_process
 
 structlog.configure(
     processors=[
@@ -57,6 +62,129 @@ structlog.configure(
 )
 
 logger = structlog.get_logger("prism.trader")
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_BRAINTRUST_CONFIG = _REPO_ROOT / ".bt" / "config.json"
+_BRAINTRUST_KEYCHAIN_SERVICE = "com.braintrust.bt.cli"
+
+
+def _braintrust_cli_context() -> dict[str, str] | None:
+    """Return local Braintrust CLI context when it is available non-interactively."""
+    if not _BRAINTRUST_CONFIG.is_file() or shutil.which("bt") is None:
+        return None
+
+    try:
+        status = subprocess.run(
+            ["bt", "status", "--json", "--no-input"],
+            check=False,
+            capture_output=True,
+            cwd=_REPO_ROOT,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if status.returncode != 0:
+        return None
+
+    try:
+        payload = json.loads(status.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    org = payload.get("org")
+    profile = payload.get("profile")
+    if not isinstance(org, str) or not org.strip():
+        return None
+    if not isinstance(profile, str) or not profile.strip():
+        return None
+
+    return {"org": org, "profile": profile}
+
+
+def _braintrust_cli_access_token(profile: str) -> str | None:
+    """Read the saved Braintrust CLI OAuth access token from the local keychain."""
+    if sys.platform != "darwin" or shutil.which("security") is None:
+        return None
+
+    try:
+        token = subprocess.run(
+            [
+                "security",
+                "find-generic-password",
+                "-a",
+                f"oauth_access::{profile}",
+                "-s",
+                _BRAINTRUST_KEYCHAIN_SERVICE,
+                "-w",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    value = token.stdout.strip()
+    if token.returncode != 0 or not value:
+        return None
+
+    return value
+
+
+def _braintrust_credentials() -> tuple[str | None, str | None]:
+    """Resolve Braintrust credentials from env or local CLI auth state."""
+    api_key = os.environ.get("BRAINTRUST_API_KEY")
+    org_name = os.environ.get("BRAINTRUST_ORG_NAME")
+    if api_key:
+        return api_key, org_name
+
+    context = _braintrust_cli_context()
+    if context is None:
+        return None, None
+
+    token = _braintrust_cli_access_token(context["profile"])
+    if token is None:
+        return None, None
+
+    return token, org_name or context["org"]
+
+
+def _configure_braintrust() -> None:
+    """Enable Braintrust tracing when non-interactive credentials are available."""
+    api_key, org_name = _braintrust_credentials()
+    if api_key is None:
+        return
+
+    braintrust.init_logger(project="prism-trader", api_key=api_key, org_name=org_name)
+    braintrust.auto_instrument()
+
+
+_configure_braintrust()
+
+
+def _wallet_balance_cap() -> float:
+    """Return the trader wallet balance cap without importing trading_r1 too early."""
+    from trader.trading_r1 import WALLET_BALANCE_CAP
+
+    return WALLET_BALANCE_CAP
+
+
+async def _generate_and_post_process(
+    *,
+    market_id: str,
+    market_question: str,
+    wallet_balance: float,
+) -> TradingR1Trace:
+    """Load the trace generator lazily so Braintrust instrumentation is already active."""
+    from trader.trading_r1 import generate_and_post_process
+
+    return await generate_and_post_process(
+        market_id=market_id,
+        market_question=market_question,
+        wallet_balance=wallet_balance,
+    )
 
 
 def _is_onchain() -> bool:
@@ -218,10 +346,10 @@ async def _run_pipeline_internal() -> PipelineResponse:
 
     trace: TradingR1Trace
     try:
-        trace = await generate_and_post_process(
+        trace = await _generate_and_post_process(
             market_id=market_id,
             market_question=market_question,
-            wallet_balance=WALLET_BALANCE_CAP,
+            wallet_balance=_wallet_balance_cap(),
         )
     except Exception as exc:
         logger.error("pipeline_trace_generation_failed", error=str(exc))
@@ -348,7 +476,11 @@ async def _run_pipeline_internal() -> PipelineResponse:
         try:
             from decimal import Decimal as _Dec
 
-            from trader.treasury import resolve_yield_mode, should_unpark_before_trade, unpark_for_trade
+            from trader.treasury import (
+                resolve_yield_mode,
+                should_unpark_before_trade,
+                unpark_for_trade,
+            )
 
             yield_mode = resolve_yield_mode()
             verdict_label = validation.get("verdict_label", "")
@@ -441,7 +573,7 @@ async def _run_pipeline_internal() -> PipelineResponse:
             and validation is not None
             and validation.get("verdict_label") == "PASS"
         )
-        estimated_residual = _Dec(str(WALLET_BALANCE_CAP)) - (
+        estimated_residual = _Dec(str(_wallet_balance_cap())) - (
             _Dec(str(trace.size_usdc)) if trade_executed else _Dec("0")
         )
 
@@ -496,11 +628,11 @@ async def trigger(request: TriggerRequest) -> TriggerResponse:
 
     # Determine wallet balance (default to cap for now; real balance query
     # can be wired in Phase 1 via CircleChain.get_wallet_balance).
-    wallet_balance = WALLET_BALANCE_CAP
+    wallet_balance = _wallet_balance_cap()
 
     # Generate trace via Mirascope + Claude
     try:
-        trace: TradingR1Trace = await generate_and_post_process(
+        trace: TradingR1Trace = await _generate_and_post_process(
             market_id=request.market_id,
             market_question=request.market_question,
             wallet_balance=wallet_balance,
@@ -634,11 +766,13 @@ async def stop_schedule() -> ScheduleResponse:
     if not _is_scheduling():
         return ScheduleResponse(status="not_running", interval_minutes=0)
 
-    _pipeline_task.cancel()
-    try:
-        await _pipeline_task
-    except asyncio.CancelledError:
-        pass
+    task = _pipeline_task
+    if task is None:
+        return ScheduleResponse(status="not_running", interval_minutes=0)
+
+    task.cancel()
+    with suppress(asyncio.CancelledError):
+        await task
     _pipeline_task = None
     logger.info("schedule_stopped")
     return ScheduleResponse(status="stopped", interval_minutes=0)
