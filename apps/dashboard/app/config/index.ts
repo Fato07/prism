@@ -59,6 +59,23 @@ export const arcTestnet = defineChain({
   rpcUrls: {
     default: { http: [arcPublicRpcUrl] },
   },
+  // Defensive fallback: arcTestnetBase already defines blockExplorers, but
+  // if it's ever missing, this prevents Reown AppKit web components from
+  // rendering SVGs with empty width/height attributes (which crashes the
+  // /submit page on the deployed dashboard).
+  blockExplorers: arcTestnetBase.blockExplorers ?? {
+    default: {
+      name: "Arc Scan",
+      url: "https://explorer.arc-testnet.thecanteenapp.com",
+    },
+  },
+  // Reown AppKit uses assets.imageUrl to render chain icons in its web
+  // components. Without it, custom chains get an <svg width="" height="">
+  // which throws in strict rendering. Arc's icon is served from /public.
+  assets: {
+    imageId: undefined,
+    imageUrl: "/icon.svg",
+  },
 });
 
 /** Networks available in the AppKit modal. */

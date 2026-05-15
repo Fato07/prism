@@ -15,6 +15,13 @@
  * The guard is non-blocking: if the user rejects the chain switch, the app
  * still functions on whatever chain they're on. The submit-form's own
  * switchChainAsync handles the chain switch at transaction time.
+ *
+ * Why switchChain is stored in a ref:
+ *   useSwitchChain() returns a new function reference on every render.
+ *   Putting it directly in the useEffect dependency array causes the effect
+ *   to fire on every render → triggers switchChain → state update → re-render,
+ *   creating an infinite loop (React #310). Storing it in a ref breaks this
+ *   cycle while keeping the function reference current.
  */
 
 import { useAccount, useSwitchChain } from "wagmi";
@@ -26,7 +33,13 @@ const ARC_CHAIN_ID = arcTestnet.id;
 export function ArcChainGuard() {
   const { isConnected, chainId } = useAccount();
   const { switchChain } = useSwitchChain();
+  const switchChainRef = useRef(switchChain);
   const promptedRef = useRef(false);
+
+  // Keep the ref current so the main effect always calls the latest switchChain
+  useEffect(() => {
+    switchChainRef.current = switchChain;
+  }, [switchChain]);
 
   useEffect(() => {
     // Only prompt once per connection session, and only when the
@@ -41,12 +54,12 @@ export function ArcChainGuard() {
     // wallet can't add the chain, this fails silently — the app
     // will prompt again at transaction time (see submit-form.tsx).
     try {
-      switchChain?.({ chainId: ARC_CHAIN_ID });
+      switchChainRef.current?.({ chainId: ARC_CHAIN_ID });
     } catch {
       // Silently ignore — the user can switch later from the
       // AppKit network selector or the submit form.
     }
-  }, [isConnected, chainId, switchChain]);
+  }, [isConnected, chainId]); // switchChain removed from deps
 
   // Reset the prompt flag when the wallet disconnects
   useEffect(() => {
