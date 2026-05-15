@@ -30,18 +30,19 @@ WORKDIR /app/apps/polymarket-gateway
 RUN pnpm run build
 
 # --- Runner ---
-FROM node:22-slim AS runner
+FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3203
 
-# Copy the full node_modules from builder's workspace root (already has all deps resolved)
-# Then prune dev dependencies
-COPY --from=builder /app/node_modules/ ./node_modules/
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm prune --prod
+# Copy the entire workspace from builder (node_modules + all packages)
+COPY --from=builder /app/ ./
 
-# Copy compiled output
-COPY --from=builder /app/apps/polymarket-gateway/dist/ ./dist/
+# Prune dev dependencies in-place (pnpm has full metadata so this works)
+RUN pnpm prune --prod
+
+# Start from the gateway directory
+WORKDIR /app/apps/polymarket-gateway
 
 EXPOSE 3203
 CMD ["node", "dist/index.js"]
