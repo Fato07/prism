@@ -108,24 +108,6 @@ export function BridgeWidget() {
   const [phase, setPhase] = useState<BridgePhase>("idle");
   const [bridgeError, setBridgeError] = useState<string | null>(null);
 
-  /* ── Determine visibility ───────────────────────────────────── */
-
-  const hasSufficientBalance = usdcBalance !== undefined && usdcBalance >= MIN_USDC_UNITS;
-
-  // Hide when: wallet disconnected, balance sufficient, or balance still loading
-  // but wallet IS connected and we have a definitive insufficient balance → show
-  if (!isConnected || !address || hasSufficientBalance) {
-    // VAL-BRIDGE-004: Return null (no placeholder) to avoid CLS
-    return null;
-  }
-
-  // If balance is still loading (undefined) but wallet is connected and we know
-  // it's not sufficient (undefined means not loaded yet), don't show either —
-  // wait for the query to resolve. This prevents flash-of-widget.
-  if (usdcBalance === undefined) {
-    return null;
-  }
-
   /* ── Bridge handler ────────────────────────────────────────── */
 
   const handleBridge = useCallback(async () => {
@@ -202,6 +184,24 @@ export function BridgeWidget() {
       setPhase("error");
     }
   }, [walletClient, address, refetch]);
+
+  /* ── Determine visibility ───────────────────────────────────── */
+
+  const hasSufficientBalance = usdcBalance !== undefined && usdcBalance >= MIN_USDC_UNITS;
+
+  // Hide when: wallet disconnected, balance sufficient, or balance still loading
+  // but wallet IS connected and we have a definitive insufficient balance → show
+  if (!isConnected || !address || hasSufficientBalance) {
+    // VAL-BRIDGE-004: Return null (no placeholder) to avoid CLS
+    return null;
+  }
+
+  // If balance is still loading (undefined) but wallet is connected and we know
+  // it's not sufficient (undefined means not loaded yet), don't show either —
+  // wait for the query to resolve. This prevents flash-of-widget.
+  if (usdcBalance === undefined) {
+    return null;
+  }
 
   /* ── Derive display names ─────────────────────────────────────── */
 
