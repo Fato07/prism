@@ -38,7 +38,8 @@ ENV PORT=3203
 # Copy the entire workspace from builder (node_modules + all packages)
 COPY --from=builder /app/ ./
 
-# Prune dev dependencies in-place (pnpm has full metadata so this works)
+# Prune dev dependencies in-place (CI=true skips TTY prompt)
+ENV CI=true
 RUN pnpm prune --prod
 
 # Start from the gateway directory
