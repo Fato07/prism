@@ -14,6 +14,7 @@ Tools exposed:
   ``get_tool_manifest`` — Return a redacted connector/tool capability manifest.
   ``get_issue_ledger`` — Return a read-only issue ledger for a validation receipt.
   ``verify_receipt`` — Verify a pinned verdict receipt against DB/hash anchors.
+  ``explain_verdict`` — Explain the sentinel verdict and active issue gates.
 
 The ``validate`` tool runs the same pipeline as ``POST /validate``:
 
@@ -274,6 +275,40 @@ class VerifyReceiptResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class VerdictIssueExplanation(BaseModel):
+    """Agent-readable explanation for one issue-ledger challenge."""
+
+    challenge_id: str
+    type: str
+    severity: str
+    blocking_pass: bool
+    resolution_status: str
+    question: str
+    required_resolution: str
+    claim_ref: str | None = None
+    latest_resolution_status: str | None = None
+    latest_responder: str | None = None
+    latest_response: str | None = None
+
+
+class ExplainVerdictResult(BaseModel):
+    """Output schema for the read-only MCP ``explain_verdict`` tool."""
+
+    validation: IssueLedgerValidationRef
+    summary: str
+    verdict_score: int = Field(ge=0, le=100)
+    verdict_label: str
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    stop_reason: str | None = None
+    unresolved_blocking_count: int = Field(ge=0)
+    unresolved_material_count: int = Field(ge=0)
+    resolved_count: int = Field(ge=0)
+    policy_constraints: list[str]
+    issues: list[VerdictIssueExplanation]
+    redacted: bool = True
+    notes: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -367,6 +402,7 @@ def _tool_manifest_from_env() -> GetToolManifestResult:
             "get_tool_manifest",
             "get_issue_ledger",
             "verify_receipt",
+            "explain_verdict",
         ],
         evidence_connectors=[connector],
         notes=notes,
@@ -649,6 +685,108 @@ async def _get_issue_ledger(
 
     _validate_verdict_matches_receipt(row=row, verdict=verdict)
     return _issue_ledger_from_verdict_row(row=row, verdict=verdict)
+
+
+def _latest_resolution_for_challenge(
+    ledger: GetIssueLedgerResult,
+    challenge_id: str,
+) -> ChallengeResolution | None:
+    """Return the latest resolution attempt for a challenge, if present."""
+    matches = [
+        resolution
+        for resolution in ledger.challenge_resolutions
+        if resolution.challenge_id == challenge_id
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda resolution: resolution.created_at)
+
+
+def _policy_constraints_for_ledger(ledger: GetIssueLedgerResult) -> list[str]:
+    """Return active issue-ledger policy constraints for the verdict."""
+    constraints: list[str] = []
+    if ledger.unresolved_blocking_count:
+        constraints.append(
+            "PASS and ENDORSE are disallowed while blocking issues remain unresolved."
+        )
+    if ledger.unresolved_material_count:
+        constraints.append("ENDORSE is disallowed while material issues remain unresolved.")
+    if not constraints:
+        constraints.append(
+            "No unresolved material or blocking issue-ledger constraints are active."
+        )
+    return constraints
+
+
+def _explanation_summary(ledger: GetIssueLedgerResult) -> str:
+    """Return a concise deterministic verdict explanation summary."""
+    metadata = ledger.resolution_metadata
+    stop_reason = metadata.stop_reason if metadata is not None else "not_recorded"
+    return (
+        f"Sentinel verdict {ledger.validation.verdict_label} "
+        f"({ledger.validation.verdict_score}/100) for trace {ledger.validation.trace_id}. "
+        f"Unresolved blockers: {ledger.unresolved_blocking_count}; "
+        f"unresolved material issues: {ledger.unresolved_material_count}; "
+        f"stop reason: {stop_reason}."
+    )
+
+
+async def _explain_verdict(
+    *,
+    trace_id: str | None,
+    request_hash: str | None,
+) -> ExplainVerdictResult:
+    """Return a read-only, deterministic explanation for a persisted verdict."""
+    ledger = await _get_issue_ledger(trace_id=trace_id, request_hash=request_hash)
+    issue_explanations: list[VerdictIssueExplanation] = []
+    resolved_statuses = {"resolved", "superseded"}
+    for challenge in ledger.structured_challenges:
+        latest = _latest_resolution_for_challenge(ledger, challenge.id)
+        issue_explanations.append(
+            VerdictIssueExplanation(
+                challenge_id=challenge.id,
+                type=challenge.type,
+                severity=challenge.severity,
+                blocking_pass=challenge.blocking_pass,
+                resolution_status=challenge.resolution_status,
+                question=challenge.question,
+                required_resolution=challenge.required_resolution,
+                claim_ref=challenge.claim_ref,
+                latest_resolution_status=latest.status if latest is not None else None,
+                latest_responder=latest.responder if latest is not None else None,
+                latest_response=latest.response if latest is not None else None,
+            )
+        )
+
+    return ExplainVerdictResult(
+        validation=ledger.validation,
+        summary=_explanation_summary(ledger),
+        verdict_score=ledger.validation.verdict_score,
+        verdict_label=ledger.validation.verdict_label,
+        confidence=(
+            ledger.resolution_metadata.confidence
+            if ledger.resolution_metadata is not None
+            else None
+        ),
+        stop_reason=(
+            ledger.resolution_metadata.stop_reason
+            if ledger.resolution_metadata is not None
+            else None
+        ),
+        unresolved_blocking_count=ledger.unresolved_blocking_count,
+        unresolved_material_count=ledger.unresolved_material_count,
+        resolved_count=sum(
+            1
+            for challenge in ledger.structured_challenges
+            if challenge.resolution_status in resolved_statuses
+        ),
+        policy_constraints=_policy_constraints_for_ledger(ledger),
+        issues=issue_explanations,
+        notes=[
+            "Read-only explanation derived from the pinned sentinel verdict receipt.",
+            "External callers cannot mark issues resolved through this tool.",
+        ],
+    )
 
 
 async def _verify_receipt(
@@ -996,7 +1134,8 @@ def build_mcp_server() -> FastMCP:
             "cross-family adversarial discrimination; "
             "get_tool_manifest — inspect redacted connector capabilities; "
             "get_issue_ledger — inspect read-only structured issue ledgers; "
-            "verify_receipt — verify pinned verdict receipts against anchors."
+            "verify_receipt — verify pinned verdict receipts against anchors; "
+            "explain_verdict — explain verdicts and active issue gates."
         ),
     )
 
@@ -1181,6 +1320,30 @@ def build_mcp_server() -> FastMCP:
             trace_id=trace_id,
             request_hash=request_hash,
         )
+
+    # ------------------------------------------------------------------
+    # explain_verdict — explain the verdict and issue-ledger gates
+    # ------------------------------------------------------------------
+
+    @server.tool(
+        name="explain_verdict",
+        description=(
+            "Explain a persisted sentinel verdict in agent-readable form. "
+            "Provide trace_id or request_hash. Returns the verdict summary, "
+            "active issue-ledger policy constraints, and latest resolution attempts. "
+            "This tool is read-only and cannot mark issues resolved."
+        ),
+    )
+    async def explain_verdict(
+        trace_id: str | None = None,
+        request_hash: str | None = None,
+    ) -> ExplainVerdictResult:
+        logger.info(
+            "mcp_explain_verdict_invoked",
+            has_trace_id=bool(trace_id),
+            has_request_hash=bool(request_hash),
+        )
+        return await _explain_verdict(trace_id=trace_id, request_hash=request_hash)
 
     return server
 

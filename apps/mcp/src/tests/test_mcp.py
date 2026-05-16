@@ -1,4 +1,4 @@
-"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-016.
+"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-017.
 
 Covers:
   * VAL-MCP-001 — tools/list returns ``validate`` with the expected schema.
@@ -16,7 +16,8 @@ Covers:
   * VAL-MCP-013 — get_tool_manifest returns redacted connector capabilities.
   * VAL-MCP-014 — get_issue_ledger returns read-only structured issue ledgers.
   * VAL-MCP-015 — verify_receipt verifies pinned verdict receipts.
-  * VAL-MCP-016 — All 7 tools discoverable via tools/list.
+  * VAL-MCP-016 — explain_verdict explains issue-ledger policy gates.
+  * VAL-MCP-017 — All 8 tools discoverable via tools/list.
 """
 
 from __future__ import annotations
@@ -1144,6 +1145,7 @@ class TestGetToolManifestTool:
         assert data is not None
         assert "get_issue_ledger" in data.prism_mcp_tools
         assert "verify_receipt" in data.prism_mcp_tools
+        assert "explain_verdict" in data.prism_mcp_tools
         connector = data.evidence_connectors[0]
         assert connector.provider == "mcp"
         assert connector.transport == "mcp_http"
@@ -1668,14 +1670,144 @@ class TestVerifyReceiptTool:
 
 
 # ---------------------------------------------------------------------------
-# VAL-MCP-016: All 7 tools discoverable via tools/list
+# VAL-MCP-016: explain_verdict explains issue-ledger policy gates
+# ---------------------------------------------------------------------------
+
+
+class TestExplainVerdictTool:
+    @staticmethod
+    def _ledger_with_blocker() -> object:
+        from prism_mcp.server import GetIssueLedgerResult, IssueLedgerValidationRef
+
+        request_hash = hashlib.sha256(b"explain-verdict").hexdigest()
+        trace_id = str(uuid.uuid4())
+        challenge = AdversarialChallenge(
+            id="sys-temporal-stale-evidence",
+            type="temporal",
+            severity="blocking",
+            question="Evidence predates the market event window.",
+            required_resolution="Retrieve current evidence or revise to HOLD.",
+            blocking_pass=True,
+            claim_ref="evidence[0]",
+            resolution_status="conceded",
+        )
+        resolution = ChallengeResolution(
+            challenge_id=challenge.id,
+            status="conceded",
+            responder="evidence_tool",
+            response="No current source found; blocker remains unresolved.",
+            created_at=datetime.now(UTC),
+        )
+        return GetIssueLedgerResult(
+            validation=IssueLedgerValidationRef(
+                request_hash=request_hash,
+                trace_id=trace_id,
+                sentinel_agent_id=2,
+                verdict_score=50,
+                verdict_label="WARN",
+                response_uri="ipfs://QmExplainVerdict",
+            ),
+            structured_challenges=[challenge],
+            challenge_resolutions=[resolution],
+            resolution_rounds=[],
+            resolution_metadata=AdversarialResolutionMetadata(
+                confidence=0.41,
+                stop_reason="unresolved_blockers",
+                unresolved_blocking_count=1,
+                unresolved_material_count=0,
+                max_rounds=1,
+            ),
+            unresolved_blocking_count=1,
+            unresolved_material_count=0,
+            verdict_content_hash_hex=hashlib.sha256(b"verdict").hexdigest(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_explain_verdict(self) -> None:
+        """explain_verdict appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "explain_verdict" in names
+
+    @pytest.mark.asyncio
+    async def test_explain_verdict_returns_policy_constraints(self) -> None:
+        """explain_verdict summarizes active issue-ledger gates."""
+        from prism_mcp.server import build_mcp_server
+
+        ledger = self._ledger_with_blocker()
+        with patch("prism_mcp.server._get_issue_ledger", new=AsyncMock(return_value=ledger)):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "explain_verdict",
+                    {"trace_id": ledger.validation.trace_id},
+                )
+
+        data = result.data
+        assert data is not None
+        assert data.verdict_label == "WARN"
+        assert data.verdict_score == 50
+        assert data.confidence == 0.41
+        assert data.stop_reason == "unresolved_blockers"
+        assert data.unresolved_blocking_count == 1
+        assert data.resolved_count == 0
+        assert "PASS and ENDORSE" in data.policy_constraints[0]
+        assert data.issues[0].challenge_id == "sys-temporal-stale-evidence"
+        assert data.issues[0].latest_responder == "evidence_tool"
+        assert "cannot mark issues resolved" in " ".join(data.notes)
+
+    @pytest.mark.asyncio
+    async def test_explain_verdict_requires_identifier(self) -> None:
+        """explain_verdict propagates missing identifier errors from ledger lookup."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("explain_verdict", {}, raise_on_error=False)
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "missing_identifier" in message
+
+    def test_explain_verdict_result_model_validates(self) -> None:
+        """ExplainVerdictResult Pydantic model validates correctly."""
+        from prism_mcp.server import ExplainVerdictResult, IssueLedgerValidationRef
+
+        result = ExplainVerdictResult(
+            validation=IssueLedgerValidationRef(
+                request_hash=hashlib.sha256(b"model").hexdigest(),
+                trace_id=str(uuid.uuid4()),
+                sentinel_agent_id=2,
+                verdict_score=72,
+                verdict_label="PASS",
+                response_uri="ipfs://QmVerdict",
+            ),
+            summary="Sentinel verdict PASS (72/100).",
+            verdict_score=72,
+            verdict_label="PASS",
+            unresolved_blocking_count=0,
+            unresolved_material_count=0,
+            resolved_count=0,
+            policy_constraints=["No unresolved material or blocking constraints are active."],
+            issues=[],
+        )
+        assert result.redacted is True
+        assert result.verdict_label == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-017: All 8 tools discoverable via tools/list
 # ---------------------------------------------------------------------------
 
 
 class TestAllToolsDiscoverable:
     @pytest.mark.asyncio
-    async def test_tools_list_returns_all_seven_tools(self) -> None:
-        """tools/list returns validate, price, stats, calibration, manifest, ledger, verify."""
+    async def test_tools_list_returns_all_eight_tools(self) -> None:
+        """tools/list returns validate, stats, manifest, ledger, verify, explanation."""
         from prism_mcp.server import build_mcp_server
 
         server = build_mcp_server()
@@ -1689,6 +1821,7 @@ class TestAllToolsDiscoverable:
         assert "get_tool_manifest" in names
         assert "get_issue_ledger" in names
         assert "verify_receipt" in names
+        assert "explain_verdict" in names
         expected_tools = {
             "validate",
             "get_price",
@@ -1697,6 +1830,7 @@ class TestAllToolsDiscoverable:
             "get_tool_manifest",
             "get_issue_ledger",
             "verify_receipt",
+            "explain_verdict",
         }
         assert expected_tools.issubset(set(names))
-        assert sum(1 for n in names if n in expected_tools) == 7
+        assert sum(1 for n in names if n in expected_tools) == 8

@@ -46,12 +46,12 @@ Current tools include:
 - `get_calibration` — return sentinel calibration state;
 - `get_tool_manifest` — return redacted connector capabilities;
 - `get_issue_ledger` — return a read-only structured issue ledger for a validation receipt;
-- `verify_receipt` — verify a pinned verdict receipt against DB/hash anchors.
+- `verify_receipt` — verify a pinned verdict receipt against DB/hash anchors;
+- `explain_verdict` — explain the sentinel verdict and active issue-ledger gates.
 
 Future tools should include:
 
-- `submit_issue_response` or `propose_resolution`;
-- `explain_verdict`.
+- `submit_issue_response` or `propose_resolution`.
 
 External callers should never be able to mark issues resolved directly. They can submit
 responses or proposed resolutions; the sentinel remains responsible for adjudication.
@@ -400,14 +400,14 @@ uv run pytest \
 
 Extend Prism's own MCP server with more agent-readable trust tools:
 
-- `submit_issue_response` / `propose_resolution`;
-- `explain_verdict`.
+- `submit_issue_response` / `propose_resolution`.
 
 Already implemented in this phase:
 
 - `get_tool_manifest`;
 - `get_issue_ledger`;
-- `verify_receipt`.
+- `verify_receipt`;
+- `explain_verdict`.
 
 ## Decision
 
