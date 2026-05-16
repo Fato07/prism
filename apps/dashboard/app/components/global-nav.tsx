@@ -9,6 +9,7 @@
  * <ConnectWalletButton> which is already marked 'use client'.
  */
 
+import Link from "next/link";
 import { ConnectWalletButton } from "@/components/connect-wallet-button";
 import { Separator } from "@/components/ui/separator";
 
@@ -45,13 +46,14 @@ export function GlobalNav({ currentPage, rightExtra, style }: GlobalNavProps) {
     >
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-2 gap-y-2 px-4 py-2.5 sm:px-6 sm:py-3">
         {/* ── Left: Wordmark + breadcrumb ── */}
-        <a
+        <Link
           href="/"
+          prefetch
           className="inline-flex shrink-0 items-center gap-2 text-base font-semibold tracking-[var(--tracking-tight)] text-fg"
         >
           <Wordmark />
           <span className="hidden sm:inline">Prism</span>
-        </a>
+        </Link>
 
         {currentPage && currentPage !== "home" && (
           <>
@@ -69,9 +71,10 @@ export function GlobalNav({ currentPage, rightExtra, style }: GlobalNavProps) {
           {NAV_ROUTES.map((route) => {
             const isActive = currentPage === route.page;
             return (
-              <a
+              <Link
                 key={route.href}
                 href={route.href}
+                prefetch
                 aria-current={isActive ? "page" : undefined}
                 className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium transition-colors focus-ring sm:px-2.5 sm:py-1.5 sm:text-sm ${
                   isActive
@@ -80,7 +83,7 @@ export function GlobalNav({ currentPage, rightExtra, style }: GlobalNavProps) {
                 }`}
               >
                 {route.label}
-              </a>
+              </Link>
             );
           })}
         </div>

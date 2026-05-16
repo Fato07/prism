@@ -15,6 +15,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ensureWaitlistTable,
   getWaitlistCount,
@@ -204,12 +205,13 @@ function Footer() {
             <BrandMark name="canteen" size={14} aria-label="Canteen" />
             <span className="text-mono">Built on Canteen</span>
           </span>
-          <a
+          <Link
             href="/dashboard"
+            prefetch
             className="text-fg-muted transition-colors hover:text-fg"
           >
             Dashboard
-          </a>
+          </Link>
           <a
             href="https://github.com/Fato07/prism"
             target="_blank"

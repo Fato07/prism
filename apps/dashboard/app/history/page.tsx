@@ -10,6 +10,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getHistoryEntries } from "@/lib/db";
 import { ScoreDonut } from "@/components/ui/score-donut";
 import { Pill } from "@/components/ui/pill";
@@ -183,8 +184,9 @@ function HistoryCard({ entry }: HistoryCardProps) {
           : "var(--color-border)";
 
   return (
-    <a
+    <Link
       href={`/trace/${entry.trace_id}`}
+      prefetch={false}
       className="group relative block overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-canvas-raised)]/65 backdrop-blur-sm shadow-[var(--shadow-soft)] transition-colors hover:border-[var(--color-border-strong)]"
       data-testid={`history-card-${entry.trace_id}`}
     >
@@ -257,7 +259,7 @@ function HistoryCard({ entry }: HistoryCardProps) {
           </span>
         </div>
       </div>
-    </a>
+    </Link>
   );
 }
 
@@ -273,12 +275,13 @@ function PaginationLink({
   icon: React.ReactNode;
 }) {
   return (
-    <a
+    <Link
       href={href}
+      prefetch
       className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-fg-muted transition-colors hover:border-[var(--color-border-strong)] hover:text-fg focus-ring"
     >
       {icon}
       {label}
-    </a>
+    </Link>
   );
 }

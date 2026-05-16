@@ -18,6 +18,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   getTraceDetailData,
@@ -556,12 +557,13 @@ export default async function TraceDetailPage({ params }: PageProps) {
               Arc Testnet
               <ExternalLink className="h-3 w-3" strokeWidth={2} />
             </a>
-            <a
+            <Link
               href="/dashboard"
+              prefetch
               className="text-fg-muted transition-colors hover:text-fg"
             >
               Dashboard
-            </a>
+            </Link>
           </div>
         </div>
       </footer>

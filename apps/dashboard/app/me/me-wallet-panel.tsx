@@ -15,6 +15,7 @@
  * VAL-ME-005: Address lower-cased before query; displayed via <HashChip>.
  */
 
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useEffect, useState } from "react";
 import { HashChip } from "@/components/ui/hash-chip";
@@ -231,8 +232,9 @@ function MeVerdictCard({ entry }: MeVerdictCardProps) {
           : "var(--color-border)";
 
   return (
-    <a
+    <Link
       href={`/trace/${entry.trace_id}`}
+      prefetch={false}
       className="group relative block overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-canvas-raised)]/65 backdrop-blur-sm shadow-[var(--shadow-soft)] transition-colors hover:border-[var(--color-border-strong)]"
       data-testid={`me-card-${entry.trace_id}`}
     >
@@ -305,6 +307,6 @@ function MeVerdictCard({ entry }: MeVerdictCardProps) {
           </span>
         </div>
       </div>
-    </a>
+    </Link>
   );
 }
