@@ -134,15 +134,15 @@ def normalized_row_hash(row: CalibrationRow) -> str:
 
 def _selected_rows(root: Path, slice_name: SplitName) -> tuple[LoadedRow, ...]:
     """Load and select rows belonging to one local slice."""
+    # Load all rows once (including sample) for lineage validation.
     all_rows = load_corpus_rows(root, include_sample=True)
     _validate_holdout_export_policy(all_rows, slice_name)
     validate_lineage_integrity(all_rows)
 
-    if slice_name == "sample":
-        selected = [loaded for loaded in all_rows if loaded.row.split.name == "sample"]
-    else:
-        private_rows = load_corpus_rows(root, include_sample=False)
-        selected = [loaded for loaded in private_rows if loaded.row.split.name == slice_name]
+    # Filter from the single load above.  Sample rows carry split.name="sample"
+    # (enforced by the CalibrationRow validator), so a non-sample slice_name
+    # will never match them — no need for a separate include_sample=False load.
+    selected = [loaded for loaded in all_rows if loaded.row.split.name == slice_name]
 
     return tuple(sorted(selected, key=lambda loaded: loaded.row.row_id))
 

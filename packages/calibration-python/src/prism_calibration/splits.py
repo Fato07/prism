@@ -18,18 +18,34 @@ from prism_calibration.models import CalibrationRow, SplitMetadata, SplitName
 
 SPLIT_POLICY = "lineage-hash-v1"
 SPLIT_ORDER: tuple[SplitName, ...] = ("pilot", "dev", "holdout", "canary")
-ASSIGNED_AT = datetime(1970, 1, 1, tzinfo=UTC)
+
+# ── Named split-threshold constants ──────────────────────────────────────────
+# These thresholds define the cumulative-percentage bucket boundaries used by
+# `split_for_lineage` to map a lineage hash into one of the four non-sample
+# splits.  Exposing them as module-level constants lets future tuning (e.g.
+# shrinking pilot for a larger holdout) happen without deep code edits.
+SPLIT_THRESHOLD_PILOT: int = 50      # bucket < 50  → pilot
+SPLIT_THRESHOLD_DEV: int = 75        # bucket < 75  → dev
+SPLIT_THRESHOLD_HOLDOUT: int = 90    # bucket < 90  → holdout; ≥ 90 → canary
+
+# ── Epoch sentinel for deterministic `assigned_at` ───────────────────────────
+# Every split assignment stamps `assigned_at` with this fixed epoch datetime so
+# that builds remain byte-stable regardless of wall-clock time.
+ASSIGNED_AT_SENTINEL: datetime = datetime(1970, 1, 1, tzinfo=UTC)
+
+# Legacy alias retained for any code that imported the old name.
+ASSIGNED_AT: datetime = ASSIGNED_AT_SENTINEL
 
 
 def split_for_lineage(lineage_id: str, *, seed: int) -> SplitName:
     """Return a deterministic split for a lineage group and seed."""
     digest = hashlib.sha256(f"{seed}:{lineage_id}".encode()).hexdigest()
     bucket = int(digest[:8], 16) % 100
-    if bucket < 50:
+    if bucket < SPLIT_THRESHOLD_PILOT:
         return "pilot"
-    if bucket < 75:
+    if bucket < SPLIT_THRESHOLD_DEV:
         return "dev"
-    if bucket < 90:
+    if bucket < SPLIT_THRESHOLD_HOLDOUT:
         return "holdout"
     return "canary"
 
@@ -60,7 +76,7 @@ def _updated_row(row: CalibrationRow, *, split_name: SplitName, seed: int) -> Ca
         name=split_name,
         policy=SPLIT_POLICY,
         seed=seed,
-        assigned_at=ASSIGNED_AT,
+        assigned_at=ASSIGNED_AT_SENTINEL,
     )
     return row.model_copy(update={"split": split})
 
@@ -127,7 +143,10 @@ def build_deterministic_splits(root: Path, *, seed: int) -> dict[str, Any]:
     all_rows = load_corpus_rows(root, include_sample=True)
     validate_orphaned_mutations(all_rows)
 
-    private_rows = load_corpus_rows(root, include_sample=False)
+    # Filter to private (non-sample) rows from the single load above.
+    private_rows = tuple(
+        loaded for loaded in all_rows if loaded.row.split.name != "sample"
+    )
     validate_lineage_leaks(private_rows)
     grouped = group_rows_by_lineage(private_rows)
     updated_rows: list[LoadedRow] = []
