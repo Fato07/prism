@@ -8,6 +8,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
+from prism_cli.demo import DemoReceipt, DemoReceiptPaths
 from prism_cli.doctor import DoctorReport
 from prism_cli.models import (
     InspectResult,
@@ -60,6 +61,32 @@ def print_inspect(result: InspectResult) -> None:
         console.print("[bold yellow]Warnings[/bold yellow]")
         for warning in result.warnings:
             console.print(f"- {warning}")
+
+
+def print_demo_receipt(receipt: DemoReceipt, paths: DemoReceiptPaths) -> None:
+    """Render demo run summary and saved receipt paths."""
+    console.print("[bold]Prism developer demo[/bold]")
+    console.print(f"Mode:       {receipt.mode}")
+    console.print(f"Trace:      {receipt.trace_id}")
+    if receipt.market_question:
+        console.print(f"Market:     {receipt.market_question}")
+    console.print(
+        f"Quote:      {receipt.quote.amount_usdc} {receipt.quote.asset} on {receipt.quote.network}"
+    )
+    if receipt.validation_result:
+        result = receipt.validation_result
+        console.print(f"Verdict:    {result.verdict_score} {result.verdict_label}")
+        if result.payment_tx_hash:
+            console.print(f"Payment tx: {result.payment_tx_hash}")
+        if result.tx_hash:
+            console.print(f"Arc tx:     {result.tx_hash}")
+    else:
+        console.print("[yellow]Dry run only — no x402 payment was signed or submitted.[/yellow]")
+        console.print("Next paid command:")
+        for line in receipt.next_commands:
+            console.print(f"  {line}")
+    console.print(f"JSON:       {paths.json_path}")
+    console.print(f"Markdown:   {paths.markdown_path}")
 
 
 def print_doctor(report: DoctorReport) -> None:

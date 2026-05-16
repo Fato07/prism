@@ -106,6 +106,7 @@ The CLI is the developer-facing surface for pulling Prism metrics without openin
 ```bash
 cd apps/cli
 uv run prism doctor
+uv run prism demo
 uv run prism inspect ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 --json
 uv run prism stats
 uv run prism history --limit 5
@@ -115,8 +116,9 @@ uv run prism market resolve "<question from prism markets>" --json
 uv run prism quote ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 \
   --trace-hash 0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb
 uv run prism validate ipfs://Qm... --trace-hash 0x... --x-payment-file ./x-payment.txt
+uv run prism demo --pay --circle-address 0xYourCircleWallet --max-amount-usdc 0.01
 uv run prism validate ipfs://Qm... --trace-hash 0x... \
-  --circle-address 0xYourCircleWallet --circle-chain BASE-SEPOLIA --max-amount-usdc 0.01
+  --circle-address 0xYourCircleWallet --max-amount-usdc 0.01
 ```
 
 ---
@@ -333,7 +335,7 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `GET /markets/recommended`, `GET /markets/resolve`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
 | **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report` |
-| **CLI** | Python, Typer | `prism doctor`, `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve`, `prism quote`, `prism validate` |
+| **CLI** | Python, Typer | `prism doctor`, `prism demo`, `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve`, `prism quote`, `prism validate` |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
 ---

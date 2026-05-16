@@ -11,6 +11,7 @@ import typer
 from prism_cli.client import (
     PrismCliError,
     dashboard_from_trace_url,
+    extract_trace_id,
     fetch_markets,
     fetch_public_history,
     fetch_public_report,
@@ -30,10 +31,19 @@ from prism_cli.config import (
     DEFAULT_SENTINEL_MCP_URL,
     CliConfig,
 )
+from prism_cli.demo import (
+    DEFAULT_DEMO_TRACE_HASH,
+    DEFAULT_DEMO_TRACE_ID,
+    DEFAULT_DEMO_TRACE_URI,
+    DEFAULT_RECEIPTS_DIR,
+    DemoReceipt,
+    save_demo_receipt,
+)
 from prism_cli.doctor import run_doctor
 from prism_cli.metrics import inspect_trace
 from prism_cli.rendering import (
     console,
+    print_demo_receipt,
     print_doctor,
     print_history,
     print_inspect,
@@ -102,6 +112,103 @@ def _run(coro):  # type: ignore[no-untyped-def]
     except PrismCliError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1) from exc
+
+
+@app.command("demo")
+def demo_command(
+    trace_id: Annotated[str, typer.Option("--trace-id", help="Trace UUID to report.")] = (
+        DEFAULT_DEMO_TRACE_ID
+    ),
+    trace_uri: Annotated[str, typer.Option("--trace-uri", help="Trace IPFS URI to validate.")] = (
+        DEFAULT_DEMO_TRACE_URI
+    ),
+    trace_hash: Annotated[
+        str,
+        typer.Option("--trace-hash", help="0x-prefixed trace content hash."),
+    ] = DEFAULT_DEMO_TRACE_HASH,
+    pay: Annotated[bool, typer.Option("--pay", help="Sign and submit the x402 payment.")] = False,
+    circle_address: Annotated[
+        str | None,
+        typer.Option("--circle-address", help="Circle CLI wallet address for --pay."),
+    ] = None,
+    circle_chain: Annotated[
+        str | None,
+        typer.Option("--circle-chain", help="Circle CLI chain for signing; inferred when omitted."),
+    ] = None,
+    max_amount_usdc: Annotated[
+        str,
+        typer.Option("--max-amount-usdc", help="Refuse to sign/pay above this amount."),
+    ] = "0.01",
+    receipts_dir: Annotated[
+        Path,
+        typer.Option("--receipts-dir", help="Directory for JSON and Markdown receipts."),
+    ] = DEFAULT_RECEIPTS_DIR,
+    dashboard_url: DashboardOpt = DEFAULT_DASHBOARD_URL,
+    sentinel_url: SentinelOpt = DEFAULT_SENTINEL_MCP_URL,
+    ipfs_gateway: IpfsGatewayOpt = DEFAULT_IPFS_GATEWAY,
+    timeout: TimeoutOpt = 180.0,
+    json_output: JsonOpt = False,
+) -> None:
+    """Run the Prism developer demo: report → quote → optional paid validation."""
+
+    async def _inner() -> None:
+        if pay and not circle_address:
+            raise PrismCliError("--circle-address is required when --pay is set.")
+        canonical_trace_id = extract_trace_id(trace_id)
+        if not canonical_trace_id:
+            raise PrismCliError("--trace-id must be a trace UUID or dashboard /trace/<id> URL.")
+        config = _config(
+            dashboard_url=dashboard_url,
+            sentinel_url=sentinel_url,
+            ipfs_gateway=ipfs_gateway,
+            timeout=timeout,
+        )
+        report = await fetch_public_report(config, canonical_trace_id)
+        quote = await request_validation_quote(config, trace_uri, trace_hash=trace_hash)
+
+        validation_result = None
+        if pay:
+            try:
+                payment_header = await asyncio.to_thread(
+                    sign_x_payment_with_circle_cli,
+                    quote,
+                    payer_address=circle_address,
+                    circle_chain=circle_chain,
+                    max_amount_usdc=max_amount_usdc,
+                )
+            except X402SigningError as exc:
+                raise PrismCliError(str(exc)) from exc
+            paid_receipt = await submit_paid_validation(
+                config,
+                trace_uri,
+                x_payment_header=payment_header,
+                trace_hash=trace_hash,
+            )
+            quote = paid_receipt.quote
+            validation_result = paid_receipt.result
+
+        receipt = DemoReceipt.from_parts(
+            mode="paid" if pay else "dry_run",
+            trace_id=canonical_trace_id,
+            trace_uri=trace_uri,
+            trace_hash=trace_hash,
+            dashboard_report_url=f"{config.normalized_dashboard_url()}/trace/{canonical_trace_id}",
+            report=report,
+            quote=quote,
+            validation_result=validation_result,
+        )
+        paths = save_demo_receipt(receipt, receipts_dir)
+        if json_output:
+            print_json_model(
+                {
+                    "receipt": receipt.model_dump(mode="json"),
+                    "paths": paths.model_dump(mode="json"),
+                }
+            )
+        else:
+            print_demo_receipt(receipt, paths)
+
+    _run(_inner())
 
 
 @app.command("doctor")

@@ -67,3 +67,6 @@ apps/pitch-video/out/*.webm
 
 # Local agent loop state
 .ralph/
+
+# Prism CLI local receipts
+.prism/
