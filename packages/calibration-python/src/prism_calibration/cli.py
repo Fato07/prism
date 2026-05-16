@@ -252,8 +252,9 @@ def _handle_harvest(args: argparse.Namespace) -> int:
         _write_error(str(error))
         return 1
 
-    _write_json(harvest_summary(result))
-    return 0
+    summary = harvest_summary(result)
+    _write_json(summary)
+    return 1 if summary.get("exit_status") == "failure" else 0
 
 
 def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:

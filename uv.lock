@@ -2065,6 +2065,7 @@ name = "prism-calibration"
 version = "0.1.0"
 source = { editable = "packages/calibration-python" }
 dependencies = [
+    { name = "httpx" },
     { name = "prism-schemas" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
@@ -2073,6 +2074,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28" },
     { name = "prism-schemas", editable = "packages/schemas-python" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3" },
     { name = "pydantic", specifier = ">=2.13" },

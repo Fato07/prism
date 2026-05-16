@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SourceType = Literal["sample", "synthetic", "mutated", "real"]
 SplitName = Literal["sample", "pilot", "dev", "holdout", "canary"]
+ValidationStatus = Literal["validated", "unvalidated"]
 ReviewStatus = Literal[
     "unreviewed",
     "ai_labeled",
@@ -18,6 +19,57 @@ ReviewStatus = Literal[
     "approved",
     "rejected",
 ]
+
+
+class HarvestedTraceProvenance(BaseModel):
+    """Upstream Neon/IPFS trace metadata preserved on real harvested rows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trace_id: str = Field(min_length=1)
+    agent_id: int
+    market_id: str = Field(min_length=1)
+    ipfs_cid: str = Field(min_length=1)
+    ipfs_uri: str = Field(min_length=1)
+    db_content_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    normalized_content_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+    trace_tx_hash: str | None = None
+    db_created_at: datetime
+    payload_created_at: datetime
+
+
+class HarvestValidationProvenance(BaseModel):
+    """Optional validation/requester context attached to real harvested rows."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: ValidationStatus
+    request_hash: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+    sentinel_agent_id: int | None = None
+    verdict_score: int | None = Field(default=None, ge=0, le=100)
+    response_uri: str | None = None
+    response_cid: str | None = None
+    requester_address: str | None = None
+    tx_hash: str | None = None
+    created_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_validated_fields(self) -> Self:
+        """Require core validation fields when a trace is marked validated."""
+        if self.status == "validated":
+            missing: list[str] = []
+            if self.request_hash is None:
+                missing.append("request_hash")
+            if self.sentinel_agent_id is None:
+                missing.append("sentinel_agent_id")
+            if self.verdict_score is None:
+                missing.append("verdict_score")
+            if missing:
+                missing_fields = ", ".join(missing)
+                raise ValueError(
+                    "validated harvest provenance requires: " + missing_fields
+                )
+        return self
 
 
 class CorpusProvenance(BaseModel):
@@ -33,14 +85,20 @@ class CorpusProvenance(BaseModel):
     created_at: datetime
     parent_row_id: str | None = None
     mutation_type: str | None = None
+    harvested_trace: HarvestedTraceProvenance | None = None
+    validation: HarvestValidationProvenance | None = None
 
     @model_validator(mode="after")
-    def require_mutation_parent(self) -> Self:
-        """Require parent metadata for mutated rows."""
+    def require_source_specific_metadata(self) -> Self:
+        """Require source-specific metadata for mutated and real rows."""
         if self.source_type == "mutated" and not self.parent_row_id:
             raise ValueError("parent_row_id is required when source_type is mutated")
         if self.source_type == "mutated" and not self.mutation_type:
             raise ValueError("mutation_type is required when source_type is mutated")
+        if self.source_type == "real" and self.harvested_trace is None:
+            raise ValueError("harvested_trace is required when source_type is real")
+        if self.source_type == "real" and self.validation is None:
+            raise ValueError("validation is required when source_type is real")
         return self
 
 
