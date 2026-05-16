@@ -72,6 +72,80 @@ class StaticEvidenceProvider:
         return self._results_by_challenge_id.get(request.challenge.id, [])
 
 
+class FirecrawlSearchEvidenceProvider:
+    """Evidence provider backed by Firecrawl's Search API."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint: str = "https://api.firecrawl.dev/v2/search",
+        country: str | None = None,
+        location: str | None = None,
+        tbs: str | None = None,
+        category: str | None = None,
+        scrape_format: str = "markdown",
+        timeout_seconds: float = 30.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """Create a Firecrawl Search provider with a user-supplied API key."""
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.country = _optional_string(country)
+        self.location = _optional_string(location)
+        self.tbs = _optional_string(tbs)
+        self.category = _normalize_firecrawl_category(category)
+        self.scrape_format = _normalize_firecrawl_scrape_format(scrape_format)
+        self.timeout_seconds = timeout_seconds
+        self.transport = transport
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Query Firecrawl Search and normalize scraped web results."""
+        payload: dict[str, Any] = {
+            "query": request.query,
+            "limit": request.max_results,
+            "sources": ["web"],
+        }
+        if self.country:
+            payload["country"] = self.country
+        if self.location:
+            payload["location"] = self.location
+        if self.tbs:
+            payload["tbs"] = self.tbs
+        if self.category:
+            payload["categories"] = [{"type": self.category}]
+        if self.scrape_format is not None:
+            payload["scrapeOptions"] = {"formats": [{"type": self.scrape_format}]}
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.post(self.endpoint, json=payload, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "firecrawl_search_failed",
+                challenge_id=request.challenge.id,
+                error=str(exc),
+            )
+            return []
+
+        body = _response_json_or_none(
+            response,
+            provider="firecrawl_search",
+            challenge_id=request.challenge.id,
+        )
+        if body is None:
+            return []
+        return _parse_firecrawl_results(body)
+
+
 class ExaSearchEvidenceProvider:
     """Evidence provider backed by Exa's Search API."""
 
@@ -406,10 +480,29 @@ def evidence_provider_from_env() -> EvidenceProvider:
     - `parallel_search`: query Parallel's Search API with `PARALLEL_API_KEY`.
     - `tavily_search`: query Tavily Search with `TAVILY_API_KEY`.
     - `exa_search`: query Exa Search with `EXA_API_KEY`.
+    - `firecrawl_search`: query Firecrawl Search with `FIRECRAWL_API_KEY`.
     """
     provider = os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop").strip().lower()
     if provider == "noop":
         return NoopEvidenceProvider()
+    if provider in {"firecrawl", "firecrawl_search"}:
+        api_key = os.environ.get("FIRECRAWL_API_KEY", "").strip()
+        if not api_key:
+            logger.warning(
+                "firecrawl_search_missing_api_key",
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        timeout_seconds = _float_env("FIRECRAWL_SEARCH_TIMEOUT_SECONDS", 30.0)
+        return FirecrawlSearchEvidenceProvider(
+            api_key=api_key,
+            country=_env_optional_string("FIRECRAWL_SEARCH_COUNTRY"),
+            location=_env_optional_string("FIRECRAWL_SEARCH_LOCATION"),
+            tbs=_env_optional_string("FIRECRAWL_SEARCH_TBS"),
+            category=_env_optional_string("FIRECRAWL_SEARCH_CATEGORY"),
+            scrape_format=os.environ.get("FIRECRAWL_SEARCH_FORMAT", "markdown"),
+            timeout_seconds=timeout_seconds,
+        )
     if provider in {"exa", "exa_search"}:
         api_key = os.environ.get("EXA_API_KEY", "").strip()
         if not api_key:
@@ -496,6 +589,51 @@ def evidence_provider_from_env() -> EvidenceProvider:
         fallback="noop",
     )
     return NoopEvidenceProvider()
+
+
+def _env_optional_string(name: str) -> str | None:
+    """Return a stripped environment value, treating blanks as unset."""
+    return _optional_string(os.environ.get(name))
+
+
+def _optional_string(value: str | None) -> str | None:
+    """Return a stripped string value, treating blanks as unset."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _normalize_firecrawl_category(category: str | None) -> str | None:
+    """Return a supported Firecrawl search category."""
+    if category is None:
+        return None
+    normalized = category.strip().lower()
+    if normalized == "":
+        return None
+    if normalized in {"github", "research", "pdf"}:
+        return normalized
+    logger.warning(
+        "invalid_firecrawl_category",
+        category=normalized,
+        fallback=None,
+    )
+    return None
+
+
+def _normalize_firecrawl_scrape_format(scrape_format: str) -> str | None:
+    """Return a supported Firecrawl scrape format or disable scraping."""
+    normalized = scrape_format.strip().lower()
+    if normalized in {"markdown", "summary"}:
+        return normalized
+    if normalized in {"", "none", "off", "false"}:
+        return None
+    logger.warning(
+        "invalid_firecrawl_scrape_format",
+        scrape_format=normalized,
+        fallback="markdown",
+    )
+    return "markdown"
 
 
 def _exa_search_type_from_env() -> str:
@@ -717,6 +855,75 @@ def _parse_webhook_results(
             continue
         results.append(parsed)
     return results
+
+
+def _parse_firecrawl_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Firecrawl Search results into evidence results."""
+    if not isinstance(body, dict):
+        return []
+    raw_results = _firecrawl_raw_results(body)
+    if not isinstance(raw_results, list):
+        return []
+
+    results: list[EvidenceSearchResult] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str):
+            continue
+        snippet = _firecrawl_snippet(item)
+        if snippet is None:
+            continue
+        title = item.get("title")
+        published_at = _firecrawl_published_at(item)
+        results.append(
+            EvidenceSearchResult(
+                title=title if isinstance(title, str) and title else url,
+                url=url,
+                snippet=snippet,
+                provider="firecrawl_search",
+                published_at=published_at,
+                confidence=0.76,
+            )
+        )
+    return results
+
+
+def _firecrawl_raw_results(body: dict[str, Any]) -> Any:
+    """Return the likely result list from Firecrawl's flexible response shape."""
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return None
+    web_results = data.get("web")
+    if isinstance(web_results, list):
+        return web_results
+    return None
+
+
+def _firecrawl_snippet(item: dict[str, Any]) -> str | None:
+    """Choose the best Firecrawl content field for a compact evidence snippet."""
+    for key in ("summary", "markdown", "description", "content"):
+        value = item.get(key)
+        if isinstance(value, str) and value:
+            return value[:1600]
+    return None
+
+
+def _firecrawl_published_at(item: dict[str, Any]) -> str | None:
+    """Extract a publication timestamp from Firecrawl result metadata if present."""
+    for key in ("publishedAt", "published_at", "date"):
+        value = item.get(key)
+        if isinstance(value, str) and value:
+            return value
+    metadata = item.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    for key in ("publishedAt", "published_at", "publishedDate", "date"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _parse_exa_results(body: Any) -> list[EvidenceSearchResult]:

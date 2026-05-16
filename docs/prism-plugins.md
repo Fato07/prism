@@ -38,8 +38,8 @@ Examples:
 - `prism.parallel_x402` — future x402-paid search/research via Circle-compatible services.
 - `prism.tavily_search` — agent-oriented web retrieval with BYO Tavily API key.
 - `prism.exa_search` — semantic/neural research search with BYO Exa API key.
+- `prism.firecrawl_search` — search plus scraped markdown/summary with BYO Firecrawl API key.
 - `prism.brave_search` — web/news search with BYO Brave API key.
-- `prism.firecrawl` — scrape/extract specific pages after search.
 - `prism.polymarket_gamma` — market metadata, tags, end dates, resolution status.
 - `custom.webhook` — user-owned HTTP endpoint wrapping MCP tools, internal APIs, or any
   provider Prism does not natively know about.
@@ -109,6 +109,8 @@ evidence:
       api_key_env: TAVILY_API_KEY
     - type: exa_search
       api_key_env: EXA_API_KEY
+    - type: firecrawl_search
+      api_key_env: FIRECRAWL_API_KEY
     - type: brave_search
       api_key_env: BRAVE_SEARCH_API_KEY
 
@@ -189,6 +191,7 @@ The first plugin seam lives in `apps/sentinel/src/sentinel/evidence_tools.py`:
 - `ParallelSearchEvidenceProvider` — native Parallel Search API adapter.
 - `TavilySearchEvidenceProvider` — native Tavily Search API adapter.
 - `ExaSearchEvidenceProvider` — native Exa Search API adapter.
+- `FirecrawlSearchEvidenceProvider` — native Firecrawl Search API adapter.
 - `BraveSearchEvidenceProvider` — native Brave Search Web Search API adapter.
 
 Custom webhook environment:
@@ -238,6 +241,20 @@ EXA_SEARCH_TIMEOUT_SECONDS=30          # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
+Firecrawl Search environment:
+
+```bash
+PRISM_EVIDENCE_PROVIDER=firecrawl_search
+FIRECRAWL_API_KEY=your-firecrawl-api-key
+FIRECRAWL_SEARCH_COUNTRY=US              # optional
+FIRECRAWL_SEARCH_LOCATION=               # optional: geo-targeted location string
+FIRECRAWL_SEARCH_TBS=                    # optional: Firecrawl time-based search filter
+FIRECRAWL_SEARCH_CATEGORY=               # optional: github, research, pdf
+FIRECRAWL_SEARCH_FORMAT=markdown         # optional: markdown, summary, none
+FIRECRAWL_SEARCH_TIMEOUT_SECONDS=30      # optional
+ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+```
+
 Brave Search environment:
 
 ```bash
@@ -250,5 +267,5 @@ BRAVE_SEARCH_TIMEOUT_SECONDS=20      # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
-This is intentionally small and reversible. Native adapters for Parallel x402, Firecrawl,
-and domain APIs can be added behind the same contract.
+This is intentionally small and reversible. Native adapters for Parallel x402 and domain
+APIs can be added behind the same contract.

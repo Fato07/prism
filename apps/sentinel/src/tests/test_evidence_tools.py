@@ -13,6 +13,7 @@ from sentinel.evidence_tools import (
     CustomWebhookEvidenceProvider,
     EvidenceSearchRequest,
     ExaSearchEvidenceProvider,
+    FirecrawlSearchEvidenceProvider,
     NoopEvidenceProvider,
     ParallelSearchEvidenceProvider,
     TavilySearchEvidenceProvider,
@@ -41,6 +42,164 @@ def _request() -> EvidenceSearchRequest:
         challenge=challenge,
         query=query_for_challenge(market_question, challenge),
     )
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_search_provider_posts_query_and_parses_markdown() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["authorization"] = request.headers.get("authorization")
+        body = request.read().decode()
+        captured["body"] = body
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "web": [
+                        {
+                            "url": "https://example.com/firecrawl-current",
+                            "title": "Firecrawl current evidence",
+                            "description": "Fallback description.",
+                            "markdown": "# Current Firecrawl evidence",
+                            "metadata": {"publishedDate": "2026-05-16T00:00:00Z"},
+                        }
+                    ]
+                },
+                "creditsUsed": 1,
+            },
+        )
+
+    provider = FirecrawlSearchEvidenceProvider(
+        api_key="firecrawl-key",
+        country="US",
+        location="San Francisco,California,United States",
+        tbs="qdr:w",
+        category="research",
+        scrape_format="markdown",
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert captured["authorization"] == "Bearer firecrawl-key"
+    request_body = json.loads(str(captured["body"]))
+    assert request_body["query"] == _request().query
+    assert request_body["limit"] == 5
+    assert request_body["sources"] == ["web"]
+    assert request_body["country"] == "US"
+    assert request_body["location"] == "San Francisco,California,United States"
+    assert request_body["tbs"] == "qdr:w"
+    assert request_body["categories"] == [{"type": "research"}]
+    assert request_body["scrapeOptions"] == {"formats": [{"type": "markdown"}]}
+    assert len(results) == 1
+    assert results[0].provider == "firecrawl_search"
+    assert results[0].snippet == "# Current Firecrawl evidence"
+    assert results[0].published_at == "2026-05-16T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_search_provider_disables_scrape_and_falls_back() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.read().decode())
+        assert "scrapeOptions" not in body
+        assert "categories" not in body
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "web": [
+                        {
+                            "url": "https://example.com/firecrawl-description",
+                            "description": "Description-only result is still useful.",
+                        }
+                    ]
+                },
+            },
+        )
+
+    provider = FirecrawlSearchEvidenceProvider(
+        api_key="firecrawl-key",
+        category="bad-category",
+        scrape_format="none",
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert provider.category is None
+    assert provider.scrape_format is None
+    assert results[0].title == "https://example.com/firecrawl-description"
+    assert results[0].snippet == "Description-only result is still useful."
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_search_provider_requests_summary_format() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.read().decode()
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": {
+                    "web": [
+                        {
+                            "url": "https://example.com/firecrawl-summary",
+                            "title": "Summary result",
+                            "summary": "Summary-format result is compact evidence.",
+                        }
+                    ]
+                },
+            },
+        )
+
+    provider = FirecrawlSearchEvidenceProvider(
+        api_key="firecrawl-key",
+        country="   ",
+        location="  ",
+        tbs="  ",
+        scrape_format="summary",
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    request_body = json.loads(str(captured["body"]))
+    assert "country" not in request_body
+    assert "location" not in request_body
+    assert "tbs" not in request_body
+    assert request_body["scrapeOptions"] == {"formats": [{"type": "summary"}]}
+    assert results[0].snippet == "Summary-format result is compact evidence."
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_search_provider_returns_empty_on_invalid_json() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    provider = FirecrawlSearchEvidenceProvider(
+        api_key="firecrawl-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_firecrawl_search_provider_returns_empty_on_http_failure() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": "unauthorized"})
+
+    provider = FirecrawlSearchEvidenceProvider(
+        api_key="firecrawl-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
 
 
 @pytest.mark.asyncio
@@ -465,6 +624,56 @@ async def test_custom_webhook_provider_returns_empty_on_http_failure() -> None:
     )
 
     assert await provider.search(_request()) == []
+
+
+def test_evidence_provider_from_env_uses_firecrawl_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "firecrawl_search")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "firecrawl-key")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_COUNTRY", "US")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_LOCATION", "Tallinn,Estonia")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_TBS", "qdr:w")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_CATEGORY", "github")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_FORMAT", "summary")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_TIMEOUT_SECONDS", "bad-value")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, FirecrawlSearchEvidenceProvider)
+    assert provider.api_key == "firecrawl-key"
+    assert provider.country == "US"
+    assert provider.location == "Tallinn,Estonia"
+    assert provider.tbs == "qdr:w"
+    assert provider.category == "github"
+    assert provider.scrape_format == "summary"
+    assert provider.timeout_seconds == 30.0
+
+
+def test_evidence_provider_from_env_falls_back_to_firecrawl_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "firecrawl_search")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "firecrawl-key")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_CATEGORY", "bad-category")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_FORMAT", "bad-format")
+    monkeypatch.setenv("FIRECRAWL_SEARCH_TIMEOUT_SECONDS", "0")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, FirecrawlSearchEvidenceProvider)
+    assert provider.category is None
+    assert provider.scrape_format == "markdown"
+    assert provider.timeout_seconds == 30.0
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_without_firecrawl_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "firecrawl_search")
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
 
 
 def test_evidence_provider_from_env_uses_exa_search(monkeypatch: pytest.MonkeyPatch) -> None:
