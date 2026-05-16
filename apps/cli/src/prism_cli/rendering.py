@@ -19,9 +19,9 @@ console = Console()
 
 
 def print_json_model(model: Any) -> None:
-    """Print a Pydantic model or mapping as pretty JSON."""
+    """Print a Pydantic model or mapping as valid, unwrapped JSON."""
     payload = model.model_dump(mode="json") if hasattr(model, "model_dump") else model
-    console.print(json.dumps(payload, indent=2, sort_keys=True))
+    print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def print_inspect(result: InspectResult) -> None:
