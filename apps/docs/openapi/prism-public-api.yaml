@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: Prism Public API
+  version: 0.1.0
+  description: Read-only public reporting APIs for Prism dashboard stats, history, and trace reports.
+servers:
+  - url: https://prism-dashboard-production-e6e3.up.railway.app
+paths:
+  /api/public/stats:
+    get:
+      summary: Get aggregate Prism stats
+      operationId: getPublicStats
+      responses:
+        '200':
+          description: Aggregate stats response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [generated_at, stats]
+                properties:
+                  generated_at:
+                    type: string
+                    format: date-time
+                  stats:
+                    type: object
+                    additionalProperties: true
+  /api/public/history:
+    get:
+      summary: Get recent validation history
+      operationId: getPublicHistory
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Number of entries to return. The service clamps values to 1-100.
+      responses:
+        '200':
+          description: Recent history entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [generated_at, limit, entries]
+                properties:
+                  generated_at:
+                    type: string
+                    format: date-time
+                  limit:
+                    type: integer
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PublicHistoryEntry'
+  /api/public/traces/{id}/report:
+    get:
+      summary: Get a Prism Report for one trace
+      operationId: getPublicTraceReport
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Prism trace UUID.
+      responses:
+        '200':
+          description: Full Prism Report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTraceReport'
+        '404':
+          description: Trace not found.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+                    const: trace_not_found
+components:
+  schemas:
+    PublicHistoryEntry:
+      type: object
+      required:
+        - trace_id
+        - market_id
+        - verdict_score
+        - verdict_label
+        - created_at
+        - dashboard_url
+      properties:
+        trace_id:
+          type: string
+        market_id:
+          type: string
+        verdict_score:
+          type: number
+        verdict_label:
+          type: string
+          enum: [REJECT, WARN, PASS, ENDORSE]
+        created_at:
+          type: string
+        dashboard_url:
+          type: string
+          format: uri
+        trace_ipfs_cid:
+          type: [string, 'null']
+        trace_tx_hash:
+          type: [string, 'null']
+        validation_tx_hash:
+          type: [string, 'null']
+        response_uri:
+          type: [string, 'null']
+    PublicTraceReport:
+      type: object
+      required: [generated_at, trace, validation, reasoning_metrics, readiness, warnings, receipts]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        trace:
+          type: object
+          additionalProperties: true
+        validation:
+          type: [object, 'null']
+          additionalProperties: true
+        reasoning_metrics:
+          type: [object, 'null']
+          additionalProperties: true
+        readiness:
+          type: [string, 'null']
+          enum: [usable, needs_review, not_ready, null]
+        warnings:
+          type: array
+          items:
+            type: string
+        receipts:
+          type: object
+          additionalProperties: true

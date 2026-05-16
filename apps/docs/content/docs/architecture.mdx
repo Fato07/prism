@@ -1,0 +1,39 @@
+---
+title: Architecture
+description: "Prism's service topology and validation data flow."
+---
+
+Prism is a multi-service product with a dashboard, trader, sentinel, MCP service, Polymarket gateway, CLI, and shared schemas.
+
+## Services
+
+| Service | Stack | Role |
+| --- | --- | --- |
+| Dashboard | Next.js | Public product surface, stats, reports, calibration evidence. |
+| CLI | Python + Typer | Developer workflow for reports, quotes, validation, markets, receipts. |
+| Trader | Python + Mirascope | Generates Trading-R1 reasoning traces. |
+| Sentinel | Python + DSPy | Validates traces adversarially and exposes x402-protected MCP. |
+| MCP | Python + FastMCP | Exposes validation as an agent-callable tool. |
+| Polymarket gateway | Node + Hono | Surfaces markets and requires explicit token IDs for trades. |
+| Neon | Postgres | Stores traces, validations, trades, feedback, and agent records. |
+
+## Validation data flow
+
+1. Trader creates a structured Trading-R1 trace.
+2. Trace is stored and optionally pinned to IPFS.
+3. Sentinel receives a trace URI/hash through the MCP tool.
+4. x402 middleware requires payment for external validation.
+5. Sentinel returns verdict score, label, critique, IPFS CID, and transaction hashes when available.
+6. Dashboard public APIs expose reports and receipts.
+7. CLI turns those APIs into developer workflows and local receipt files.
+
+## Chain boundaries
+
+- Arc/ERC-8004 writes go through Circle Developer-Controlled Wallets infrastructure.
+- TypeScript chain reads use viem.
+- Prism does not create custom Solidity contracts.
+- Phase 0 wallets are EOA wallets, not SCA/Gas Station sponsored wallets.
+
+## Product primitive
+
+The core object is the Prism Report: a trace plus deterministic metrics, sentinel verdict, and receipt links.

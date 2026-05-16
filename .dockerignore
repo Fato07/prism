@@ -1,0 +1,34 @@
+# Keep Railway/local Docker build contexts small and deterministic.
+.git
+.gitignore
+.dockerignore
+
+# Dependencies and generated artifacts
+node_modules
+**/node_modules
+.next
+**/.next
+.source
+**/.source
+dist
+**/dist
+coverage
+**/coverage
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.venv
+__pycache__
+**/__pycache__
+
+# Local secrets and scratch state
+.env
+.env.*
+!.env.example
+.local
+.prism
+.ralph
+.factory
+
+# Rendered media / bulky local outputs
+apps/pitch-video/out

@@ -68,5 +68,9 @@ apps/pitch-video/out/*.webm
 # Local agent loop state
 .ralph/
 
+# Fumadocs generated source
+.source/
+apps/docs/.source/
+
 # Prism CLI local receipts
 .prism/

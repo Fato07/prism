@@ -1,0 +1,46 @@
+---
+title: Security model
+description: "Prism's safety rules for keys, payments, wallets, Polymarket orders, and public claims."
+---
+
+Prism's product value depends on receipt-backed claims and conservative payment boundaries.
+
+## No private-key custody
+
+Prism CLI never asks for raw private keys. Paid validation uses either:
+
+- an externally supplied `X-PAYMENT` header, or
+- Circle CLI typed-data signing with `circle wallet sign typed-data`.
+
+The private key remains outside Prism.
+
+## Explicit capped payments
+
+Dry-run commands are default. Paid flows require explicit commands and caps:
+
+```bash
+uv run prism demo --pay --circle-address 0x... --max-amount-usdc 0.01
+uv run prism validate ipfs://Qm... --trace-hash 0x... --circle-address 0x... --max-amount-usdc 0.01
+```
+
+If the quote exceeds the cap, the CLI refuses to sign.
+
+## LLM family separation
+
+The trader and sentinel must use different LLM families. The trader uses Mirascope. The sentinel uses DSPy. This separation is part of the adversarial design.
+
+## Polymarket token safety
+
+Market surfacing is read-first. Live trade submission requires an explicit token ID. Prism does not silently fuzzy-route a market question into a live order.
+
+## Arc claims
+
+Prism uses deployed Arc/ERC-8004 and ERC-8183 infrastructure. Do not claim custom Solidity deployment. Do not claim gasless/SCA/CCTP/Unified Balance behavior unless a real receipt backs that claim.
+
+## Geofencing
+
+Polymarket geofencing must be respected. Do not use VPN workarounds. Services must fail fast when configured locale is restricted.
+
+## Secrets
+
+Do not commit `.env`, `.env.local`, Circle entity secrets, API keys, OTP codes, or raw payment headers. Local CLI receipts are ignored under `.prism/`.

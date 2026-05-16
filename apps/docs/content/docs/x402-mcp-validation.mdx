@@ -1,0 +1,62 @@
+---
+title: x402 + MCP validation
+description: "How external agents quote and pay the Prism sentinel MCP endpoint."
+---
+
+The sentinel endpoint is a paid MCP service. It returns x402 payment requirements to unpaid callers and accepts a signed `X-PAYMENT` header from paid callers.
+
+## Endpoint
+
+```txt
+https://prism-sentinel-production.up.railway.app/mcp/
+```
+
+The trailing slash is part of the canonical endpoint.
+
+## Flow
+
+1. Initialize the MCP session.
+2. Call the validation tool without payment to receive x402 requirements.
+3. Sign the EIP-712 authorization externally or through Circle CLI.
+4. Retry the same MCP tool call with `X-PAYMENT`.
+5. Persist the returned verdict and receipt fields.
+
+The CLI wraps this flow:
+
+```bash
+uv run prism quote ipfs://Qm... --trace-hash 0x...
+uv run prism validate ipfs://Qm... --trace-hash 0x... \
+  --circle-address 0xYOUR_BASE_SEPOLIA_WALLET \
+  --max-amount-usdc 0.01
+```
+
+## Payment safety
+
+Prism CLI enforces three boundaries:
+
+- no raw private keys
+- explicit `--pay` or `validate` command before payment
+- a caller-provided max payment cap
+
+The Circle CLI command is executed as a subprocess with `shell=False`. Prism passes typed-data input to Circle CLI and receives a signed payment payload; the private key remains inside Circle's wallet boundary.
+
+## MCP versus REST
+
+The sentinel endpoint is MCP JSON-RPC/SSE. Do not model `/mcp/` as a normal REST endpoint in OpenAPI. The dashboard public APIs are REST; the sentinel validation service is MCP.
+
+## Example quote data
+
+A quote includes fields like:
+
+```json
+{
+  "amount_usdc": "0.01",
+  "amount_units": "10000",
+  "asset": "USDC",
+  "network": "base-sepolia",
+  "caip2": "eip155:84532",
+  "scheme": "exact"
+}
+```
+
+Always compare `amount_usdc` to your configured payment cap before signing.

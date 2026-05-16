@@ -1,0 +1,81 @@
+---
+title: CLI
+description: "Install and use Prism's developer CLI for reports, markets, x402 quotes, and validation receipts."
+---
+
+The Prism CLI is the fastest developer surface. It reads public dashboard APIs, resolves safe Polymarket market metadata, and orchestrates x402 validation without key custody.
+
+## Install
+
+Run once without installation:
+
+```bash
+uvx --from "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli" prism demo
+```
+
+Install as a tool:
+
+```bash
+uv tool install "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli"
+prism --version
+```
+
+From a clone:
+
+```bash
+cd apps/cli
+uv run prism --help
+```
+
+## Read-only commands
+
+```bash
+uv run prism doctor --no-circle
+uv run prism stats --json
+uv run prism history --limit 5
+uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
+uv run prism inspect ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 --json
+```
+
+## Safe demo
+
+```bash
+uv run prism demo
+```
+
+This is dry-run by default. It does not sign payment and does not submit validation. It writes local receipts under `.prism/receipts/`.
+
+## x402 quote
+
+```bash
+uv run prism quote ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 \
+  --trace-hash 0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb
+```
+
+## Paid validation
+
+Use an externally signed `X-PAYMENT` header:
+
+```bash
+uv run prism validate ipfs://Qm... --trace-hash 0x... \
+  --x-payment-file ./x-payment.txt
+```
+
+Or ask Circle CLI to sign typed data:
+
+```bash
+uv run prism validate ipfs://Qm... --trace-hash 0x... \
+  --circle-address 0xYOUR_BASE_SEPOLIA_WALLET \
+  --max-amount-usdc 0.01
+```
+
+The payment cap is deliberate. Paid flows are explicit, not automatic.
+
+## Markets
+
+```bash
+uv run prism markets --limit 5
+uv run prism market resolve "<question from prism markets>" --json
+```
+
+Live trade execution requires an explicit token ID. Prism does not fuzzy-route live orders into Polymarket markets.

@@ -1,0 +1,48 @@
+---
+title: Receipts
+description: "Understand and verify Prism receipt fields across IPFS, x402 payment, Arc validation, and local CLI output."
+---
+
+A receipt is the evidence bundle behind a Prism Report. It should let another developer answer: what trace was validated, who paid for validation, what verdict was produced, and where the public proof lives.
+
+## CLI receipt files
+
+`prism demo` writes two local files:
+
+```txt
+.prism/receipts/<timestamp>-dry_run-<trace>.json
+.prism/receipts/<timestamp>-dry_run-<trace>.md
+```
+
+Paid demo receipts use `paid` in the filename. The receipt files do not contain the raw `X-PAYMENT` header.
+
+## Key fields
+
+| Field | Meaning |
+| --- | --- |
+| `trace_uri` | IPFS URI for the trace being validated. |
+| `trace_hash` | 0x-prefixed content hash supplied to validation. |
+| `quote` | x402 payment requirements. |
+| `validation_result.payment_tx_hash` | Base Sepolia payment transaction when paid. |
+| `validation_result.tx_hash` | Arc validation response transaction when available. |
+| `validation_result.ipfs_cid` | Verdict content CID. |
+
+## Verify IPFS
+
+```bash
+curl https://gateway.pinata.cloud/ipfs/QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8
+```
+
+## Verify public report
+
+```bash
+uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24 --json
+```
+
+Compare the report's receipt fields with the local demo receipt.
+
+## Verify payment and Arc transactions
+
+Use the explorer URL associated with the network in the receipt. Base Sepolia x402 payment transactions prove payment for validation. Arc validation transactions prove the validation request/response was anchored against deployed Arc registries.
+
+Prism does not deploy custom Solidity contracts for this flow.

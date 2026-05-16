@@ -1,0 +1,32 @@
+---
+title: Prism Docs
+description: "Build against Prism's adversarial AI validation layer, CLI, public reports, x402 payments, and receipts."
+---
+
+Prism validates agent reasoning before it becomes market action. A trader agent creates a Trading-R1 trace, an adversarial sentinel challenges it, and the result is exposed as a Prism Report with deterministic reasoning metrics and receipt links.
+
+## What you can do here
+
+- Run the Prism CLI without cloning the whole repository.
+- Quote and call the sentinel's x402-protected MCP endpoint.
+- Read public dashboard APIs for stats, history, and trace reports.
+- Verify IPFS CIDs, Base Sepolia payment transactions, and Arc validation receipts.
+- Understand the safety rules around Circle wallets, Polymarket token IDs, and explicit paid flows.
+
+## Canonical surfaces
+
+| Surface | URL |
+| --- | --- |
+| Dashboard | `https://prism-dashboard-production-e6e3.up.railway.app` |
+| Sentinel MCP | `https://prism-sentinel-production.up.railway.app/mcp/` |
+| Polymarket gateway | `https://prism-polymarket-gateway-production.up.railway.app` |
+| Repository | `https://github.com/Fato07/prism` |
+
+The sentinel MCP URL intentionally keeps the trailing slash: `/mcp/`.
+
+## Start here
+
+1. Read the [quickstart](./quickstart).
+2. Run `prism demo` from the [CLI guide](./cli).
+3. Learn how [x402 + MCP validation](./x402-mcp-validation) works.
+4. Verify the output with [receipts](./receipts).

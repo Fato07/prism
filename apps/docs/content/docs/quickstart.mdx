@@ -1,0 +1,77 @@
+---
+title: Quickstart
+description: "Run Prism's safe demo, inspect a report, and prepare for explicit paid validation."
+---
+
+The fastest way to experience Prism is the CLI demo. It is dry-run by default: it fetches a public report, obtains an x402 quote, and writes local receipts without signing or submitting payment.
+
+## Run without cloning
+
+```bash
+uvx --from "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli" \
+  prism demo
+```
+
+## Run from a clone
+
+```bash
+git clone https://github.com/Fato07/prism.git
+cd prism/apps/cli
+uv run prism --version
+uv run prism doctor --no-circle
+uv run prism demo
+```
+
+`prism demo` writes JSON and Markdown receipts under:
+
+```txt
+.prism/receipts/
+```
+
+That directory is local-only and ignored by git.
+
+## Canonical demo trace
+
+```txt
+trace id:   d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
+trace uri:  ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8
+trace hash: 0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb
+verdict:    65 PASS
+```
+
+Inspect it:
+
+```bash
+uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24 --json
+```
+
+Quote sentinel validation:
+
+```bash
+uv run prism quote ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 \
+  --trace-hash 0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb
+```
+
+## Paid validation readiness
+
+Paid validation needs a Circle CLI session for the payment network in the quote. Run:
+
+```bash
+uv run prism doctor
+```
+
+If the Base Sepolia check fails, complete the interactive Circle login yourself:
+
+```bash
+circle wallet login YOUR_CIRCLE_EMAIL --testnet
+```
+
+Then run the explicit paid demo with a capped payment:
+
+```bash
+uv run prism demo --pay \
+  --circle-address 0xYOUR_BASE_SEPOLIA_WALLET \
+  --max-amount-usdc 0.01
+```
+
+Prism never asks for private keys. The Circle CLI signs the EIP-712 authorization at the wallet boundary.

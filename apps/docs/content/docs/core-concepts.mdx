@@ -1,0 +1,57 @@
+---
+title: Core concepts
+description: "The primitives behind Prism: traces, sentinel verdicts, reports, x402 payments, and receipts."
+---
+
+## Trading-R1 trace
+
+A Trading-R1 trace is the trader's structured reasoning record. It includes the market, action, raw and final probabilities, evidence, thesis steps, risk factors, and a rationale. The trace is the object Prism validates.
+
+## Sentinel validation
+
+The sentinel is a separate LLM family from the trader. It uses DSPy-style adversarial review to challenge evidence quality, thesis support, risk handling, and overconfidence. The output is a verdict score and label.
+
+| Score band | Label |
+| --- | --- |
+| `0-25` | `REJECT` |
+| `26-50` | `WARN` |
+| `51-75` | `PASS` |
+| `76-100` | `ENDORSE` |
+
+## Prism Report
+
+A Prism Report is the developer-facing unit:
+
+- trace identity and market context
+- sentinel verdict
+- deterministic reasoning metrics
+- readiness classification
+- warnings
+- receipt links
+
+Use the CLI or public APIs to fetch reports.
+
+## x402 payment
+
+The sentinel MCP endpoint is x402-protected. Unpaid callers receive payment requirements; paid callers submit an `X-PAYMENT` header. Prism's CLI can construct the signed header through Circle CLI, but it does not read or store private keys.
+
+## MCP endpoint
+
+The sentinel is exposed over MCP JSON-RPC/SSE at:
+
+```txt
+https://prism-sentinel-production.up.railway.app/mcp/
+```
+
+Keep the trailing slash. Treat this as an MCP transport endpoint, not a normal REST route.
+
+## Receipts
+
+Receipts link the report to evidence:
+
+- trace IPFS CID
+- verdict IPFS CID
+- Base Sepolia x402 payment transaction when paid externally
+- Arc validation request and response transactions when present
+
+Prism does not deploy custom Solidity contracts. Arc interactions use deployed registries and Circle wallet infrastructure.

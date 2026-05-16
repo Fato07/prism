@@ -1,0 +1,16 @@
+{
+  "title": "Prism Docs",
+  "pages": [
+    "index",
+    "quickstart",
+    "core-concepts",
+    "cli",
+    "x402-mcp-validation",
+    "public-apis",
+    "api-reference",
+    "receipts",
+    "security",
+    "architecture",
+    "troubleshooting"
+  ]
+}

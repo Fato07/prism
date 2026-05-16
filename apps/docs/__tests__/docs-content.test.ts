@@ -1,0 +1,57 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+const root = process.cwd();
+
+function read(relativePath: string): string {
+  return readFileSync(join(root, relativePath), 'utf8');
+}
+
+describe('Prism docs content', () => {
+  it('keeps core docs pages in navigation', () => {
+    const meta = JSON.parse(read('content/docs/meta.json')) as { pages: string[] };
+
+    expect(meta.pages).toContain('quickstart');
+    expect(meta.pages).toContain('cli');
+    expect(meta.pages).toContain('x402-mcp-validation');
+    expect(meta.pages).toContain('receipts');
+    expect(meta.pages).toContain('security');
+  });
+
+  it('does not publish personal Circle login details', () => {
+    const quickstart = read('content/docs/quickstart.mdx');
+    const troubleshooting = read('content/docs/troubleshooting.mdx');
+
+    const combined = `${quickstart}\n${troubleshooting}`;
+
+    expect(combined).not.toMatch(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    expect(combined).toContain('YOUR_CIRCLE_EMAIL');
+  });
+
+  it('documents the canonical MCP endpoint with trailing slash', () => {
+    const page = read('content/docs/x402-mcp-validation.mdx');
+
+    expect(page).toContain('https://prism-sentinel-production.up.railway.app/mcp/');
+    expect(page).toContain('trailing slash');
+  });
+
+  it('keeps paid validation explicit and capped', () => {
+    const cli = read('content/docs/cli.mdx');
+    const security = read('content/docs/security.mdx');
+
+    expect(cli).toContain('--max-amount-usdc 0.01');
+    expect(security.toLowerCase()).toContain('raw private keys');
+    expect(security).toContain('Dry-run commands are default');
+  });
+
+  it('ships an OpenAPI source for public dashboard APIs only', () => {
+    const openapi = read('openapi/prism-public-api.yaml');
+
+    expect(openapi).toContain('/api/public/stats');
+    expect(openapi).toContain('/api/public/history');
+    expect(openapi).toContain('/api/public/traces/{id}/report');
+    expect(openapi).not.toContain('/mcp/');
+  });
+});

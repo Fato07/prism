@@ -1,0 +1,88 @@
+---
+title: Troubleshooting
+description: "Fix common Prism CLI, Circle, x402, MCP, and docs issues."
+---
+
+## Check product health
+
+```bash
+cd apps/cli
+uv run prism doctor --no-circle
+```
+
+This checks the dashboard API, sentinel health, sentinel MCP handshake, and Polymarket gateway.
+
+## Check paid validation readiness
+
+```bash
+uv run prism doctor
+```
+
+If you see:
+
+```txt
+circle_base_sepolia_login=fail
+```
+
+run the interactive testnet login yourself:
+
+```bash
+circle wallet login YOUR_CIRCLE_EMAIL --testnet
+```
+
+Do not send OTP codes through agents or commit session artifacts.
+
+## No Base Sepolia wallet
+
+Create and fund a testnet agent wallet:
+
+```bash
+circle wallet create --output json
+circle wallet fund --address 0xYOUR_WALLET --chain BASE-SEPOLIA --token usdc
+```
+
+Then rerun:
+
+```bash
+uv run prism doctor
+```
+
+## MCP endpoint fails
+
+Use the canonical endpoint with the trailing slash:
+
+```txt
+https://prism-sentinel-production.up.railway.app/mcp/
+```
+
+`/mcp` and `/mcp/` can behave differently depending on client redirects and transport handling.
+
+## Quote above cap
+
+Increase the cap only if you intend to pay more:
+
+```bash
+uv run prism validate ipfs://Qm... --trace-hash 0x... \
+  --circle-address 0x... \
+  --max-amount-usdc 0.01
+```
+
+## Market resolution is ambiguous
+
+Use `prism markets` first, then resolve a specific question. Live trading requires explicit token IDs.
+
+```bash
+uv run prism markets --limit 5
+uv run prism market resolve "<exact question>" --json
+```
+
+## Docs build fails
+
+Run the docs app checks from the repository root:
+
+```bash
+pnpm --filter prism-docs test
+pnpm --filter prism-docs build
+```
+
+Fumadocs generates `.source/` during build/dev. Do not commit generated docs source output.

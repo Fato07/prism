@@ -1,0 +1,74 @@
+---
+title: Public APIs
+description: "Read Prism stats, history, and trace reports from the dashboard API."
+---
+
+The dashboard exposes read-only public APIs for developers and the CLI. These endpoints do not require payment.
+
+Base URL:
+
+```txt
+https://prism-dashboard-production-e6e3.up.railway.app
+```
+
+## Stats
+
+```http
+GET /api/public/stats
+```
+
+Returns aggregate public metrics:
+
+```json
+{
+  "generated_at": "2026-05-16T18:00:00.000Z",
+  "stats": {
+    "verdictsIssued": 550,
+    "tracesValidated": 739,
+    "onChainAnchors": 524,
+    "externalX402Calls": 1,
+    "avgVerdictScore": "63.88"
+  }
+}
+```
+
+## History
+
+```http
+GET /api/public/history?limit=5
+```
+
+`limit` is clamped from `1` to `100`.
+
+Each entry includes trace ID, verdict score/label, dashboard URL, IPFS CID, and on-chain receipt hashes when available.
+
+## Trace report
+
+```http
+GET /api/public/traces/{id}/report
+```
+
+Returns the full Prism Report:
+
+- trace metadata
+- validation metadata
+- deterministic reasoning metrics
+- readiness value
+- warnings
+- receipts
+
+A missing trace returns:
+
+```json
+{ "error": "trace_not_found" }
+```
+
+with HTTP `404`.
+
+## CLI equivalents
+
+```bash
+uv run prism stats --json
+uv run prism history --limit 5 --json
+uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24 --json
+```
