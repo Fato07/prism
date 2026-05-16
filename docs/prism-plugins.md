@@ -43,14 +43,14 @@ Current tools include:
 - `validate` — adversarially validate a trace;
 - `get_price` — return x402 validation price;
 - `get_stats` — return aggregate validation stats;
-- `get_calibration` — return sentinel calibration state.
+- `get_calibration` — return sentinel calibration state;
+- `get_tool_manifest` — return redacted connector capabilities.
 
 Future tools should include:
 
 - `get_issue_ledger`;
 - `submit_issue_response` or `propose_resolution`;
 - `verify_receipt`;
-- `get_tool_manifest`;
 - `explain_verdict`.
 
 External callers should never be able to mark issues resolved directly. They can submit
@@ -389,12 +389,11 @@ ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 
 ### Phase 5 — Queryable Prism surface
 
-Extend Prism's own MCP server with agent-readable trust tools:
+Extend Prism's own MCP server with more agent-readable trust tools:
 
 - `get_issue_ledger`;
 - `submit_issue_response` / `propose_resolution`;
 - `verify_receipt`;
-- `get_tool_manifest`;
 - `explain_verdict`.
 
 ## Decision

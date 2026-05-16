@@ -11,6 +11,7 @@ Tools exposed:
   ``get_price`` — Return the current x402 validation price.
   ``get_stats`` — Return aggregate sentinel statistics from Neon.
   ``get_calibration`` — Return the latest sentinel calibration metrics.
+  ``get_tool_manifest`` — Return a redacted connector/tool capability manifest.
 
 The ``validate`` tool runs the same pipeline as ``POST /validate``:
 
@@ -182,9 +183,162 @@ class GetCalibrationResult(BaseModel):
     tested_at: str
 
 
+class EvidenceConnectorManifestEntry(BaseModel):
+    """Redacted evidence connector configuration exposed to external agents."""
+
+    provider: str
+    transport: str
+    configured: bool
+    result_mapper: str | None = None
+    input_mapper: str | None = None
+    tool_name: str | None = None
+    allowed_tools: list[str] = Field(default_factory=list)
+    has_server_url: bool = False
+    has_auth_token: bool = False
+    has_api_key: bool = False
+    fallback_reference: bool = False
+
+
+class GetToolManifestResult(BaseModel):
+    """Output schema for the MCP ``get_tool_manifest`` tool."""
+
+    prism_mcp_tools: list[str]
+    evidence_connectors: list[EvidenceConnectorManifestEntry]
+    redacted: bool = True
+    notes: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _csv_env(name: str) -> list[str]:
+    """Return a comma-separated env var as stripped non-empty values."""
+    raw_value = os.environ.get(name, "")
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
+def _tool_manifest_from_env() -> GetToolManifestResult:
+    """Return a redacted MCP/tool connector manifest.
+
+    This intentionally exposes booleans and connector semantics, not API keys,
+    bearer tokens, or private server URLs.
+    """
+    provider = _canonical_evidence_provider(
+        os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop"),
+    )
+    direct_adapter_api_key_envs = {
+        "parallel_search": "PARALLEL_API_KEY",
+        "tavily_search": "TAVILY_API_KEY",
+        "exa_search": "EXA_API_KEY",
+        "firecrawl_search": "FIRECRAWL_API_KEY",
+        "brave_search": "BRAVE_SEARCH_API_KEY",
+    }
+    notes = [
+        "Connector secrets and server URLs are redacted.",
+        "Direct adapters are fallback/reference implementations; MCP is preferred.",
+    ]
+
+    if provider in {"mcp", "mcp_http"}:
+        result_mapper = os.environ.get("PRISM_EVIDENCE_RESULT_MAPPER", "generic_search")
+        input_mapper = os.environ.get("PRISM_EVIDENCE_MCP_INPUT_MAPPER", "query")
+        valid_result_mapper = _is_known_evidence_result_mapper(result_mapper)
+        valid_input_mapper = _is_known_evidence_input_mapper(input_mapper)
+        if not valid_result_mapper:
+            notes.append("Configured MCP evidence result mapper is unknown.")
+        if not valid_input_mapper:
+            notes.append("Configured MCP evidence input mapper is unknown.")
+        connector = EvidenceConnectorManifestEntry(
+            provider="mcp",
+            transport="mcp_http",
+            configured=bool(
+                os.environ.get("PRISM_EVIDENCE_MCP_URL")
+                and os.environ.get("PRISM_EVIDENCE_MCP_TOOL")
+                and valid_result_mapper
+                and valid_input_mapper
+            ),
+            result_mapper=result_mapper,
+            input_mapper=input_mapper,
+            tool_name=os.environ.get("PRISM_EVIDENCE_MCP_TOOL"),
+            allowed_tools=_csv_env("PRISM_EVIDENCE_MCP_ALLOWED_TOOLS"),
+            has_server_url=bool(os.environ.get("PRISM_EVIDENCE_MCP_URL")),
+            has_auth_token=bool(os.environ.get("PRISM_EVIDENCE_MCP_AUTH_TOKEN")),
+        )
+    elif provider in direct_adapter_api_key_envs:
+        api_key_env = direct_adapter_api_key_envs[provider]
+        connector = EvidenceConnectorManifestEntry(
+            provider=provider,
+            transport="direct_adapter",
+            configured=bool(os.environ.get(api_key_env)),
+            result_mapper=provider,
+            has_api_key=bool(os.environ.get(api_key_env)),
+            fallback_reference=True,
+        )
+    elif provider == "custom_webhook":
+        connector = EvidenceConnectorManifestEntry(
+            provider="custom_webhook",
+            transport="custom_webhook",
+            configured=bool(os.environ.get("PRISM_EVIDENCE_WEBHOOK_URL")),
+            result_mapper="custom_webhook",
+            has_server_url=bool(os.environ.get("PRISM_EVIDENCE_WEBHOOK_URL")),
+            has_auth_token=bool(os.environ.get("PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN")),
+            fallback_reference=True,
+        )
+    else:
+        connector = EvidenceConnectorManifestEntry(
+            provider=provider,
+            transport="noop",
+            configured=provider == "noop",
+        )
+
+    return GetToolManifestResult(
+        prism_mcp_tools=[
+            "validate",
+            "get_price",
+            "get_stats",
+            "get_calibration",
+            "get_tool_manifest",
+        ],
+        evidence_connectors=[connector],
+        notes=notes,
+    )
+
+
+def _canonical_evidence_provider(provider: str) -> str:
+    """Normalize evidence provider aliases used by the sentinel service."""
+    normalized = provider.strip().lower() or "noop"
+    return {
+        "parallel": "parallel_search",
+        "tavily": "tavily_search",
+        "exa": "exa_search",
+        "firecrawl": "firecrawl_search",
+        "brave": "brave_search",
+    }.get(normalized, normalized)
+
+
+def _is_known_evidence_result_mapper(mapper_name: str) -> bool:
+    """Return whether a result mapper is supported by the sentinel connector layer."""
+    return mapper_name.strip().lower() in {
+        "generic_search",
+        "custom_webhook",
+        "firecrawl_search",
+        "exa_search",
+        "parallel_search",
+        "tavily_search",
+        "brave_search",
+    }
+
+
+def _is_known_evidence_input_mapper(mapper_name: str) -> bool:
+    """Return whether an MCP input mapper is supported by the sentinel connector layer."""
+    return mapper_name.strip().lower() in {
+        "query",
+        "query_limit",
+        "query_max_results",
+        "q_count",
+        "prism_evidence_request",
+    }
 
 
 def _query_stats_from_db(hours: int = 168) -> dict[str, Any]:
@@ -436,7 +590,8 @@ def build_mcp_server() -> FastMCP:
             "get_price — check the current validation price; "
             "get_stats — view aggregate sentinel statistics; "
             "get_calibration — inspect the latest calibration metrics proving "
-            "cross-family adversarial discrimination."
+            "cross-family adversarial discrimination; "
+            "get_tool_manifest — inspect redacted connector capabilities."
         ),
     )
 
@@ -542,6 +697,23 @@ def build_mcp_server() -> FastMCP:
             test_results=[CalibrationTestResult(**r) for r in cal["test_results"]],
             tested_at=cal["tested_at"],
         )
+
+    # ------------------------------------------------------------------
+    # get_tool_manifest — return redacted connector/tool capabilities
+    # ------------------------------------------------------------------
+
+    @server.tool(
+        name="get_tool_manifest",
+        description=(
+            "Get a redacted manifest of Prism MCP tools and configured evidence "
+            "connectors. Secrets, API keys, bearer tokens, and private server URLs "
+            "are never returned. Useful for agents deciding what Prism can verify "
+            "or retrieve during adversarial resolution."
+        ),
+    )
+    async def get_tool_manifest() -> GetToolManifestResult:
+        logger.info("mcp_get_tool_manifest_invoked")
+        return _tool_manifest_from_env()
 
     return server
 

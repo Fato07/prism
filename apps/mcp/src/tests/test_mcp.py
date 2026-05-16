@@ -1,4 +1,4 @@
-"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-013.
+"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-014.
 
 Covers:
   * VAL-MCP-001 — tools/list returns ``validate`` with the expected schema.
@@ -13,12 +13,14 @@ Covers:
   * VAL-MCP-010 — get_price tool returns correct pricing.
   * VAL-MCP-011 — get_stats tool returns aggregate statistics.
   * VAL-MCP-012 — get_calibration tool returns calibration metrics.
-  * VAL-MCP-013 — All 4 tools discoverable via tools/list.
+  * VAL-MCP-013 — get_tool_manifest returns redacted connector capabilities.
+  * VAL-MCP-014 — All 5 tools discoverable via tools/list.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import uuid
 from collections.abc import Generator
@@ -1092,14 +1094,142 @@ class TestGetCalibrationTool:
 
 
 # ---------------------------------------------------------------------------
-# VAL-MCP-013: All 4 tools discoverable via tools/list
+# VAL-MCP-013: get_tool_manifest returns redacted connector capabilities
+# ---------------------------------------------------------------------------
+
+
+class TestGetToolManifestTool:
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_get_tool_manifest(self) -> None:
+        """get_tool_manifest appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "get_tool_manifest" in names
+
+    @pytest.mark.asyncio
+    async def test_get_tool_manifest_redacts_mcp_connector_secrets(self) -> None:
+        """get_tool_manifest returns capability flags without URLs or tokens."""
+        from prism_mcp.server import build_mcp_server
+
+        with patch.dict(
+            os.environ,
+            {
+                "PRISM_EVIDENCE_PROVIDER": "mcp",
+                "PRISM_EVIDENCE_MCP_URL": "https://secret-tools.example.com/mcp/",
+                "PRISM_EVIDENCE_MCP_TOOL": "search",
+                "PRISM_EVIDENCE_RESULT_MAPPER": "firecrawl_search",
+                "PRISM_EVIDENCE_MCP_INPUT_MAPPER": "query_limit",
+                "PRISM_EVIDENCE_MCP_AUTH_TOKEN": "super-secret-token",
+                "PRISM_EVIDENCE_MCP_ALLOWED_TOOLS": "search,extract",
+            },
+            clear=False,
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_tool_manifest", {})
+
+        data = result.data
+        assert data is not None
+        connector = data.evidence_connectors[0]
+        assert connector.provider == "mcp"
+        assert connector.transport == "mcp_http"
+        assert connector.configured is True
+        assert connector.has_server_url is True
+        assert connector.has_auth_token is True
+        assert connector.tool_name == "search"
+        assert connector.result_mapper == "firecrawl_search"
+        assert connector.input_mapper == "query_limit"
+        assert connector.allowed_tools == ["search", "extract"]
+        serialized = json.dumps(result.structured_content)
+        assert "secret-tools" not in serialized
+        assert "super-secret-token" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_get_tool_manifest_marks_invalid_mcp_mapper_unconfigured(self) -> None:
+        """Unknown MCP mappers make the redacted connector manifest unconfigured."""
+        from prism_mcp.server import build_mcp_server
+
+        with patch.dict(
+            os.environ,
+            {
+                "PRISM_EVIDENCE_PROVIDER": "mcp",
+                "PRISM_EVIDENCE_MCP_URL": "https://tools.example.com/mcp/",
+                "PRISM_EVIDENCE_MCP_TOOL": "search",
+                "PRISM_EVIDENCE_RESULT_MAPPER": "unknown_mapper",
+                "PRISM_EVIDENCE_MCP_INPUT_MAPPER": "query_limit",
+            },
+            clear=False,
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_tool_manifest", {})
+
+        data = result.data
+        assert data is not None
+        connector = data.evidence_connectors[0]
+        assert connector.provider == "mcp"
+        assert connector.configured is False
+        assert "unknown" in " ".join(data.notes).lower()
+
+    @pytest.mark.asyncio
+    async def test_get_tool_manifest_marks_direct_adapter_aliases_as_fallback(self) -> None:
+        """Direct adapter aliases are exposed as fallback/reference connectors."""
+        from prism_mcp.server import build_mcp_server
+
+        with patch.dict(
+            os.environ,
+            {
+                "PRISM_EVIDENCE_PROVIDER": "brave",
+                "BRAVE_SEARCH_API_KEY": "brave-secret",
+            },
+            clear=False,
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_tool_manifest", {})
+
+        data = result.data
+        assert data is not None
+        connector = data.evidence_connectors[0]
+        assert connector.provider == "brave_search"
+        assert connector.transport == "direct_adapter"
+        assert connector.configured is True
+        assert connector.has_api_key is True
+        assert connector.fallback_reference is True
+        serialized = json.dumps(result.structured_content)
+        assert "brave-secret" not in serialized
+
+    def test_get_tool_manifest_result_model_validates(self) -> None:
+        """GetToolManifestResult Pydantic model validates correctly."""
+        from prism_mcp.server import EvidenceConnectorManifestEntry, GetToolManifestResult
+
+        result = GetToolManifestResult(
+            prism_mcp_tools=["validate", "get_tool_manifest"],
+            evidence_connectors=[
+                EvidenceConnectorManifestEntry(
+                    provider="noop",
+                    transport="noop",
+                    configured=True,
+                )
+            ],
+        )
+        assert result.redacted is True
+        assert result.evidence_connectors[0].provider == "noop"
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-014: All 5 tools discoverable via tools/list
 # ---------------------------------------------------------------------------
 
 
 class TestAllToolsDiscoverable:
     @pytest.mark.asyncio
-    async def test_tools_list_returns_all_four_tools(self) -> None:
-        """tools/list returns validate, get_price, get_stats, get_calibration."""
+    async def test_tools_list_returns_all_five_tools(self) -> None:
+        """tools/list returns validate, price, stats, calibration, manifest."""
         from prism_mcp.server import build_mcp_server
 
         server = build_mcp_server()
@@ -1110,6 +1240,13 @@ class TestAllToolsDiscoverable:
         assert "get_price" in names
         assert "get_stats" in names
         assert "get_calibration" in names
-        expected_tools = {"validate", "get_price", "get_stats", "get_calibration"}
+        assert "get_tool_manifest" in names
+        expected_tools = {
+            "validate",
+            "get_price",
+            "get_stats",
+            "get_calibration",
+            "get_tool_manifest",
+        }
         assert expected_tools.issubset(set(names))
-        assert sum(1 for n in names if n in expected_tools) == 4
+        assert sum(1 for n in names if n in expected_tools) == 5
