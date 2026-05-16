@@ -392,6 +392,28 @@ single file, PEP 723 inline deps, runnable with `uv run`. See the
 `docs/demos/` directory for a committed Markdown receipt + terminal
 log of a real settlement.
 
+### 4. MCP-first tool connector architecture
+
+Prism has a second MCP role beyond exposing its own `/mcp/` endpoint: the
+sentinel should also act as an MCP client when resolving adversarial issues.
+External tools such as Firecrawl, Exa, Tavily, market-data servers, internal
+research systems, and verification tools can already expose MCP tools. Prism
+should call those tools, normalize their outputs into Prism artifacts, and then
+run the issue-ledger/resolution/policy flow.
+
+```text
+Prism as MCP server:
+  external agents call validate / get_stats / get_calibration / future receipt tools
+
+Prism as MCP client:
+  sentinel calls evidence, action, verification, and policy tools during resolution
+```
+
+This keeps the product centered on adversarial trust semantics rather than on
+building bespoke wrappers for every provider. Native provider adapters remain
+useful as demo fallbacks and reference normalizers, but the long-term connector
+surface is MCP-first. See [`docs/prism-plugins.md`](./prism-plugins.md).
+
 ---
 
 ## Dashboard API routes

@@ -1,118 +1,228 @@
-# Prism Plugins
+# Prism Tool Connectors
 
-Prism Plugins are the agent-first integration layer for Prism's adversarial trust loop.
-They let teams bring their own tools, data providers, action systems, and policies while
-Prism keeps one consistent validation contract: evidence and actions become auditable
-artifacts, the sentinel turns concerns into an issue ledger, and final verdicts are
-anchored as reasoning receipts.
+Prism Tool Connectors are the MCP-first integration layer for Prism's adversarial trust
+runtime. They let agent builders bring their own tools, MCP servers, x402 services,
+internal APIs, action systems, and policies while Prism keeps one consistent trust
+contract: tool outputs become auditable artifacts, the sentinel challenges those
+artifacts, unresolved issues are gated by policy, and final decisions become receipts.
 
-## Product hypothesis
-
-Agent builders do not all use the same research stack. Some use web search APIs, some use
-MCP tools, some use internal data warehouses, some pay x402 services, and some need domain
-APIs. Prism should not force one provider. Prism should normalize those tool outputs into
-trust-relevant artifacts that can be challenged, resolved, and verified.
+This replaces the earlier mental model of "Prism has a native adapter for every data
+provider." Native adapters can exist, but they are not the center of the product.
 
 > Bring your own tools. Prism turns their outputs into adversarially audited reasoning
 > receipts.
 
+## Product hypothesis
+
+Agent builders already organize capabilities as tools: MCP servers, x402-paid APIs,
+custom internal endpoints, wallets, chain clients, search providers, and domain APIs.
+Firecrawl, Exa, Tavily, and many similar services increasingly expose MCP tools of their
+own. Prism should not duplicate every provider as a bespoke wrapper.
+
+Prism's job is higher-level:
+
+1. receive an agent trace or action claim;
+2. identify trust issues in an issue ledger;
+3. call the relevant tools only when a challenge needs resolution;
+4. normalize tool outputs into evidence/action/verification artifacts;
+5. adjudicate whether the issue is resolved, conceded, or still blocking;
+6. emit a verdict and receipt other agents can query.
+
+## Two MCP roles
+
+Prism has two complementary MCP roles.
+
+### 1. Prism as an MCP server
+
+External agents call Prism to validate traces and query the trust state Prism currently
+exposes. The x402-protected FastMCP endpoint mounted at `/mcp/` already exists;
+receipt inspection and richer issue-ledger queries are future additions.
+
+Current tools include:
+
+- `validate` — adversarially validate a trace;
+- `get_price` — return x402 validation price;
+- `get_stats` — return aggregate validation stats;
+- `get_calibration` — return sentinel calibration state.
+
+Future tools should include:
+
+- `get_issue_ledger`;
+- `submit_issue_response` or `propose_resolution`;
+- `verify_receipt`;
+- `get_tool_manifest`;
+- `explain_verdict`.
+
+External callers should never be able to mark issues resolved directly. They can submit
+responses or proposed resolutions; the sentinel remains responsible for adjudication.
+
+### 2. Prism as an MCP client
+
+Inside the adversarial resolution loop, Prism should call external tools exposed by MCP
+servers: Firecrawl MCP, Exa MCP, Tavily MCP, internal research MCP servers, market data MCP
+servers, chain verification tools, and company-specific tools.
+
+```text
+External agent → Prism MCP validate
+                     ↓
+              Sentinel issue ledger
+                     ↓
+         Prism calls external MCP tools
+                     ↓
+           normalized Prism artifacts
+                     ↓
+        resolution loop + policy gates
+                     ↓
+             verdict + receipt
+```
+
+This is the strategic plugin architecture.
+
 ## Non-goal
 
-Prism is not trying to become Zapier for agents. A plugin belongs in Prism only if it helps
-answer at least one trust question:
+Prism is not Zapier for agents. A connector belongs in Prism only if it helps answer at
+least one trust question:
 
 1. What evidence did the agent rely on?
 2. What action did the agent take?
 3. Can the claim/action be verified independently?
 4. What policy decides whether capital is allowed to move?
 
-## Plugin categories
+If a tool does not affect evidence, action receipts, verification, or policy, it should not
+be a core Prism connector.
 
-### Evidence plugins
+## Connector categories
 
-Evidence plugins provide current, source-linked context for open issues in the adversarial
+### Evidence connectors
+
+Evidence connectors provide source-linked context for open issues in the adversarial
 resolution loop.
 
-Examples:
-- `prism.parallel_search` — Parallel Search API with BYO Parallel API key.
-- `prism.parallel_x402` — future x402-paid search/research via Circle-compatible services.
-- `prism.tavily_search` — agent-oriented web retrieval with BYO Tavily API key.
-- `prism.exa_search` — semantic/neural research search with BYO Exa API key.
-- `prism.firecrawl_search` — search plus scraped markdown/summary with BYO Firecrawl API key.
-- `prism.brave_search` — web/news search with BYO Brave API key.
-- `prism.polymarket_gamma` — market metadata, tags, end dates, resolution status.
-- `custom.webhook` — user-owned HTTP endpoint wrapping MCP tools, internal APIs, or any
-  provider Prism does not natively know about.
+Preferred form:
 
-### Action plugins
-
-Action plugins capture what the agent did and produce action receipts.
+- MCP tools exposed by providers or internal systems.
 
 Examples:
-- `prism.polymarket_order`
-- `prism.circle_wallet_transfer`
-- `prism.arc_contract_call`
-- `prism.x402_payment`
-- `prism.treasury_park_unpark`
 
-### Verification plugins
+- Firecrawl MCP search/scrape tools;
+- Exa MCP search tools;
+- Tavily MCP search/research tools;
+- Brave/Search MCP tools;
+- Polymarket market metadata tools;
+- sports/news/macro domain MCP tools;
+- internal research/data warehouse MCP tools;
+- x402-paid evidence APIs;
+- custom webhook bridge when MCP is not available;
+- direct native adapters as fallback/reference implementations.
 
-Verification plugins check whether claims and actions are independently true.
+### Action connectors
 
-Examples:
-- Arc / viem chain reads
-- Polymarket builder-trade reconciliation
-- IPFS CID resolution
-- x402 settlement verification
-- Circle transaction lookup
-
-### Policy plugins
-
-Policy plugins decide whether unresolved issues should block a verdict or trade.
+Action connectors capture what the agent did and produce action receipts.
 
 Examples:
-- `unresolved_blocker: reject`
-- `require_source_urls: true`
-- `sports_market_requires_current_injury_status: true`
-- `max_trade_size_fraction: 0.25`
-- `min_independent_sources: 2`
+
+- Polymarket order placement or paper-trade receipt;
+- Circle wallet transfer;
+- Arc contract call;
+- x402 payment;
+- treasury park/unpark action;
+- future off-chain action receipts such as Discord/X posts.
+
+### Verification connectors
+
+Verification connectors independently check whether evidence/action claims are true.
+
+Examples:
+
+- Arc / viem chain reads;
+- Polymarket builder-trade reconciliation;
+- IPFS CID resolution;
+- x402 settlement verification;
+- Circle transaction lookup;
+- third-party market resolution status.
+
+### Policy connectors
+
+Policy connectors decide whether unresolved issues should block a verdict or trade.
+
+Examples:
+
+- `unresolved_blocker: reject`;
+- `require_source_urls: true`;
+- `sports_market_requires_current_injury_status: true`;
+- `max_trade_size_fraction: 0.25`;
+- `min_independent_sources: 2`;
+- `allowed_tool_domains: [...]`.
 
 ## Runtime model
 
 ```text
 Trader trace
 → Sentinel issue ledger
-→ If an issue needs evidence/action verification:
-    plugin is called
-→ challenge is resolved, answered, or conceded
-→ sentinel applies policy/scoring caps
-→ verdict + issue ledger + receipts are pinned/anchored
+→ Tool selector chooses relevant connector only for unresolved issues
+→ MCP/x402/webhook/direct tool call
+→ Normalizer maps tool output into Prism artifact
+→ Trader/system response resolves, revises, or concedes
+→ Sentinel adjudicates final status
+→ Policy gates score/label
+→ Verdict + issue ledger + receipts are pinned/anchored/queryable
 ```
 
-The core loop is always Prism-owned. Provider selection is pluggable.
+The core loop is always Prism-owned. Tool execution is pluggable.
 
-## Hosted vs self-hosted
+## Connector priority
 
-### Self-hosted Prism
+Use this priority order when integrating a new capability:
 
-Self-hosted teams bring their own keys, tools, wallets, and endpoints.
+1. **MCP connector** — preferred. The provider or user already exposes a tool contract.
+2. **x402 connector** — when the capability is paid per use and returns HTTP artifacts.
+3. **Custom webhook connector** — when the user has an internal tool that is not MCP yet.
+4. **Direct native adapter** — fallback for demos, simple self-hosting, or reference mappers.
+
+Direct adapters are useful, but they should not become the main product surface.
+
+## Plugin manifest direction
+
+The future manifest should describe trust-relevant tools, not provider-specific code.
 
 ```yaml
-evidence:
-  providers:
-    - type: custom_webhook
-      url_env: PRISM_EVIDENCE_WEBHOOK_URL
-      bearer_token_env: PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN
-    - type: parallel_search
-      api_key_env: PARALLEL_API_KEY
-    - type: tavily_search
-      api_key_env: TAVILY_API_KEY
-    - type: exa_search
-      api_key_env: EXA_API_KEY
-    - type: firecrawl_search
-      api_key_env: FIRECRAWL_API_KEY
-    - type: brave_search
+tools:
+  evidence:
+    - id: firecrawl-search
+      kind: evidence
+      transport: mcp_http
+      server_url_env: FIRECRAWL_MCP_URL
+      tool_name: search
+      result_mapper: firecrawl_search
+      timeout_seconds: 30
+      max_results: 5
+
+    - id: internal-research
+      kind: evidence
+      transport: mcp_http
+      server_url_env: INTERNAL_RESEARCH_MCP_URL
+      tool_name: search_market_context
+      result_mapper: generic_search
+      timeout_seconds: 20
+
+    - id: parallel-paid-search
+      kind: evidence
+      transport: x402_http
+      endpoint_env: PARALLEL_X402_SEARCH_URL
+      result_mapper: parallel_search
+      max_usdc: 0.02
+
+    - id: fallback-brave
+      kind: evidence
+      transport: direct_adapter
+      adapter: brave_search
       api_key_env: BRAVE_SEARCH_API_KEY
+
+  verification:
+    - id: arc-validation-registry
+      kind: verification
+      transport: direct_adapter
+      adapter: viem_arc_validation_registry
 
 policy:
   max_resolution_rounds: 2
@@ -121,16 +231,66 @@ policy:
   require_source_urls: true
 ```
 
+Important: `result_mapper` is explicit. Prism should not guess arbitrary tool output shapes.
+
+## Normalized artifacts
+
+Prism should normalize all connector outputs before they enter the trust loop.
+
+MVP artifact already exists:
+
+```json
+{
+  "title": "Current source title",
+  "url": "https://example.com/source",
+  "snippet": "Quoted or extracted evidence snippet.",
+  "provider": "firecrawl_mcp.search",
+  "published_at": "2026-05-16T00:00:00Z",
+  "retrieved_at": "2026-05-16T12:00:00Z",
+  "confidence": 0.91
+}
+```
+
+Longer-term artifacts:
+
+- `EvidencePacket` — source, claim, quote/snippet, retrieval time, provider/tool provenance;
+- `ActionReceipt` — action kind, actor, target, amount, tx/order ID, status;
+- `VerificationReceipt` — independent check result and method;
+- `PolicyDecision` — allowed/blocked/warned with rule IDs.
+
+## Hosted vs self-hosted
+
+### Self-hosted Prism
+
+Self-hosted teams bring their own MCP servers, keys, wallets, and endpoints.
+
+```yaml
+tools:
+  evidence:
+    - id: firecrawl
+      transport: mcp_http
+      server_url_env: FIRECRAWL_MCP_URL
+      tool_name: search
+      result_mapper: firecrawl_search
+
+    - id: company-market-data
+      transport: mcp_http
+      server_url_env: COMPANY_MARKET_DATA_MCP_URL
+      tool_name: get_market_context
+      result_mapper: generic_search
+```
+
 ### Hosted Prism
 
-Hosted Prism can manage selected providers internally and charge via x402 per validation or
+Hosted Prism can manage selected connectors internally and charge via x402 per validation or
 per evidence-resolution round.
 
 ```yaml
-evidence:
-  providers:
-    - type: prism_managed_parallel_x402
-    - type: prism_managed_brave_search
+tools:
+  evidence:
+    - id: prism-managed-research
+      transport: hosted_managed
+      result_mapper: generic_search
 
 billing:
   mode: x402
@@ -138,134 +298,100 @@ billing:
   price_per_evidence_round_usdc: 0.002
 ```
 
-## Minimal evidence plugin contract
+## Current implementation status
 
-Evidence plugins receive a targeted request for one open challenge and return normalized
-results.
+The current implementation lives in `apps/sentinel/src/sentinel/evidence_tools.py`.
+It was built as a direct-adapter seam before the MCP-first correction.
 
-Request:
+Keep these pieces, but reframe them correctly:
 
-```json
-{
-  "market_question": "Will LeBron break the scoring record during the Feb 7 game vs. OKC?",
-  "query": "Will LeBron break the scoring record during the Feb 7 game vs. OKC? latest current evidence status date",
-  "max_results": 5,
-  "challenge": {
-    "id": "sys-temporal-stale-evidence",
-    "type": "temporal",
-    "severity": "blocking",
-    "question": "Evidence is stale.",
-    "required_resolution": "Retrieve current evidence or revise to HOLD.",
-    "blocking_pass": true,
-    "claim_ref": "evidence[0]",
-    "resolution_status": "open"
-  }
-}
-```
-
-Response:
-
-```json
-{
-  "results": [
-    {
-      "title": "Current source title",
-      "url": "https://example.com/source",
-      "snippet": "Quoted or extracted evidence snippet.",
-      "provider": "custom_webhook",
-      "published_at": "2026-05-16T00:00:00Z",
-      "retrieved_at": "2026-05-16T12:00:00Z",
-      "confidence": 0.91
-    }
-  ]
-}
-```
-
-## Current implementation
-
-The first plugin seam lives in `apps/sentinel/src/sentinel/evidence_tools.py`:
-
-- `NoopEvidenceProvider` — default, no network calls.
+- `NoopEvidenceProvider` — safe default, no network calls.
 - `StaticEvidenceProvider` — deterministic tests.
-- `CustomWebhookEvidenceProvider` — BYO HTTP endpoint.
-- `ParallelSearchEvidenceProvider` — native Parallel Search API adapter.
-- `TavilySearchEvidenceProvider` — native Tavily Search API adapter.
-- `ExaSearchEvidenceProvider` — native Exa Search API adapter.
-- `FirecrawlSearchEvidenceProvider` — native Firecrawl Search API adapter.
-- `BraveSearchEvidenceProvider` — native Brave Search Web Search API adapter.
+- `CustomWebhookEvidenceProvider` — BYO bridge; useful for wrapping MCP/internal tools.
+- `ParallelSearchEvidenceProvider` — direct adapter fallback/reference mapper.
+- `TavilySearchEvidenceProvider` — direct adapter fallback/reference mapper.
+- `ExaSearchEvidenceProvider` — direct adapter fallback/reference mapper.
+- `FirecrawlSearchEvidenceProvider` — direct adapter fallback/reference mapper.
+- `BraveSearchEvidenceProvider` — direct adapter fallback/reference mapper.
 
-Custom webhook environment:
+These are not wasted work. They provide:
+
+1. demo-ready fallback when an MCP server is not configured;
+2. examples of normalizing provider output into Prism artifacts;
+3. hosted-mode shortcuts;
+4. test fixtures for result mappers.
+
+But the next implementation step should be a generic `McpEvidenceProvider`, not another
+provider-specific wrapper.
+
+## Ralph implementation roadmap
+
+### Phase 1 — Docs and strategy
+
+- Reframe Prism Plugins as MCP-first Tool Connectors.
+- Update architecture docs to show Prism as both MCP server and MCP client.
+- Mark native adapters as fallback/reference, not the strategic center.
+
+### Phase 2 — Manifest and MCP evidence provider
+
+- Define a small manifest/config schema for connector declarations.
+- Add `McpEvidenceProvider`:
+  - `server_url_env`;
+  - `tool_name`;
+  - `result_mapper`;
+  - auth headers or token env refs;
+  - timeout/budget fields;
+  - explicit tool allowlist;
+  - no secrets in logs, receipts, or pinned artifacts;
+  - fail-closed behavior.
+- Test against a fake in-process FastMCP server.
+
+### Phase 3 — Result mappers
+
+- Extract mapper functions from the direct adapters:
+  - `generic_search`;
+  - `firecrawl_search`;
+  - `exa_search`;
+  - `tavily_search`;
+  - `parallel_search`;
+  - `brave_search`.
+- Keep direct adapters as wrappers around those mappers where practical.
+
+### Phase 4 — Resolution-loop integration
+
+- Add env/config support:
 
 ```bash
-PRISM_EVIDENCE_PROVIDER=custom_webhook
-PRISM_EVIDENCE_WEBHOOK_URL=https://your-service.example/evidence
-PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN=optional-secret
-PRISM_EVIDENCE_WEBHOOK_TIMEOUT_SECONDS=20
+PRISM_EVIDENCE_PROVIDER=mcp
+PRISM_EVIDENCE_MCP_URL=https://example.com/mcp/
+PRISM_EVIDENCE_MCP_TOOL=search
+PRISM_EVIDENCE_RESULT_MAPPER=generic_search
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
-Parallel Search environment:
+- Ensure unresolved blockers still fail closed if the MCP tool errors or returns unusable
+  output.
 
-```bash
-PRISM_EVIDENCE_PROVIDER=parallel_search
-PARALLEL_API_KEY=your-parallel-api-key
-PARALLEL_SEARCH_MODE=advanced             # optional: basic or advanced
-PARALLEL_SEARCH_LOCATION=us               # optional: ISO country code
-PARALLEL_SEARCH_MAX_CHARS_TOTAL=6000      # optional
-PARALLEL_SEARCH_TIMEOUT_SECONDS=30        # optional
-ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+### Phase 5 — Queryable Prism surface
+
+Extend Prism's own MCP server with agent-readable trust tools:
+
+- `get_issue_ledger`;
+- `submit_issue_response` / `propose_resolution`;
+- `verify_receipt`;
+- `get_tool_manifest`;
+- `explain_verdict`.
+
+## Decision
+
+Proceed with an MCP-first architecture:
+
+```text
+Prism Core = adversarial trust semantics
+Tool Connectors = MCP/x402/webhook/direct ways to gather evidence/actions/verifications
+Normalizers = explicit mappers from tool output to Prism artifacts
+Receipts = queryable proof for agents and humans
 ```
 
-Tavily Search environment:
-
-```bash
-PRISM_EVIDENCE_PROVIDER=tavily_search
-TAVILY_API_KEY=your-tavily-api-key
-TAVILY_SEARCH_DEPTH=basic             # optional: basic, advanced, fast, ultra-fast
-TAVILY_SEARCH_TOPIC=general           # optional: general, news, finance
-TAVILY_SEARCH_TIME_RANGE=             # optional: day/week/month/year or d/w/m/y
-TAVILY_SEARCH_TIMEOUT_SECONDS=20      # optional
-ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
-```
-
-Exa Search environment:
-
-```bash
-PRISM_EVIDENCE_PROVIDER=exa_search
-EXA_API_KEY=your-exa-api-key
-EXA_SEARCH_TYPE=auto                   # optional: auto, neural, fast, instant, deep, deep-reasoning
-EXA_SEARCH_CATEGORY=                   # optional: news, pdf, github, research paper, etc.
-EXA_SEARCH_USER_LOCATION=US            # optional
-EXA_SEARCH_TEXT_MAX_CHARACTERS=1200    # optional
-EXA_SEARCH_TIMEOUT_SECONDS=30          # optional
-ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
-```
-
-Firecrawl Search environment:
-
-```bash
-PRISM_EVIDENCE_PROVIDER=firecrawl_search
-FIRECRAWL_API_KEY=your-firecrawl-api-key
-FIRECRAWL_SEARCH_COUNTRY=US              # optional
-FIRECRAWL_SEARCH_LOCATION=               # optional: geo-targeted location string
-FIRECRAWL_SEARCH_TBS=                    # optional: Firecrawl time-based search filter
-FIRECRAWL_SEARCH_CATEGORY=               # optional: github, research, pdf
-FIRECRAWL_SEARCH_FORMAT=markdown         # optional: markdown, summary, none
-FIRECRAWL_SEARCH_TIMEOUT_SECONDS=30      # optional
-ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
-```
-
-Brave Search environment:
-
-```bash
-PRISM_EVIDENCE_PROVIDER=brave_search
-BRAVE_SEARCH_API_KEY=your-brave-search-key
-BRAVE_SEARCH_COUNTRY=US              # optional
-BRAVE_SEARCH_LANG=en                 # optional
-BRAVE_SEARCH_FRESHNESS=pm            # optional: Brave-supported freshness value
-BRAVE_SEARCH_TIMEOUT_SECONDS=20      # optional
-ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
-```
-
-This is intentionally small and reversible. Native adapters for Parallel x402 and domain
-APIs can be added behind the same contract.
+Confidence: **9/10** for the strategic pivot, **9.3/10** for the hybrid plan of
+MCP-first plus native fallback/reference adapters.
