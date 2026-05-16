@@ -26,6 +26,7 @@ const NAV_ROUTES: readonly {
   { href: "/me", label: "Me", shortLabel: "Me", page: "me" },
   { href: "/builder-fees", label: "Fees", shortLabel: "Fees", page: "builder-fees" },
   { href: "/stats", label: "Stats", shortLabel: "Stats", page: "stats" },
+  { href: "/calibration", label: "Calibration", shortLabel: "Calib", page: "calibration" },
 ] as const;
 
 interface GlobalNavProps {
@@ -82,7 +83,8 @@ export function GlobalNav({ currentPage, rightExtra, style }: GlobalNavProps) {
                     : "border-transparent text-fg-muted hover:border-[var(--color-border)] hover:text-fg"
                 }`}
               >
-                {route.label}
+                <span className="sm:hidden">{route.shortLabel}</span>
+                <span className="hidden sm:inline">{route.label}</span>
               </Link>
             );
           })}
