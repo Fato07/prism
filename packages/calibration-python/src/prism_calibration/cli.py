@@ -17,6 +17,8 @@ from prism_calibration.braintrust_sync import (
     push_flagged_to_braintrust,
     sync_pull_summary,
     sync_push_summary,
+    sync_slice_summary,
+    sync_slice_to_braintrust,
 )
 from prism_calibration.freeze import (
     FrozenExportError,
@@ -375,6 +377,7 @@ def _handle_sync(args: argparse.Namespace) -> int:
     root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
     slice_name = getattr(args, "slice_name", None)
     pull_review = bool(getattr(args, "pull_review", False))
+    push_review = bool(getattr(args, "push_review", False))
 
     if slice_name is None:
         _write_error("--slice is required for sync operations")
@@ -385,10 +388,14 @@ def _handle_sync(args: argparse.Namespace) -> int:
             # Pull reviewed decisions from Braintrust and sync back locally
             pull_result = pull_review_from_braintrust(root=root, slice_name=slice_name)
             _write_json(sync_pull_summary(pull_result))
-        else:
+        elif push_review:
             # Push flagged rows to Braintrust for review
             push_result = push_flagged_to_braintrust(root=root, slice_name=slice_name)
             _write_json(sync_push_summary(push_result))
+        else:
+            # Default: sync the full frozen slice to Braintrust
+            slice_result = sync_slice_to_braintrust(root=root, slice_name=slice_name)
+            _write_json(sync_slice_summary(slice_result))
     except BraintrustSyncError as error:
         _write_error(str(error))
         return 1
@@ -502,11 +509,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync = subparsers.add_parser(
         "sync",
-        help="Sync flagged rows to Braintrust review and pull reviewed decisions back.",
+        help="Sync frozen slices to Braintrust datasets, or push/pull review decisions.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     sync.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
     sync.add_argument("--slice", dest="slice_name", required=True)
+    sync.add_argument("--push-review", action="store_true",
+                      help="Push flagged rows to the Braintrust review dataset.")
     sync.add_argument("--pull-review", action="store_true",
                       help="Pull reviewed decisions from Braintrust and sync back to local rows.")
     sync.set_defaults(handler=_handle_sync)

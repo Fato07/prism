@@ -19,7 +19,9 @@ from prism_calibration.splits import write_row
 
 BRAINTRUST_PROJECT = "Prism"
 REVIEW_DATASET_PREFIX = "pilot-review-"
+SLICE_DATASET_PREFIX = "pilot-slice-"
 SYNC_MANIFEST_PREFIX = "sync-"
+BRAINTRUST_REF_FILENAME = "braintrust-ref.json"
 
 # Review status that indicates a human has reviewed the row
 REVIEWED_STATUSES = frozenset({"human_reviewed", "approved", "rejected"})
@@ -71,6 +73,22 @@ class SyncPullResult:
     unchanged_row_ids: list[str]
     not_found_row_ids: list[str]
     manifest_path: Path
+
+
+@dataclass(frozen=True)
+class SyncSliceResult:
+    """Summary of a full-slice sync to Braintrust."""
+
+    slice_name: str
+    dataset_name: str
+    dataset_id: str
+    row_count: int
+    synced_row_ids: list[str]
+    skipped_row_ids: list[str]
+    export_id: str
+    export_dir: Path
+    manifest_path: Path
+    resumed: bool
 
 
 def _review_context(row: CalibrationRow) -> dict[str, Any]:
@@ -136,6 +154,317 @@ def _sync_manifest_path(root: Path, slice_name: str, operation: str) -> Path:
         char if char.isalnum() else "-" for char in slice_name
     ).strip("-")
     return root / "manifests" / f"{SYNC_MANIFEST_PREFIX}{operation}-{safe_slice}.json"
+
+
+def _sync_state_path(root: Path, slice_name: str) -> Path:
+    """Return path for durable sync state file used for resume capability."""
+    return root / "state" / f"sync-slice-{slice_name}.json"
+
+
+def _read_sync_state(root: Path, slice_name: str) -> dict[str, Any] | None:
+    """Read durable sync state if it exists."""
+    path = _sync_state_path(root, slice_name)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _write_sync_state(root: Path, slice_name: str, state: dict[str, Any]) -> None:
+    """Write durable sync state for resume capability."""
+    path = _sync_state_path(root, slice_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
+def _clear_sync_state(root: Path, slice_name: str) -> None:
+    """Clear sync state after successful completion."""
+    path = _sync_state_path(root, slice_name)
+    if path.exists():
+        path.unlink()
+
+
+def _braintrust_ref_path(export_dir: Path) -> Path:
+    """Return the Braintrust reference sidecar path for a frozen export."""
+    return export_dir / BRAINTRUST_REF_FILENAME
+
+
+def _write_braintrust_ref(
+    export_dir: Path,
+    *,
+    dataset_id: str,
+    dataset_name: str,
+    export_id: str,
+    last_synced_at: datetime | None = None,
+) -> None:
+    """Write a Braintrust reference sidecar alongside the frozen manifest.
+
+    This preserves the link from local export to Braintrust dataset
+    without modifying the immutable frozen manifest itself.
+    """
+    ref_path = _braintrust_ref_path(export_dir)
+    payload: dict[str, Any] = {
+        "dataset_id": dataset_id,
+        "dataset_name": dataset_name,
+        "export_id": export_id,
+        "last_synced_at": (last_synced_at or datetime.now(UTC)).isoformat(),
+    }
+    ref_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
+def read_braintrust_ref(export_dir: Path) -> dict[str, Any] | None:
+    """Read the Braintrust reference sidecar for a frozen export.
+
+    Returns None if no sidecar exists (the slice has not been synced yet).
+    """
+    ref_path = _braintrust_ref_path(export_dir)
+    if not ref_path.exists():
+        return None
+    try:
+        return json.loads(ref_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _find_frozen_export(root: Path, slice_name: str) -> tuple[Path, Path] | None:
+    """Find the latest frozen export for a slice.
+
+    Returns (export_dir, manifest_path) or None if no export exists.
+    """
+    frozen_dir = root / "frozen" / slice_name
+    if not frozen_dir.is_dir():
+        return None
+
+    export_dirs = sorted(
+        (d for d in frozen_dir.iterdir() if d.is_dir()),
+        key=lambda d: d.name,
+    )
+    if not export_dirs:
+        return None
+
+    latest = export_dirs[-1]
+    manifest = latest / "manifest.json"
+    if not manifest.exists():
+        return None
+
+    return latest, manifest
+
+
+def sync_slice_to_braintrust(
+    *,
+    root: Path,
+    slice_name: str,
+) -> SyncSliceResult:
+    """Sync a frozen local slice to a Braintrust dataset with stable case IDs.
+
+    Creates or refreshes exactly one Braintrust dataset per slice. Uses the
+    frozen local export as the authoritative source. Rows are upserted by
+    stable row_id so re-syncs produce no duplicates. Durable state tracking
+    enables safe resume after interruption.
+    """
+    try:
+        import braintrust
+    except ImportError as error:
+        raise BraintrustSyncError(
+            "braintrust package is required for sync operations"
+        ) from error
+
+    layout = bootstrap_corpus_root(root)
+
+    # Ensure a frozen export exists with rows
+    from prism_calibration.freeze import _load_manifest, freeze_slice
+    from prism_calibration.models import SplitName
+
+    slice_typed: SplitName = slice_name  # type: ignore[assignment]
+
+    found = _find_frozen_export(layout.root, slice_name)
+    if found is not None:
+        export_dir, manifest_path = found
+        frozen_manifest = _load_manifest(manifest_path)
+
+        # If frozen export has 0 rows, re-freeze from live corpus
+        if frozen_manifest.row_count == 0:
+            export = freeze_slice(layout.root, slice_typed)
+            export_dir = export.export_dir
+            manifest_path = export.manifest_path
+            frozen_manifest = export.manifest
+    else:
+        # No frozen export exists — create one
+        export = freeze_slice(layout.root, slice_typed)
+        export_dir = export.export_dir
+        manifest_path = export.manifest_path
+        frozen_manifest = export.manifest
+
+    # Check for resume state
+    resume_state = _read_sync_state(layout.root, slice_name)
+    already_synced_ids: set[str] = set()
+    dataset_name_from_state: str | None = None
+    resumed = False
+
+    if resume_state is not None:
+        already_synced_ids = set(resume_state.get("synced_row_ids", []))
+        dataset_name_from_state = resume_state.get("dataset_name")
+        resumed = True
+
+    # Create or open the Braintrust dataset
+    dataset_name = dataset_name_from_state or f"{SLICE_DATASET_PREFIX}{slice_name}"
+    dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=dataset_name)
+    dataset_id = dataset.id
+
+    # Sync rows from frozen export
+    synced_row_ids: list[str] = []
+    skipped_row_ids: list[str] = []
+
+    for row_entry in frozen_manifest.rows:
+        row_id = row_entry.row_id
+
+        # Skip already-synced rows (resume path)
+        if row_id in already_synced_ids:
+            synced_row_ids.append(row_id)
+            continue
+
+        # Load the row from frozen export
+        row_path = export_dir / row_entry.path
+        if not row_path.exists():
+            skipped_row_ids.append(row_id)
+            continue
+
+        row = _load_row_from_frozen(row_path)
+
+        # Build Braintrust record with full row context
+        record_input = _slice_record_input(row)
+        record_metadata = _slice_record_metadata(
+            row, row_entry.row_hash, frozen_manifest.export_id
+        )
+
+        # Upsert by stable row_id
+        tags = sorted({slice_name, row.provenance.source_type, row.split.name})
+        dataset.insert(
+            id=row_id,
+            input=record_input,
+            metadata=record_metadata,
+            tags=tags,
+        )
+        synced_row_ids.append(row_id)
+
+        # Write durable state after each row for resume capability
+        _write_sync_state(layout.root, slice_name, {
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "export_id": frozen_manifest.export_id,
+            "slice": slice_name,
+            "synced_row_ids": sorted(synced_row_ids),
+            "skipped_row_ids": sorted(skipped_row_ids),
+            "total_rows": frozen_manifest.row_count,
+        })
+
+    dataset.flush()
+
+    # Write Braintrust reference sidecar alongside frozen manifest
+    _write_braintrust_ref(
+        export_dir,
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        export_id=frozen_manifest.export_id,
+    )
+
+    # Clear sync state on successful completion
+    _clear_sync_state(layout.root, slice_name)
+
+    # Write sync manifest
+    sync_manifest_path = _sync_manifest_path(layout.root, slice_name, "slice-sync")
+    sync_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    sync_manifest: dict[str, Any] = {
+        "authority": "local",
+        "dataset_id": dataset_id,
+        "dataset_name": dataset_name,
+        "export_id": frozen_manifest.export_id,
+        "operation": "sync-slice",
+        "resumed": resumed,
+        "row_count": len(synced_row_ids),
+        "skipped_row_ids": sorted(skipped_row_ids),
+        "slice": slice_name,
+        "synced_row_ids": sorted(synced_row_ids),
+    }
+    sync_manifest_path.write_text(
+        json.dumps(sync_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    return SyncSliceResult(
+        slice_name=slice_name,
+        dataset_name=dataset_name,
+        dataset_id=dataset_id,
+        row_count=len(synced_row_ids),
+        synced_row_ids=sorted(synced_row_ids),
+        skipped_row_ids=sorted(skipped_row_ids),
+        export_id=frozen_manifest.export_id,
+        export_dir=export_dir,
+        manifest_path=manifest_path,
+        resumed=resumed,
+    )
+
+
+def _load_row_from_frozen(row_path: Path) -> CalibrationRow:
+    """Load one row from a frozen export path."""
+    raw = row_path.read_text(encoding="utf-8")
+    payload = json.loads(raw)
+    return CalibrationRow.model_validate(payload)
+
+
+def _slice_record_input(row: CalibrationRow) -> dict[str, Any]:
+    """Build the Braintrust record input payload for a full-slice sync."""
+    record: dict[str, Any] = {
+        "row_id": row.row_id,
+        "trace_id": row.trace.trace_id,
+        "lineage_id": row.provenance.lineage_id,
+        "source_type": row.provenance.source_type,
+        "split": row.split.name,
+        "market_question": row.trace.market_question,
+        "action": row.trace.action,
+        "final_probability": row.trace.final_probability,
+        "verdict_band": (
+            row.review.canonical_label.verdict_band
+            if row.review.canonical_label
+            else None
+        ),
+        "confidence": (
+            row.review.canonical_label.confidence
+            if row.review.canonical_label
+            else None
+        ),
+        "failure_tags": row.review.failure_tags,
+        "review_status": row.review.status,
+    }
+
+    if row.provenance.source_type == "mutated":
+        record["parent_row_id"] = row.provenance.parent_row_id
+        record["mutation_type"] = row.provenance.mutation_type
+
+    return record
+
+
+def _slice_record_metadata(
+    row: CalibrationRow,
+    row_hash: str,
+    export_id: str,
+) -> dict[str, Any]:
+    """Build the Braintrust record metadata for a full-slice sync."""
+    metadata: dict[str, Any] = {
+        "content_hash": row.provenance.content_hash,
+        "source_ref": row.provenance.source_ref,
+        "run_id": row.provenance.run_id,
+        "export_id": export_id,
+        "slice_hash": export_id,
+        "row_hash": row_hash,
+    }
+    return metadata
 
 
 def push_flagged_to_braintrust(
@@ -523,4 +852,21 @@ def sync_pull_summary(result: SyncPullResult) -> dict[str, Any]:
         "slice": result.slice_name,
         "unchanged_row_ids": sorted(result.unchanged_row_ids),
         "updated_row_ids": sorted(result.updated_row_ids),
+    }
+
+
+def sync_slice_summary(result: SyncSliceResult) -> dict[str, Any]:
+    """Return a machine-readable CLI summary for a full-slice sync."""
+    return {
+        "authority": "local",
+        "dataset_id": result.dataset_id,
+        "dataset_name": result.dataset_name,
+        "export_dir": str(result.export_dir),
+        "export_id": result.export_id,
+        "operation": "sync-slice",
+        "resumed": result.resumed,
+        "row_count": result.row_count,
+        "skipped_row_ids": sorted(result.skipped_row_ids),
+        "slice": result.slice_name,
+        "synced_row_ids": sorted(result.synced_row_ids),
     }

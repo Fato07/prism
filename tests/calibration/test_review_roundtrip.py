@@ -165,7 +165,7 @@ def test_push_flagged_rows_to_braintrust_creates_dataset(tmp_path: Path) -> None
 
     # Verify the dataset exists in Braintrust by re-pushing (idempotent upsert)
     _push_result = run_cli(
-        "sync", "--root", str(root), "--slice", "pilot",
+        "sync", "--root", str(root), "--slice", "pilot", "--push-review",
     )
     # The push was already done, but re-pushing should upsert without error
     # (idempotent behavior tested by a later feature)
@@ -241,11 +241,11 @@ def test_braintrust_review_roundtrip_syncs_back_to_local(tmp_path: Path) -> None
 
 
 def test_sync_cli_push_and_pull_roundtrip(tmp_path: Path) -> None:
-    """The sync CLI command supports both push and pull-review operations."""
+    """The sync CLI command supports push-review and pull-review operations."""
     root = _build_pilot_root(tmp_path)
 
     # Push
-    push = run_cli("sync", "--root", str(root), "--slice", "pilot")
+    push = run_cli("sync", "--root", str(root), "--slice", "pilot", "--push-review")
     assert push.returncode == 0, push.stderr
     push_payload = json.loads(push.stdout)
     assert push_payload["operation"] == "sync-push"
