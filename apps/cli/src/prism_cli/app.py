@@ -8,6 +8,7 @@ from typing import Annotated
 
 import typer
 
+from prism_cli import __version__
 from prism_cli.client import (
     PrismCliError,
     dashboard_from_trace_url,
@@ -85,6 +86,28 @@ SentinelOpt = Annotated[
 ]
 TimeoutOpt = Annotated[float, typer.Option("--timeout", help="HTTP timeout in seconds.")]
 JsonOpt = Annotated[bool, typer.Option("--json", help="Print machine-readable JSON.")]
+
+
+def _version_callback(value: bool) -> None:
+    """Print CLI version and exit when --version is passed."""
+    if value:
+        console.print(f"prism-cli {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def root_callback(
+    version: Annotated[
+        bool | None,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the Prism CLI version and exit.",
+        ),
+    ] = None,
+) -> None:
+    """Configure root command options."""
 
 
 def _config(

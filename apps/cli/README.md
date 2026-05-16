@@ -4,11 +4,28 @@ Command-line client for Prism trace inspection, public reporting, market resolut
 
 This is the local product spine for builders who want to inspect agent traces and pull Prism metrics without opening the dashboard.
 
-## Local usage
+## Install / run
+
+From a clone:
 
 ```bash
 cd apps/cli
 uv run prism --help
+uv run prism --version
+```
+
+Without cloning the full repo:
+
+```bash
+uvx --from "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli" \
+  prism demo
+```
+
+Install as a tool:
+
+```bash
+uv tool install "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli"
+prism doctor
 ```
 
 Inspect a local Trading-R1 trace without payment or LLM calls:

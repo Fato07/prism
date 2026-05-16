@@ -104,7 +104,11 @@ The sentinel is a paid public service: any external agent can pay $0.01 USDC and
 The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. It supports trace inspection, public stats/history, trace reports, market surfacing, token resolution, wallet funding guidance, and x402 validation orchestration. It never reads private keys: `prism validate` either submits an externally signed `X-PAYMENT` header or asks Circle CLI to sign the EIP-712 authorization with a Circle wallet.
 
 ```bash
+uvx --from "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli" prism demo
+
+# or, from a clone:
 cd apps/cli
+uv run prism --version
 uv run prism doctor
 uv run prism demo
 uv run prism inspect ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 --json
