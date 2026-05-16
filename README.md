@@ -99,6 +99,18 @@ First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sep
 
 The sentinel is a paid public service: any external agent can pay $0.01 USDC and get an adversarial verdict. See the [Call the Sentinel Yourself](#call-the-sentinel-yourself--external-x402--mcp-demo) section below for the 3-command demo.
 
+### CLI (local preview)
+
+The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. The current local preview is read-only: trace inspection, public stats/history, trace reports, and wallet funding guidance. Paid x402 validation will be added after the reporting contract is stable.
+
+```bash
+cd apps/cli
+uv run prism inspect ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 --json
+uv run prism stats
+uv run prism history --limit 5
+uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
+```
+
 ---
 
 ## Calibration Corpus
@@ -312,7 +324,8 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
-| **Dashboard** | Next.js 16, React 19 | Public routes — see [What's Live](#whats-live) |
+| **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report` |
+| **CLI** | Python, Typer | `prism inspect`, `prism stats`, `prism history`, `prism report` local preview |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
 ---
@@ -399,11 +412,12 @@ cd apps/dashboard && pnpm test
 
 | Suite | Tests |
 |-------|-------|
-| Dashboard | 461 |
+| Dashboard | 475 |
+| CLI | 7 |
 | Sentinel | 118 |
 | Trader | 156 |
 | Calibration | 149 |
-| **Total** | **884** |
+| **Total** | **905** |
 
 ---
 
