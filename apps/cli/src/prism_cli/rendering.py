@@ -8,6 +8,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
+from prism_cli.doctor import DoctorReport
 from prism_cli.models import (
     InspectResult,
     MarketListResponse,
@@ -59,6 +60,33 @@ def print_inspect(result: InspectResult) -> None:
         console.print("[bold yellow]Warnings[/bold yellow]")
         for warning in result.warnings:
             console.print(f"- {warning}")
+
+
+def print_doctor(report: DoctorReport) -> None:
+    """Render Prism doctor diagnostics."""
+    tone = {
+        "ok": "green",
+        "warn": "yellow",
+        "fail": "red",
+        "skip": "dim",
+    }
+    console.print("[bold]Prism doctor[/bold]")
+    console.print(f"Generated: {report.generated_at}")
+    overall_tone = tone[report.overall_status]
+    console.print(f"Overall:   [bold {overall_tone}]{report.overall_status}[/bold {overall_tone}]")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Status")
+    table.add_column("Check")
+    table.add_column("Detail")
+    table.add_column("Fix")
+    for check in report.checks:
+        table.add_row(
+            f"[{tone[check.status]}]{check.status}[/{tone[check.status]}]",
+            check.label,
+            check.detail,
+            check.remediation or "—",
+        )
+    console.print(table)
 
 
 def print_stats(response: PublicStatsResponse) -> None:

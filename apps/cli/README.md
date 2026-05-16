@@ -21,6 +21,7 @@ uv run prism inspect ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 --jso
 Read public activity from the dashboard API:
 
 ```bash
+uv run prism doctor
 uv run prism stats
 uv run prism history --limit 5 --json
 uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
@@ -43,5 +44,7 @@ uv run prism wallet status --address 0x...
 ## Scope
 
 The CLI does not custody keys and never reads private keys. `prism quote` returns the exact payment requirements for the sentinel MCP endpoint. `prism validate` can either submit an externally signed `X-PAYMENT` header via `--x-payment-file`, `PRISM_X_PAYMENT`, or `--x-payment-header`, or ask Circle CLI to sign the EIP-712 authorization with `--circle-address`. The Circle signer path shells out to `circle wallet sign typed-data`; private keys remain inside the Circle wallet/CLI boundary.
+
+Run `prism doctor` before paid demos. It checks dashboard/sentinel/gateway health, the MCP `/mcp/` handshake, Circle CLI availability, and the Base Sepolia testnet wallet session required for x402 payment.
 
 Market commands read Prism's Polymarket gateway, which filters stale markets and returns explicit token-resolution metadata. Live trade execution still requires the caller to pass an explicit token ID.

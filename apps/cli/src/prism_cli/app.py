@@ -30,9 +30,11 @@ from prism_cli.config import (
     DEFAULT_SENTINEL_MCP_URL,
     CliConfig,
 )
+from prism_cli.doctor import run_doctor
 from prism_cli.metrics import inspect_trace
 from prism_cli.rendering import (
     console,
+    print_doctor,
     print_history,
     print_inspect,
     print_json_model,
@@ -100,6 +102,40 @@ def _run(coro):  # type: ignore[no-untyped-def]
     except PrismCliError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1) from exc
+
+
+@app.command("doctor")
+def doctor_command(
+    dashboard_url: DashboardOpt = DEFAULT_DASHBOARD_URL,
+    sentinel_url: SentinelOpt = DEFAULT_SENTINEL_MCP_URL,
+    polymarket_gateway_url: PolymarketGatewayOpt = DEFAULT_POLYMARKET_GATEWAY_URL,
+    timeout: TimeoutOpt = 30.0,
+    no_circle: Annotated[
+        bool,
+        typer.Option("--no-circle", help="Skip local Circle CLI checks."),
+    ] = False,
+    json_output: JsonOpt = False,
+) -> None:
+    """Diagnose Prism service health and the Circle Base Sepolia payment setup."""
+
+    async def _inner() -> None:
+        report = await run_doctor(
+            _config(
+                dashboard_url=dashboard_url,
+                sentinel_url=sentinel_url,
+                polymarket_gateway_url=polymarket_gateway_url,
+                timeout=timeout,
+            ),
+            include_circle=not no_circle,
+        )
+        if json_output:
+            print_json_model(report)
+        else:
+            print_doctor(report)
+        if report.overall_status == "fail":
+            raise typer.Exit(1)
+
+    _run(_inner())
 
 
 @app.command("inspect")
