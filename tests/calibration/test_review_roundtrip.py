@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -12,10 +13,22 @@ from prism_calibration.braintrust_sync import (
     _parse_review_decision,
     pull_review_from_braintrust,
     push_flagged_to_braintrust,
-    simulate_review_on_braintrust,
 )
 from prism_calibration.lineage import load_corpus_rows
 from prism_calibration.pilot import build_pilot_slice
+
+# ── Load test-only helper from the test tree (not production code) ────────────
+# ``_simulate_review_on_braintrust`` was moved from
+# ``prism_calibration.braintrust_sync`` into the test helper module
+# ``_braintrust_helpers.py`` so it cannot be imported from production.
+_spec = importlib.util.spec_from_file_location(
+    "_braintrust_helpers",
+    Path(__file__).parent / "_braintrust_helpers.py",
+)
+assert _spec is not None and _spec.loader is not None
+_helpers = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_helpers)  # type: ignore[union-attr]
+_simulate_review_on_braintrust = _helpers._simulate_review_on_braintrust
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -151,6 +164,87 @@ def test_parse_review_decision_returns_none_for_unreviewed() -> None:
     assert decision is None
 
 
+def test_parse_review_decision_returns_none_for_non_string_reviewed_at() -> None:
+    """A non-string reviewed_at value is rejected rather than falling back to a timestamp."""
+    # reviewed_at is an int — previously this would fall back to PILOT_BUILD_CREATED_AT
+    record: dict[str, Any] = {
+        "id": "record-789",
+        "input": {"row_id": "synthetic-0003"},
+        "expected": {"verdict_band": "PASS"},
+        "metadata": {
+            "reviewer": "human-annotator-2",
+            "reviewed_at": 1747398000,  # int, not a string
+        },
+    }
+
+    decision = _parse_review_decision(record)
+    assert decision is None, "Non-string reviewed_at should return None, not a fallback"
+
+
+def test_parse_review_decision_returns_none_for_invalid_iso_timestamp() -> None:
+    """An unparseable reviewed_at string is rejected rather than using datetime.now."""
+    record: dict[str, Any] = {
+        "id": "record-abc",
+        "input": {"row_id": "synthetic-0004"},
+        "expected": {"verdict_band": "PASS"},
+        "metadata": {
+            "reviewer": "human-annotator-3",
+            "reviewed_at": "not-a-valid-timestamp",
+        },
+    }
+
+    decision = _parse_review_decision(record)
+    assert decision is None, "Invalid ISO timestamp should return None, not datetime.now()"
+
+
+def test_parse_review_decision_returns_none_for_missing_row_id() -> None:
+    """A record missing the row_id in input is rejected."""
+    record: dict[str, Any] = {
+        "id": "record-def",
+        "input": {},  # no row_id
+        "expected": {"verdict_band": "PASS"},
+        "metadata": {
+            "reviewer": "human-annotator-4",
+            "reviewed_at": "2026-05-16T15:30:00+00:00",
+        },
+    }
+
+    decision = _parse_review_decision(record)
+    assert decision is None, "Missing row_id should return None"
+
+
+def test_parse_review_decision_returns_none_for_missing_record_id() -> None:
+    """A record missing the id field is rejected."""
+    record: dict[str, Any] = {
+        "id": "",  # empty
+        "input": {"row_id": "synthetic-0005"},
+        "expected": {"verdict_band": "PASS"},
+        "metadata": {
+            "reviewer": "human-annotator-5",
+            "reviewed_at": "2026-05-16T15:30:00+00:00",
+        },
+    }
+
+    decision = _parse_review_decision(record)
+    assert decision is None, "Missing record id should return None"
+
+
+def test_parse_review_decision_returns_none_for_missing_verdict_band() -> None:
+    """A record missing verdict_band in expected is rejected."""
+    record: dict[str, Any] = {
+        "id": "record-ghi",
+        "input": {"row_id": "synthetic-0006"},
+        "expected": {},  # no verdict_band
+        "metadata": {
+            "reviewer": "human-annotator-6",
+            "reviewed_at": "2026-05-16T15:30:00+00:00",
+        },
+    }
+
+    decision = _parse_review_decision(record)
+    assert decision is None, "Missing verdict_band should return None"
+
+
 def test_push_flagged_rows_to_braintrust_creates_dataset(tmp_path: Path) -> None:
     """Pushing flagged rows creates a Braintrust dataset with review context."""
     root = _build_pilot_root(tmp_path)
@@ -201,7 +295,7 @@ def test_braintrust_review_roundtrip_syncs_back_to_local(tmp_path: Path) -> None
             "confidence": 0.97,
         },
     }
-    updated_count = simulate_review_on_braintrust(
+    updated_count = _simulate_review_on_braintrust(
         root=root, slice_name="pilot", reviewer="test-reviewer", edits=edits
     )
     assert updated_count >= 1
@@ -252,7 +346,7 @@ def test_sync_cli_push_and_pull_roundtrip(tmp_path: Path) -> None:
     assert push_payload["pushed_count"] > 0
 
     # Simulate review
-    simulate_review_on_braintrust(root=root, slice_name="pilot", reviewer="cli-test-reviewer")
+    _simulate_review_on_braintrust(root=root, slice_name="pilot", reviewer="cli-test-reviewer")
 
     # Pull
     pull = run_cli("sync", "--root", str(root), "--slice", "pilot", "--pull-review")
@@ -305,3 +399,21 @@ def test_apply_review_decision_preserves_provenance_and_split(tmp_path: Path) ->
     assert updated.split.model_dump() == original.split.model_dump()
     # Only review has changed
     assert updated.review.model_dump() != original.review.model_dump()
+
+
+def test_pilot_build_created_at_is_single_source() -> None:
+    """PILOT_BUILD_CREATED_AT is defined once in models and imported by pilot."""
+    from datetime import UTC
+
+    from prism_calibration.models import PILOT_BUILD_CREATED_AT as models_const
+    from prism_calibration.pilot import PILOT_BUILD_CREATED_AT as pilot_const
+
+    expected_value = models_const
+    assert expected_value.year == 2026
+    assert expected_value.month == 5
+    assert expected_value.day == 16
+    assert expected_value.hour == 14
+    assert expected_value.tzinfo == UTC
+
+    # pilot.py imports the constant from models (single source of truth)
+    assert pilot_const is expected_value, "pilot.py should import PILOT_BUILD_CREATED_AT from models"

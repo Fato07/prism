@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal, Self
 
 from prism_schemas.trace import TradingR1Trace
@@ -29,6 +29,12 @@ ReviewStatus = Literal[
     "approved",
     "rejected",
 ]
+
+# ── Shared pilot-build timestamp ──────────────────────────────────────────────
+# Single source of truth for the created-at timestamp used across the pilot
+# build and Braintrust sync.  Previously duplicated in pilot.py and
+# braintrust_sync.py; now imported from here to eliminate drift risk.
+PILOT_BUILD_CREATED_AT: datetime = datetime(2026, 5, 16, 14, 0, tzinfo=UTC)
 
 
 class HarvestedTraceProvenance(BaseModel):

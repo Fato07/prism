@@ -6,7 +6,6 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
 from prism_calibration.layout import bootstrap_corpus_root
 from prism_calibration.lineage import LoadedRow, load_corpus_rows, validate_lineage_integrity
 from prism_calibration.models import (
+    PILOT_BUILD_CREATED_AT,
     CalibrationRow,
     CorpusProvenance,
     HarvestedTraceProvenance,
@@ -28,7 +28,6 @@ from prism_calibration.prelabel import (
 )
 from prism_calibration.splits import ASSIGNED_AT, SPLIT_POLICY, write_row
 
-PILOT_BUILD_CREATED_AT = datetime(2026, 5, 16, 14, 0, tzinfo=UTC)
 PILOT_RUBRIC_VERSION = "prism-calibration-v1"
 
 PILOT_REAL_MARKETS: tuple[tuple[str, str, str], ...] = (

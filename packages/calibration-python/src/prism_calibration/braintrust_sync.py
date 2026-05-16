@@ -696,27 +696,39 @@ def _parse_review_decision(
     if not reviewer or not reviewed_at_str:
         return None
 
+    # Reject non-string reviewed_at — fallback timestamps would mask data corruption
+    if not isinstance(reviewed_at_str, str):
+        return None
+
     expected = record.get("expected") or {}
     if not isinstance(expected, dict):
         return None
 
     record_id = record.get("id", "")
 
-    # Parse the reviewed-at timestamp
+    # Validate required fields before construction
+    input_data = record.get("input") or {}
+    row_id = input_data.get("row_id", "")
+    if not row_id or not record_id:
+        return None
+
+    verdict_band = expected.get("verdict_band")
+    if not verdict_band:
+        return None
+
+    # Parse the reviewed-at timestamp — reject on parse failure rather than
+    # falling back to a synthetic timestamp that could mask data corruption
     try:
-        if isinstance(reviewed_at_str, str):
-            reviewed_at = datetime.fromisoformat(
-                reviewed_at_str.replace("Z", "+00:00")
-            )
-        else:
-            reviewed_at = PILOT_BUILD_CREATED_AT
+        reviewed_at = datetime.fromisoformat(
+            reviewed_at_str.replace("Z", "+00:00")
+        )
     except (ValueError, TypeError):
-        reviewed_at = datetime.now(UTC)
+        return None
 
     return ReviewDecision(
-        row_id=record.get("input", {}).get("row_id", ""),
+        row_id=row_id,
         record_id=str(record_id),
-        verdict_band=expected.get("verdict_band", "WARN"),
+        verdict_band=verdict_band,
         reasoning_quality=int(expected.get("reasoning_quality", 50)),
         evidence_quality=int(expected.get("evidence_quality", 50)),
         calibration_quality=int(expected.get("calibration_quality", 50)),
@@ -760,9 +772,6 @@ def _apply_review_decision(
     )
 
     return row.model_copy(update={"review": review})
-
-
-PILOT_BUILD_CREATED_AT = datetime(2026, 5, 16, 14, 0, tzinfo=UTC)
 
 
 def pull_review_from_braintrust(
@@ -856,93 +865,6 @@ def pull_review_from_braintrust(
         not_found_row_ids=not_found_row_ids,
         manifest_path=manifest_path,
     )
-
-
-def simulate_review_on_braintrust(
-    *,
-    root: Path,
-    slice_name: str,
-    reviewer: str = "test-reviewer",
-    edits: dict[str, dict[str, Any]] | None = None,
-) -> int:
-    """Simulate a human review on Braintrust for testing the round-trip.
-
-    This updates the Braintrust records for flagged rows to reflect
-    a human reviewer's decision, so the pull operation can sync them back.
-
-    Args:
-        root: Local corpus root.
-        slice_name: Target slice.
-        reviewer: Reviewer identifier.
-        edits: Optional mapping of row_id to review edits. Each edit can
-            override verdict_band, reasoning_quality, evidence_quality,
-            calibration_quality, failure_tags, confidence.
-
-    Returns:
-        Number of records updated.
-    """
-    try:
-        import braintrust
-    except ImportError as error:
-        raise BraintrustSyncError(
-            "braintrust package is required for sync operations"
-        ) from error
-
-    dataset_name = f"{REVIEW_DATASET_PREFIX}{slice_name}"
-    try:
-        dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=dataset_name)
-    except Exception as error:
-        raise BraintrustSyncError(
-            f"Unable to open Braintrust dataset '{dataset_name}': {error}"
-        ) from error
-
-    records = list(dataset.fetch())
-    edits = edits or {}
-    updated = 0
-
-    for record in records:
-        # Braintrust DatasetEvent is dict-like but not typed as dict[str, Any]
-        record_dict: dict[str, Any] = (
-            record if isinstance(record, dict) else dict(record)  # type: ignore[assignment]
-        )
-
-        input_data = record_dict.get("input") or {}
-        row_id: str = input_data.get("row_id", "")
-        record_id = record_dict.get("id", "")
-        if not row_id or not record_id:
-            continue
-
-        # Get current expected (AI suggestion)
-        expected = dict(record_dict.get("expected") or {})
-        metadata = dict(record_dict.get("metadata") or {})
-
-        # Apply edits if provided for this row
-        row_edits = edits.get(row_id, {})
-
-        # Determine the reviewed decision
-        if row_edits:
-            expected.update(row_edits)
-        else:
-            # Default: accept the AI suggestion (no change to expected)
-            pass
-
-        # Mark as reviewed
-        reviewed_at = datetime.now(UTC).isoformat()
-        metadata["reviewer"] = reviewer
-        metadata["reviewed_at"] = reviewed_at
-        metadata["original_status"] = "manual_review"
-        metadata["review_action"] = "edited" if row_edits else "accepted"
-
-        # Update the Braintrust record
-        dataset.update(
-            id=str(record_id),
-            expected=expected,
-            metadata=metadata,
-        )
-        updated += 1
-
-    dataset.flush()
-    return updated
 
 
 def sync_push_summary(result: SyncPushResult) -> dict[str, Any]:
