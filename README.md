@@ -3,6 +3,7 @@
 > Two AI agents debate your trade reasoning on-chain. One generates. One challenges. Both are accountable.
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://prism-dashboard-production-e6e3.up.railway.app)
+[![Docs](https://img.shields.io/badge/docs-live-cyan)](https://prism-docs-production.up.railway.app)
 [![Pitch Video](https://img.shields.io/badge/pitch_video-coming_soon-lightgrey)](#-pitch-video-3-min)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Arc Testnet](https://img.shields.io/badge/chain-Arc_Testnet_(5042002)-purple)](https://docs.arc.network/)
@@ -99,7 +100,9 @@ First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sep
 
 The sentinel is a paid public service: any external agent can pay $0.01 USDC and get an adversarial verdict. See the [Call the Sentinel Yourself](#call-the-sentinel-yourself--external-x402--mcp-demo) section below for the 3-command demo.
 
-### CLI (local preview)
+### Developer Docs + CLI
+
+Developer docs are live at <https://prism-docs-production.up.railway.app>. They cover the quickstart, CLI, x402/MCP validation, public APIs, receipts, security model, and architecture.
 
 The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. It supports trace inspection, public stats/history, trace reports, market surfacing, token resolution, wallet funding guidance, and x402 validation orchestration. It never reads private keys: `prism validate` either submits an externally signed `X-PAYMENT` header or asks Circle CLI to sign the EIP-712 authorization with a Circle wallet.
 

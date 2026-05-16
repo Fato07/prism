@@ -4,6 +4,8 @@ Command-line client for Prism trace inspection, public reporting, market resolut
 
 This is the local product spine for builders who want to inspect agent traces and pull Prism metrics without opening the dashboard.
 
+Full developer docs: <https://prism-docs-production.up.railway.app/docs/cli>
+
 ## Install / run
 
 From a clone:

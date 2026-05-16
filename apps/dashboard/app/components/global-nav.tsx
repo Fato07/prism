@@ -88,6 +88,15 @@ export function GlobalNav({ currentPage, rightExtra, style }: GlobalNavProps) {
               </Link>
             );
           })}
+          <a
+            href="https://prism-docs-production.up.railway.app"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center rounded-md border border-transparent px-2 py-1 text-xs font-medium text-fg-muted transition-colors hover:border-[var(--color-border)] hover:text-fg focus-ring sm:px-2.5 sm:py-1.5 sm:text-sm"
+          >
+            <span className="sm:hidden">Docs</span>
+            <span className="hidden sm:inline">Docs</span>
+          </a>
         </div>
 
         {/* ── Right: Wallet + extras ── */}
