@@ -5,6 +5,17 @@ description: "Understand and verify Prism receipt fields across IPFS, x402 payme
 
 A receipt is the evidence bundle behind a Prism Report. It should let another developer answer: what trace was validated, who paid for validation, what verdict was produced, and where the public proof lives.
 
+## Canonical CLI paid receipt
+
+The first live CLI paid validation receipt is checked into the repository:
+
+```txt
+docs/demos/cli-paid-validation-20260516T214837Z.md
+docs/demos/cli-paid-validation-20260516T214837Z.json
+```
+
+It paid `0.01 USDC` on Base Sepolia and produced verdict `50 WARN` for the canonical demo trace.
+
 ## CLI receipt files
 
 `prism demo` writes two local files:

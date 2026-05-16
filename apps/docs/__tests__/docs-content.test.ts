@@ -46,6 +46,16 @@ describe('Prism docs content', () => {
     expect(security).toContain('Dry-run commands are default');
   });
 
+  it('documents the canonical paid CLI receipt without payment header leakage', () => {
+    const receipt = read('../../docs/demos/cli-paid-validation-20260516T214837Z.json');
+    const receiptDocs = read('content/docs/receipts.mdx');
+
+    expect(receipt).toContain('"mode": "paid"');
+    expect(receipt).toContain('"payment_tx_hash"');
+    expect(receipt).not.toContain('X-PAYMENT');
+    expect(receiptDocs).toContain('cli-paid-validation-20260516T214837Z');
+  });
+
   it('ships an OpenAPI source for public dashboard APIs only', () => {
     const openapi = read('openapi/prism-public-api.yaml');
 

@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-05-16T21:48:37+00:00",
+  "mode": "paid",
+  "trace_id": "d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24",
+  "trace_uri": "ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8",
+  "trace_hash": "0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb",
+  "dashboard_report_url": "https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24",
+  "market_question": "Will the EU AI Act enforcement actions exceed 50 by end of 2026?",
+  "readiness": "usable",
+  "existing_verdict_score": 65,
+  "existing_verdict_label": "PASS",
+  "quote": {
+    "trace_uri": "ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8",
+    "trace_hash": "0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb",
+    "amount_usdc": "0.01",
+    "amount_units": "10000",
+    "asset": "USDC",
+    "asset_contract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "scheme": "exact",
+    "network": "base-sepolia",
+    "caip2": "eip155:84532",
+    "facilitator": "x402",
+    "facilitator_mode": "public",
+    "recipient": "0xaf131B054B08E57c20b31080A1Ffd406e429db6F",
+    "raw": {
+      "detail": "Payment required",
+      "amount": "0.01",
+      "asset": "USDC",
+      "facilitator": "x402",
+      "network": "base-sepolia",
+      "scheme": "exact",
+      "facilitator_mode": "public",
+      "recipient": "0xaf131B054B08E57c20b31080A1Ffd406e429db6F"
+    }
+  },
+  "validation_result": {
+    "request_hash": "97211da3ffee822ed72e5183d1c1c5edfa1606e26baa5197208b4dcc90b94d91",
+    "trace_id": "d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24",
+    "sentinel_agent_id": 4148,
+    "verdict_score": 50,
+    "verdict_label": "WARN",
+    "evidence_challenges": [
+      "Reliance on GDPR enforcement statistics may mislead due to differing enforcement contexts and objectives between GDPR and the EU AI Act.",
+      "Evidence from the Member State Digital Enforcement Capacity Survey is based on self-reported data which can be biased and unreliable.",
+      "The evidence on the scope of the Act does not provide specific metrics or case studies that demonstrate actual enforcement actions in analogous situations."
+    ],
+    "thesis_challenges": [
+      "The assumptions made regarding the ramp-up of enforcement based on past GDPR enforcement may not hold, especially given the complexities surrounding AI technologies."
+    ],
+    "calibration_critique": "\"The probability calibration is somewhat questionable as it relies heavily on historical enforcement data from GDPR, which might not equally apply to the EU AI Act.\"",
+    "ipfs_cid": "QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk",
+    "content_hash_hex": "bc0d9dcc4745568136af1bbc46179e21509698c8f8d158b1a1927eb9f740fc41",
+    "tx_hash": null,
+    "payment_tx_hash": "0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1"
+  },
+  "verification": {
+    "doctor_overall_status_after_payment": "ok",
+    "verdict_ipfs_gateway_status": 200,
+    "payment_explorer_status": 200,
+    "wallet_deployment_tx_hash": "0x3b68fc432bb7b052352851b962728905e01818d1c88940ab2e97da29bea21d89"
+  }
+}

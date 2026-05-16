@@ -25,6 +25,8 @@
 
 First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sepolia.basescan.org/tx/0x63bf70941e8890b2b92459addfa18ecb57dd06bba7ea715391f00322faf58d68) on Base Sepolia. Receipt: [`docs/demos/self-serve-submit-20260515T101946Z.md`](docs/demos/self-serve-submit-20260515T101946Z.md).
 
+First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1) on Base Sepolia. Receipt: [`docs/demos/cli-paid-validation-20260516T214837Z.md`](docs/demos/cli-paid-validation-20260516T214837Z.md).
+
 ---
 
 ## Architecture
