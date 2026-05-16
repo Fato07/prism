@@ -43,10 +43,11 @@ from prism_cli.rendering import (
     print_validation_quote,
     print_validation_receipt,
 )
+from prism_cli.x402_signing import X402SigningError, sign_x_payment_with_circle_cli
 
 app = typer.Typer(
     name="prism",
-    help="Inspect Prism traces and read public validation reports.",
+    help="Inspect Prism traces, read reports, resolve markets, and orchestrate x402 validation.",
     no_args_is_help=True,
 )
 wallet_app = typer.Typer(help="Read-only wallet setup helpers.", no_args_is_help=True)
@@ -272,6 +273,24 @@ def validate_command(
         Path | None,
         typer.Option("--x-payment-file", help="File containing an externally signed X-PAYMENT."),
     ] = None,
+    circle_address: Annotated[
+        str | None,
+        typer.Option(
+            "--circle-address",
+            help="Circle CLI wallet address to sign the x402 payment with.",
+        ),
+    ] = None,
+    circle_chain: Annotated[
+        str | None,
+        typer.Option(
+            "--circle-chain",
+            help="Circle CLI chain for signing; inferred from the quote when omitted.",
+        ),
+    ] = None,
+    max_amount_usdc: Annotated[
+        str,
+        typer.Option("--max-amount-usdc", help="Refuse to sign/pay above this USDC amount."),
+    ] = "0.01",
     sentinel_url: SentinelOpt = DEFAULT_SENTINEL_MCP_URL,
     ipfs_gateway: IpfsGatewayOpt = DEFAULT_IPFS_GATEWAY,
     timeout: TimeoutOpt = 180.0,
@@ -289,6 +308,24 @@ def validate_command(
             x_payment_header=x_payment_header,
             x_payment_file=x_payment_file,
         )
+        if payment_header and circle_address:
+            raise PrismCliError(
+                "Use either an externally supplied X-PAYMENT or --circle-address signing, not both."
+            )
+
+        if not payment_header and circle_address:
+            quote = await request_validation_quote(config, source, trace_hash=trace_hash)
+            try:
+                payment_header = await asyncio.to_thread(
+                    sign_x_payment_with_circle_cli,
+                    quote,
+                    payer_address=circle_address,
+                    circle_chain=circle_chain,
+                    max_amount_usdc=max_amount_usdc,
+                )
+            except X402SigningError as exc:
+                raise PrismCliError(str(exc)) from exc
+
         if not payment_header:
             quote = await request_validation_quote(config, source, trace_hash=trace_hash)
             if json_output:
@@ -298,7 +335,8 @@ def validate_command(
                 print_validation_quote(quote)
                 console.print(
                     "Provide an externally signed x402 header with "
-                    "[bold]--x-payment-file[/bold], PRISM_X_PAYMENT, or --x-payment-header."
+                    "[bold]--x-payment-file[/bold], PRISM_X_PAYMENT, --x-payment-header, "
+                    "or sign with [bold]--circle-address[/bold]."
                 )
             raise typer.Exit(1)
 
@@ -363,7 +401,7 @@ def wallet_status(
     console.print(f"Faucet:           {CIRCLE_FAUCET_URL}")
     if address:
         console.print(f"Explorer:         {BASE_SEPOLIA_EXPLORER}/address/{address}")
-    console.print("No private key is required for read-only CLI commands.")
+    console.print("No private key is required. Paid validation can use Circle CLI wallet signing.")
 
 
 def _read_payment_header(

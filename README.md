@@ -101,7 +101,7 @@ The sentinel is a paid public service: any external agent can pay $0.01 USDC and
 
 ### CLI (local preview)
 
-The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. It supports trace inspection, public stats/history, trace reports, market surfacing, token resolution, wallet funding guidance, and x402 validation orchestration. It does not custody keys or sign payments; `prism validate` requires an externally signed `X-PAYMENT` header from a file, env var, or explicit option.
+The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. It supports trace inspection, public stats/history, trace reports, market surfacing, token resolution, wallet funding guidance, and x402 validation orchestration. It never reads private keys: `prism validate` either submits an externally signed `X-PAYMENT` header or asks Circle CLI to sign the EIP-712 authorization with a Circle wallet.
 
 ```bash
 cd apps/cli
@@ -114,6 +114,8 @@ uv run prism market resolve "<question from prism markets>" --json
 uv run prism quote ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 \
   --trace-hash 0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb
 uv run prism validate ipfs://Qm... --trace-hash 0x... --x-payment-file ./x-payment.txt
+uv run prism validate ipfs://Qm... --trace-hash 0x... \
+  --circle-address 0xYourCircleWallet --circle-chain BASE-SEPOLIA --max-amount-usdc 0.01
 ```
 
 ---
