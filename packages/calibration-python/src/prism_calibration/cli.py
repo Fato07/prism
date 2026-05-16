@@ -20,6 +20,11 @@ from prism_calibration.braintrust_sync import (
     sync_slice_summary,
     sync_slice_to_braintrust,
 )
+from prism_calibration.eval import (
+    EvalRunError,
+    eval_summary,
+    run_eval,
+)
 from prism_calibration.freeze import (
     FrozenExportError,
     freeze_slice,
@@ -411,17 +416,30 @@ def _handle_sync(args: argparse.Namespace) -> int:
     return 0
 
 
-def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:
-    """Return a handler for commands reserved by later mission milestones."""
+def _handle_eval(args: argparse.Namespace) -> int:
+    """Run calibration evals against a local or frozen slice."""
+    root = _namespace_path(args, "root")
+    frozen_path = _namespace_path(args, "frozen")
+    slice_name: object = getattr(args, "slice_name", None)
 
-    def _handle_deferred(_args: argparse.Namespace) -> int:
-        _write_error(
-            f"`{command_name}` is part of the public corpus CLI contract, but its "
-            f"implementation is reserved for the {milestone} milestone."
+    if frozen_path is None and root is None:
+        root = DEFAULT_CORPUS_ROOT
+
+    try:
+        result = run_eval(
+            root=root,
+            frozen_path=frozen_path,
+            slice_name=str(slice_name) if slice_name is not None else None,
         )
-        return 2
+    except EvalRunError as error:
+        _write_error(str(error))
+        return 1
+    except (RowLoadError, LineageValidationError, ValidationError) as error:
+        _write_error(str(error))
+        return 1
 
-    return _handle_deferred
+    _write_json(eval_summary(result))
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -525,10 +543,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run calibration evals against a local or frozen slice.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    eval_command.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
+    eval_command.add_argument("--root", type=Path, default=None)
     eval_command.add_argument("--slice", dest="slice_name")
     eval_command.add_argument("--frozen", type=Path)
-    eval_command.set_defaults(handler=_deferred_handler("eval", "regression-gates"))
+    eval_command.set_defaults(handler=_handle_eval)
 
     inspect = subparsers.add_parser(
         "inspect",
