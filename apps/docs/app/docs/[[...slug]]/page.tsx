@@ -1,4 +1,7 @@
+import Link from 'next/link';
+
 import { getMDXComponents } from '@/components/mdx';
+import { PrismWordmark } from '@/components/prism-wordmark';
 import { source } from '@/lib/source';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from 'fumadocs-ui/layouts/docs/page';
@@ -18,6 +21,9 @@ export default async function Page(props: DocsPageProps) {
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
+      <Link className="mb-8 inline-flex" href="/" aria-label="Prism documentation home">
+        <PrismWordmark />
+      </Link>
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>

@@ -6,20 +6,24 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: <PrismWordmark />,
       transparentMode: 'top',
+      url: '/',
     },
     links: [
       {
-        text: 'Dashboard',
-        url: 'https://prism-dashboard-production-e6e3.up.railway.app',
-        external: true,
+        text: 'Quickstart',
+        url: '/docs/quickstart',
       },
       {
         text: 'CLI',
         url: '/docs/cli',
       },
       {
-        text: 'GitHub',
-        url: 'https://github.com/Fato07/prism',
+        text: 'Receipts',
+        url: '/docs/receipts',
+      },
+      {
+        text: 'Dashboard',
+        url: 'https://prism-dashboard-production-e6e3.up.railway.app',
         external: true,
       },
     ],

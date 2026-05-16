@@ -10,14 +10,32 @@ function read(relativePath: string): string {
 }
 
 describe('Prism docs content', () => {
-  it('keeps core docs pages in navigation', () => {
+  it('keeps sidebar navigation focused and grouped', () => {
     const meta = JSON.parse(read('content/docs/meta.json')) as { pages: string[] };
 
+    expect(meta.pages).toContain('---Start---');
+    expect(meta.pages).toContain('---Use Prism---');
+    expect(meta.pages).toContain('---Verify---');
     expect(meta.pages).toContain('quickstart');
     expect(meta.pages).toContain('cli');
     expect(meta.pages).toContain('x402-mcp-validation');
     expect(meta.pages).toContain('receipts');
     expect(meta.pages).toContain('security');
+    expect(meta.pages).not.toContain('api-reference');
+  });
+
+  it('renders Prism brand and footer links across docs surfaces', () => {
+    const layout = read('lib/layout.shared.tsx');
+    const docsPage = read('app/docs/[[...slug]]/page.tsx');
+    const footer = read('components/site-footer.tsx');
+    const home = read('app/page.tsx');
+
+    expect(layout).toContain('<PrismWordmark />');
+    expect(docsPage).toContain('aria-label="Prism documentation home"');
+    expect(docsPage).toContain('<PrismWordmark />');
+    expect(footer).toContain('Quickstart');
+    expect(footer).toContain('Public APIs');
+    expect(home).toContain('<SiteFooter />');
   });
 
   it('does not publish personal Circle login details', () => {

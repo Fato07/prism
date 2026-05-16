@@ -2,14 +2,17 @@
   "title": "Prism Docs",
   "pages": [
     "index",
+    "---Start---",
     "quickstart",
-    "core-concepts",
+    "---Use Prism---",
     "cli",
     "x402-mcp-validation",
     "public-apis",
-    "api-reference",
+    "---Verify---",
     "receipts",
     "security",
+    "---Reference---",
+    "core-concepts",
     "architecture",
     "troubleshooting"
   ]
