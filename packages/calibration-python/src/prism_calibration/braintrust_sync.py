@@ -260,6 +260,7 @@ def sync_slice_to_braintrust(
     *,
     root: Path,
     slice_name: str,
+    dataset_name: str | None = None,
 ) -> SyncSliceResult:
     """Sync a frozen local slice to a Braintrust dataset with stable case IDs.
 
@@ -267,6 +268,13 @@ def sync_slice_to_braintrust(
     frozen local export as the authoritative source. Rows are upserted by
     stable row_id so re-syncs produce no duplicates. Durable state tracking
     enables safe resume after interruption.
+
+    Args:
+        root: Local corpus root path.
+        slice_name: Target slice name to sync.
+        dataset_name: Override the Braintrust dataset name. Defaults to
+            ``pilot-slice-{slice_name}``. Use a unique name per test
+            invocation to avoid cross-test row accumulation.
     """
     try:
         import braintrust
@@ -303,18 +311,21 @@ def sync_slice_to_braintrust(
 
     # Check for resume state
     resume_state = _read_sync_state(layout.root, slice_name)
-    already_synced_ids: set[str] = set()
     dataset_name_from_state: str | None = None
     resumed = False
 
     if resume_state is not None:
-        already_synced_ids = set(resume_state.get("synced_row_ids", []))
         dataset_name_from_state = resume_state.get("dataset_name")
         resumed = True
 
     # Create or open the Braintrust dataset
-    dataset_name = dataset_name_from_state or f"{SLICE_DATASET_PREFIX}{slice_name}"
-    dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=dataset_name)
+    # Priority: explicit param > resume state > default naming
+    effective_dataset_name = (
+        dataset_name
+        or dataset_name_from_state
+        or f"{SLICE_DATASET_PREFIX}{slice_name}"
+    )
+    dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=effective_dataset_name)
     dataset_id = dataset.id
 
     # Sync rows from frozen export
@@ -323,11 +334,6 @@ def sync_slice_to_braintrust(
 
     for row_entry in frozen_manifest.rows:
         row_id = row_entry.row_id
-
-        # Skip already-synced rows (resume path)
-        if row_id in already_synced_ids:
-            synced_row_ids.append(row_id)
-            continue
 
         # Load the row from frozen export
         row_path = export_dir / row_entry.path
@@ -343,7 +349,12 @@ def sync_slice_to_braintrust(
             row, row_entry.row_hash, frozen_manifest.export_id
         )
 
-        # Upsert by stable row_id
+        # Upsert by stable row_id — always insert even on resume.
+        # Braintrust insert with id= has upsert semantics, so re-inserting
+        # an already-synced row updates it in place instead of duplicating.
+        # This guarantees correctness when resuming from durable state
+        # regardless of whether the prior partial sync actually completed
+        # its Braintrust writes.
         tags = sorted({slice_name, row.provenance.source_type, row.split.name})
         dataset.insert(
             id=row_id,
@@ -356,7 +367,7 @@ def sync_slice_to_braintrust(
         # Write durable state after each row for resume capability
         _write_sync_state(layout.root, slice_name, {
             "dataset_id": dataset_id,
-            "dataset_name": dataset_name,
+            "dataset_name": effective_dataset_name,
             "export_id": frozen_manifest.export_id,
             "slice": slice_name,
             "synced_row_ids": sorted(synced_row_ids),
@@ -370,7 +381,7 @@ def sync_slice_to_braintrust(
     _write_braintrust_ref(
         export_dir,
         dataset_id=dataset_id,
-        dataset_name=dataset_name,
+        dataset_name=effective_dataset_name,
         export_id=frozen_manifest.export_id,
     )
 
@@ -383,7 +394,7 @@ def sync_slice_to_braintrust(
     sync_manifest: dict[str, Any] = {
         "authority": "local",
         "dataset_id": dataset_id,
-        "dataset_name": dataset_name,
+        "dataset_name": effective_dataset_name,
         "export_id": frozen_manifest.export_id,
         "operation": "sync-slice",
         "resumed": resumed,
@@ -399,7 +410,7 @@ def sync_slice_to_braintrust(
 
     return SyncSliceResult(
         slice_name=slice_name,
-        dataset_name=dataset_name,
+        dataset_name=effective_dataset_name,
         dataset_id=dataset_id,
         row_count=len(synced_row_ids),
         synced_row_ids=sorted(synced_row_ids),

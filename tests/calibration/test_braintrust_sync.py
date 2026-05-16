@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 
 from prism_calibration.braintrust_sync import (
@@ -19,6 +20,16 @@ from prism_calibration.lineage import load_corpus_rows
 from prism_calibration.pilot import build_pilot_slice
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _unique_dataset_name() -> str:
+    """Return a unique dataset name for test isolation.
+
+    Each test invocation gets its own Braintrust dataset so rows from
+    previous test runs do not accumulate and pollute assertions about
+    row counts and IDs.
+    """
+    return f"test-pilot-slice-{uuid.uuid4().hex[:12]}"
 
 
 def _build_pilot_root(tmp_path: Path) -> Path:
@@ -47,10 +58,13 @@ def test_sync_creates_dataset_with_matching_row_count_and_stable_ids(
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
-    result = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    ds_name = _unique_dataset_name()
+    result = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     assert isinstance(result, SyncSliceResult)
-    assert result.dataset_name.startswith("pilot-slice-")
+    assert result.dataset_name == ds_name
     assert result.dataset_id  # non-empty Braintrust dataset ID
     assert result.row_count > 0
 
@@ -69,8 +83,11 @@ def test_sync_auto_freezes_if_no_frozen_export_exists(tmp_path: Path) -> None:
     """If no frozen export exists, sync creates one automatically."""
     root = _build_pilot_root(tmp_path)
 
+    ds_name = _unique_dataset_name()
     # No freeze yet — sync should auto-freeze
-    result = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    result = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     assert result.row_count > 0
     assert result.export_id  # frozen export was created
@@ -90,8 +107,12 @@ def test_resync_is_idempotent_no_duplicates(tmp_path: Path) -> None:
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
+    ds_name = _unique_dataset_name()
+
     # First sync
-    first = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    first = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
     assert first.row_count > 0
 
     # Fetch current rows from Braintrust
@@ -106,7 +127,9 @@ def test_resync_is_idempotent_no_duplicates(tmp_path: Path) -> None:
     )
 
     # Second sync (idempotent)
-    second = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    second = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     # Same dataset
     assert second.dataset_id == first.dataset_id
@@ -134,8 +157,14 @@ def test_resync_with_no_local_changes_produces_zero_drift(tmp_path: Path) -> Non
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
-    first = sync_slice_to_braintrust(root=root, slice_name="pilot")
-    second = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    ds_name = _unique_dataset_name()
+
+    first = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
+    second = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     # Same synced row IDs, same counts, same dataset
     assert first.synced_row_ids == second.synced_row_ids
@@ -154,6 +183,8 @@ def test_interrupted_sync_resumes_from_durable_state(tmp_path: Path) -> None:
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
+    ds_name = _unique_dataset_name()
+
     # Load the frozen manifest to get row IDs
     frozen_rows = load_corpus_rows(root, include_sample=False)
     pilot_rows = sorted(
@@ -163,11 +194,12 @@ def test_interrupted_sync_resumes_from_durable_state(tmp_path: Path) -> None:
     all_row_ids = [loaded.row.row_id for loaded in pilot_rows]
     assert len(all_row_ids) >= 5, "Need at least 5 rows for interruption test"
 
-    # Simulate a partial sync by writing durable state with only some rows synced
+    # Simulate a partial sync by writing durable state with only some rows synced.
+    # The dataset_name in state must match the one we'll pass on resume.
     partial_ids = all_row_ids[:3]  # Only first 3 rows "synced"
     _write_sync_state(root, "pilot", {
         "dataset_id": "placeholder-id",
-        "dataset_name": "pilot-slice-pilot",
+        "dataset_name": ds_name,
         "export_id": "placeholder-export",
         "slice": "pilot",
         "synced_row_ids": sorted(partial_ids),
@@ -175,8 +207,10 @@ def test_interrupted_sync_resumes_from_durable_state(tmp_path: Path) -> None:
         "total_rows": len(all_row_ids),
     })
 
-    # Now resume the sync
-    result = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    # Now resume the sync with the same dataset_name
+    result = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     assert result.resumed is True
     assert result.row_count == len(all_row_ids), (
@@ -199,12 +233,19 @@ def test_interrupted_sync_resumes_from_durable_state(tmp_path: Path) -> None:
 def test_clean_run_and_resumed_run_produce_same_remote_shape(
     tmp_path: Path,
 ) -> None:
-    """A resumed sync finishes with the same dataset shape as a clean uninterrupted run."""
+    """A resumed sync finishes with the same dataset shape as a clean
+    uninterrupted run when both target isolated datasets."""
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
+    # Use two separate dataset names to isolate the runs
+    clean_ds_name = _unique_dataset_name()
+    resume_ds_name = _unique_dataset_name()
+
     # Clean run
-    clean = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    clean = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=clean_ds_name,
+    )
 
     import braintrust
 
@@ -215,22 +256,18 @@ def test_clean_run_and_resumed_run_produce_same_remote_shape(
         for r in clean_rows
     )
 
-    # Now simulate interruption + resume with a fresh pilot build
-    root2 = tmp_path / "calibration2"
-    build_pilot_slice(root=root2, pilot_size=20)
-    freeze_slice(root2, "pilot")
-
-    frozen_rows = load_corpus_rows(root2, include_sample=False)
+    # Now simulate interruption + resume using a separate dataset name
+    frozen_rows = load_corpus_rows(root, include_sample=False)
     pilot_rows = sorted(
         [loaded for loaded in frozen_rows if loaded.row.split.name == "pilot"],
         key=lambda loaded: loaded.row.row_id,
     )
     all_row_ids = [loaded.row.row_id for loaded in pilot_rows]
 
-    # Write partial state
-    _write_sync_state(root2, "pilot", {
+    # Write partial state with the resume dataset name
+    _write_sync_state(root, "pilot", {
         "dataset_id": "placeholder-id",
-        "dataset_name": "pilot-slice-pilot",
+        "dataset_name": resume_ds_name,
         "export_id": "placeholder-export",
         "slice": "pilot",
         "synced_row_ids": sorted(all_row_ids[:2]),
@@ -238,7 +275,9 @@ def test_clean_run_and_resumed_run_produce_same_remote_shape(
         "total_rows": len(all_row_ids),
     })
 
-    resumed = sync_slice_to_braintrust(root=root2, slice_name="pilot")
+    resumed = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=resume_ds_name,
+    )
 
     dataset2 = braintrust.init_dataset(project="Prism", name=resumed.dataset_name)
     resumed_rows = list(dataset2.fetch())
@@ -247,7 +286,7 @@ def test_clean_run_and_resumed_run_produce_same_remote_shape(
         for r in resumed_rows
     )
 
-    # Same row count and same IDs
+    # Same row count and same IDs (both datasets were freshly created)
     assert len(resumed_rows) == len(clean_rows)
     assert resumed_ids == clean_ids
 
@@ -263,7 +302,10 @@ def test_local_manifest_retains_dataset_reference(tmp_path: Path) -> None:
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
-    result = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    ds_name = _unique_dataset_name()
+    result = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     # Check that a braintrust-ref sidecar exists alongside the frozen manifest
     ref = read_braintrust_ref(result.export_dir)
@@ -281,7 +323,10 @@ def test_local_export_remains_source_of_truth_without_braintrust(
     _freeze_pilot(root)
 
     # Sync to Braintrust
-    sync_slice_to_braintrust(root=root, slice_name="pilot")
+    ds_name = _unique_dataset_name()
+    sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     # Validate the frozen export still works locally
     from prism_calibration.freeze import validate_frozen_export
@@ -305,7 +350,10 @@ def test_cli_dataset_state_matches_braintrust_remote(tmp_path: Path) -> None:
     root = _build_pilot_root(tmp_path)
     _freeze_pilot(root)
 
-    result = sync_slice_to_braintrust(root=root, slice_name="pilot")
+    ds_name = _unique_dataset_name()
+    result = sync_slice_to_braintrust(
+        root=root, slice_name="pilot", dataset_name=ds_name,
+    )
 
     import braintrust
 
