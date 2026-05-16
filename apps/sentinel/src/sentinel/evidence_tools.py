@@ -14,7 +14,7 @@ from typing import Any, Protocol
 import httpx
 import structlog
 from prism_schemas.verdict import AdversarialChallenge
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 logger = structlog.get_logger("prism.sentinel.evidence_tools")
 
@@ -72,6 +72,72 @@ class StaticEvidenceProvider:
         return self._results_by_challenge_id.get(request.challenge.id, [])
 
 
+class BraveSearchEvidenceProvider:
+    """Evidence provider backed by Brave Search's Web Search API."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint: str = "https://api.search.brave.com/res/v1/web/search",
+        country: str | None = None,
+        search_lang: str | None = None,
+        freshness: str | None = None,
+        timeout_seconds: float = 20.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """Create a Brave Search provider with a user-supplied API key."""
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.country = country
+        self.search_lang = search_lang
+        self.freshness = freshness
+        self.timeout_seconds = timeout_seconds
+        self.transport = transport
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Query Brave Search and normalize web results."""
+        params: dict[str, str | int] = {
+            "q": request.query,
+            "count": request.max_results,
+        }
+        if self.country:
+            params["country"] = self.country
+        if self.search_lang:
+            params["search_lang"] = self.search_lang
+        if self.freshness:
+            params["freshness"] = self.freshness
+
+        headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": self.api_key,
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.get(self.endpoint, params=params, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "brave_search_failed",
+                challenge_id=request.challenge.id,
+                error=str(exc),
+            )
+            return []
+
+        body = _response_json_or_none(
+            response,
+            provider="brave_search",
+            challenge_id=request.challenge.id,
+        )
+        if body is None:
+            return []
+        return _parse_brave_results(body)
+
+
 class CustomWebhookEvidenceProvider:
     """BYO evidence provider backed by a user-controlled HTTP webhook.
 
@@ -118,7 +184,14 @@ class CustomWebhookEvidenceProvider:
             )
             return []
 
-        return _parse_webhook_results(response.json(), fallback_provider="custom_webhook")
+        body = _response_json_or_none(
+            response,
+            provider="custom_webhook",
+            challenge_id=request.challenge.id,
+        )
+        if body is None:
+            return []
+        return _parse_webhook_results(body, fallback_provider="custom_webhook")
 
 
 def evidence_provider_from_env() -> EvidenceProvider:
@@ -127,10 +200,27 @@ def evidence_provider_from_env() -> EvidenceProvider:
     Supported values:
     - `noop` (default): no network or paid calls.
     - `custom_webhook`: POST requests to `PRISM_EVIDENCE_WEBHOOK_URL`.
+    - `brave_search`: query Brave's Web Search API with `BRAVE_SEARCH_API_KEY`.
     """
     provider = os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop").strip().lower()
     if provider == "noop":
         return NoopEvidenceProvider()
+    if provider in {"brave", "brave_search"}:
+        api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
+        if not api_key:
+            logger.warning(
+                "brave_search_missing_api_key",
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        timeout_seconds = _float_env("BRAVE_SEARCH_TIMEOUT_SECONDS", 20.0)
+        return BraveSearchEvidenceProvider(
+            api_key=api_key,
+            country=os.environ.get("BRAVE_SEARCH_COUNTRY"),
+            search_lang=os.environ.get("BRAVE_SEARCH_LANG"),
+            freshness=os.environ.get("BRAVE_SEARCH_FRESHNESS"),
+            timeout_seconds=timeout_seconds,
+        )
     if provider == "custom_webhook":
         url = os.environ.get("PRISM_EVIDENCE_WEBHOOK_URL", "").strip()
         if not url:
@@ -139,7 +229,7 @@ def evidence_provider_from_env() -> EvidenceProvider:
                 fallback="noop",
             )
             return NoopEvidenceProvider()
-        timeout_seconds = float(os.environ.get("PRISM_EVIDENCE_WEBHOOK_TIMEOUT_SECONDS", "20"))
+        timeout_seconds = _float_env("PRISM_EVIDENCE_WEBHOOK_TIMEOUT_SECONDS", 20.0)
         return CustomWebhookEvidenceProvider(
             url=url,
             bearer_token=os.environ.get("PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN"),
@@ -152,6 +242,41 @@ def evidence_provider_from_env() -> EvidenceProvider:
         fallback="noop",
     )
     return NoopEvidenceProvider()
+
+
+def _float_env(name: str, default: float) -> float:
+    """Parse a float environment variable with fail-closed fallback."""
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value.strip() == "":
+        return default
+    try:
+        return float(raw_value)
+    except ValueError:
+        logger.warning(
+            "invalid_float_env",
+            name=name,
+            fallback=default,
+        )
+        return default
+
+
+def _response_json_or_none(
+    response: httpx.Response,
+    *,
+    provider: str,
+    challenge_id: str,
+) -> Any | None:
+    """Return JSON response bodies or fail closed to no evidence."""
+    try:
+        return response.json()
+    except ValueError as exc:
+        logger.warning(
+            "evidence_provider_invalid_json",
+            provider=provider,
+            challenge_id=challenge_id,
+            error=str(exc),
+        )
+        return None
 
 
 def _parse_webhook_results(
@@ -179,8 +304,47 @@ def _parse_webhook_results(
             continue
         candidate = dict(item)
         candidate.setdefault("provider", fallback_provider)
-        parsed = EvidenceSearchResult.model_validate(candidate)
+        try:
+            parsed = EvidenceSearchResult.model_validate(candidate)
+        except ValidationError:
+            continue
         results.append(parsed)
+    return results
+
+
+def _parse_brave_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Brave web-search results into evidence results."""
+    if not isinstance(body, dict):
+        return []
+    web = body.get("web")
+    if not isinstance(web, dict):
+        return []
+    raw_results = web.get("results")
+    if not isinstance(raw_results, list):
+        return []
+
+    results: list[EvidenceSearchResult] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title")
+        url = item.get("url")
+        snippet = item.get("description") or item.get("snippet")
+        if not isinstance(title, str) or not isinstance(url, str) or not isinstance(snippet, str):
+            continue
+        page_age = item.get("page_age")
+        page_fetched = item.get("page_fetched")
+        results.append(
+            EvidenceSearchResult(
+                title=title,
+                url=url,
+                snippet=snippet,
+                provider="brave_search",
+                published_at=page_age if isinstance(page_age, str) else None,
+                retrieved_at=page_fetched if isinstance(page_fetched, str) else None,
+                confidence=0.7,
+            )
+        )
     return results
 
 

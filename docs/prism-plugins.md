@@ -179,8 +179,9 @@ The first plugin seam lives in `apps/sentinel/src/sentinel/evidence_tools.py`:
 - `NoopEvidenceProvider` — default, no network calls.
 - `StaticEvidenceProvider` — deterministic tests.
 - `CustomWebhookEvidenceProvider` — BYO HTTP endpoint.
+- `BraveSearchEvidenceProvider` — native Brave Search Web Search API adapter.
 
-Environment:
+Custom webhook environment:
 
 ```bash
 PRISM_EVIDENCE_PROVIDER=custom_webhook
@@ -190,5 +191,17 @@ PRISM_EVIDENCE_WEBHOOK_TIMEOUT_SECONDS=20
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
-This is intentionally small and reversible. Native adapters for Parallel x402, Brave, Tavily,
-Exa, Firecrawl, and domain APIs can be added behind the same contract.
+Brave Search environment:
+
+```bash
+PRISM_EVIDENCE_PROVIDER=brave_search
+BRAVE_SEARCH_API_KEY=your-brave-search-key
+BRAVE_SEARCH_COUNTRY=US              # optional
+BRAVE_SEARCH_LANG=en                 # optional
+BRAVE_SEARCH_FRESHNESS=pm            # optional: Brave-supported freshness value
+BRAVE_SEARCH_TIMEOUT_SECONDS=20      # optional
+ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+```
+
+This is intentionally small and reversible. Native adapters for Parallel x402, Tavily, Exa,
+Firecrawl, and domain APIs can be added behind the same contract.
