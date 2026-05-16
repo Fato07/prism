@@ -19,6 +19,7 @@ RUN pnpm build
 
 FROM node:22-slim AS runner
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 ENV PORT=3300
 WORKDIR /app
 
