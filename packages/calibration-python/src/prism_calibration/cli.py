@@ -27,6 +27,13 @@ from prism_calibration.harvest import (
     parse_selection,
     run_harvest_from_environment,
 )
+from prism_calibration.labeling import (
+    DEFAULT_LABEL_SEED,
+    LabelGenerationError,
+    generate_mutation_rows,
+    generate_synthetic_rows,
+    label_generation_summary,
+)
 from prism_calibration.layout import (
     DEFAULT_CORPUS_ROOT,
     CorpusLayout,
@@ -84,6 +91,17 @@ def _namespace_int(args: argparse.Namespace, name: str) -> int:
     if isinstance(value, int):
         return value
     _parser_error(f"{name} must be an integer")
+
+
+def _positive_int(value: str) -> int:
+    """Parse a positive integer for generation counts."""
+    try:
+        count = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("count must be an integer") from error
+    if count <= 0:
+        raise argparse.ArgumentTypeError("count must be greater than 0")
+    return count
 
 
 def _handle_build(args: argparse.Namespace) -> int:
@@ -257,6 +275,50 @@ def _handle_harvest(args: argparse.Namespace) -> int:
     return 1 if summary.get("exit_status") == "failure" else 0
 
 
+def _handle_label_generate_synthetic(args: argparse.Namespace) -> int:
+    """Generate deterministic synthetic calibration rows."""
+    root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
+    count = _namespace_int(args, "count")
+    seed = _namespace_int(args, "seed")
+    try:
+        result = generate_synthetic_rows(root=root, count=count, seed=seed)
+    except LabelGenerationError as error:
+        _write_error(str(error))
+        return 1
+    except ValidationError as error:
+        _write_error("Schema validation failed while generating synthetic rows:")
+        for message in format_validation_errors(error):
+            _write_error(f"- {message}")
+        return 1
+
+    _write_json(label_generation_summary(result))
+    return 0
+
+
+def _handle_label_generate_mutations(args: argparse.Namespace) -> int:
+    """Generate deterministic mutated derivatives for one parent row."""
+    root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
+    source = _namespace_path(args, "source")
+    count = _namespace_int(args, "count")
+    seed = _namespace_int(args, "seed")
+    if source is None:
+        _write_error("generate-mutations requires --source")
+        return 2
+    try:
+        result = generate_mutation_rows(root=root, source=source, count=count, seed=seed)
+    except (LabelGenerationError, RowLoadError) as error:
+        _write_error(str(error))
+        return 1
+    except ValidationError as error:
+        _write_error("Schema validation failed while generating mutated rows:")
+        for message in format_validation_errors(error):
+            _write_error(f"- {message}")
+        return 1
+
+    _write_json(label_generation_summary(result))
+    return 0
+
+
 def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:
     """Return a handler for commands reserved by later mission milestones."""
 
@@ -307,8 +369,31 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate synthetic labels, mutations, or review routing metadata.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    label.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
-    label.set_defaults(handler=_deferred_handler("label", "labeling-review"))
+    label_subparsers = label.add_subparsers(
+        dest="label_command",
+        metavar="LABEL_COMMAND",
+        required=True,
+    )
+    generate_synthetic = label_subparsers.add_parser(
+        "generate-synthetic",
+        help="Seed deterministic synthetic calibration rows.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    generate_synthetic.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
+    generate_synthetic.add_argument("--count", type=_positive_int, required=True)
+    generate_synthetic.add_argument("--seed", type=int, default=DEFAULT_LABEL_SEED)
+    generate_synthetic.set_defaults(handler=_handle_label_generate_synthetic)
+
+    generate_mutations = label_subparsers.add_parser(
+        "generate-mutations",
+        help="Create mutated derivatives for a local parent row.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    generate_mutations.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
+    generate_mutations.add_argument("--source", type=Path, required=True)
+    generate_mutations.add_argument("--count", type=_positive_int, required=True)
+    generate_mutations.add_argument("--seed", type=int, default=DEFAULT_LABEL_SEED)
+    generate_mutations.set_defaults(handler=_handle_label_generate_mutations)
 
     freeze = subparsers.add_parser(
         "freeze",
