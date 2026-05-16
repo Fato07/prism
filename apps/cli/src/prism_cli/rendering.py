@@ -10,6 +10,8 @@ from rich.table import Table
 
 from prism_cli.models import (
     InspectResult,
+    MarketListResponse,
+    MarketResolveResponse,
     PublicHistoryResponse,
     PublicStatsResponse,
     PublicTraceReport,
@@ -94,6 +96,43 @@ def print_history(response: PublicHistoryResponse) -> None:
             entry.created_at,
         )
     console.print(table)
+
+
+def print_markets(response: MarketListResponse) -> None:
+    """Render recommended markets."""
+    console.print("[bold]Recommended Polymarket markets[/bold]")
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Score", justify="right")
+    table.add_column("Question")
+    table.add_column("Yes token")
+    table.add_column("End date")
+    for market in response.markets:
+        token = market.yes_token_id or "—"
+        table.add_row(
+            str(market.surface_score),
+            market.question,
+            token[:18] + "…" if len(token) > 20 else token,
+            market.end_date or "—",
+        )
+    console.print(table)
+
+
+def print_market_resolution(response: MarketResolveResponse) -> None:
+    """Render market token resolution."""
+    resolution = response.resolution
+    console.print("[bold]Market token resolution[/bold]")
+    console.print(f"Query:      {response.query}")
+    console.print(f"Status:     {resolution.status}")
+    console.print(f"Source:     {resolution.source}")
+    console.print(f"Confidence: {resolution.confidence}")
+    if resolution.token_id:
+        console.print(f"Token ID:   {resolution.token_id}")
+    if resolution.condition_id:
+        console.print(f"Condition:  {resolution.condition_id}")
+    if resolution.matched_question:
+        console.print(f"Matched:    {resolution.matched_question}")
+    if resolution.reason:
+        console.print(f"Reason:     {resolution.reason}")
 
 
 def print_report(report: PublicTraceReport) -> None:

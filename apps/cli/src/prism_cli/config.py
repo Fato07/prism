@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 DEFAULT_DASHBOARD_URL = "https://prism-dashboard-production-e6e3.up.railway.app"
 DEFAULT_SENTINEL_MCP_URL = "https://prism-sentinel-production.up.railway.app/mcp/"
+DEFAULT_POLYMARKET_GATEWAY_URL = "https://prism-polymarket-gateway-production.up.railway.app"
 DEFAULT_IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs"
 BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 BASE_SEPOLIA_EXPLORER = "https://sepolia.basescan.org"
@@ -18,6 +19,7 @@ class CliConfig(BaseModel):
     dashboard_url: str = Field(default=DEFAULT_DASHBOARD_URL)
     sentinel_url: str = Field(default=DEFAULT_SENTINEL_MCP_URL)
     ipfs_gateway: str = Field(default=DEFAULT_IPFS_GATEWAY)
+    polymarket_gateway_url: str = Field(default=DEFAULT_POLYMARKET_GATEWAY_URL)
     timeout_seconds: float = Field(default=30.0, gt=0)
 
     def normalized_dashboard_url(self) -> str:
@@ -27,3 +29,7 @@ class CliConfig(BaseModel):
     def normalized_ipfs_gateway(self) -> str:
         """Return the IPFS gateway URL without a trailing slash."""
         return self.ipfs_gateway.rstrip("/")
+
+    def normalized_polymarket_gateway_url(self) -> str:
+        """Return the Polymarket gateway URL without a trailing slash."""
+        return self.polymarket_gateway_url.rstrip("/")

@@ -24,6 +24,8 @@ Read public activity from the dashboard API:
 uv run prism stats
 uv run prism history --limit 5 --json
 uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
+uv run prism markets --limit 5
+uv run prism market resolve "<question from prism markets>" --json
 ```
 
 Wallet helpers are read-only:
@@ -36,4 +38,7 @@ uv run prism wallet status --address 0x...
 ## Scope
 
 Current v0 commands are read-only. They do not custody keys and do not sign x402 payments.
+
+Market commands read Prism's Polymarket gateway, which filters stale markets and returns explicit token-resolution metadata. Live trade execution still requires the caller to pass an explicit token ID.
+
 Paid validation (`prism validate`) will reuse the proven `scripts/call_prism_sentinel.py` flow in a later slice.

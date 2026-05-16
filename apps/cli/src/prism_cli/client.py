@@ -6,13 +6,15 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 import httpx
 from pydantic import ValidationError
 
 from prism_cli.config import CliConfig
 from prism_cli.models import (
+    MarketListResponse,
+    MarketResolveResponse,
     PublicHistoryResponse,
     PublicStatsResponse,
     PublicTraceReport,
@@ -111,6 +113,30 @@ async def fetch_public_report(config: CliConfig, trace_source: str) -> PublicTra
     if response.status_code != 200:
         raise PrismCliError(f"Report API returned {response.status_code}: {response.text[:160]}")
     return PublicTraceReport.model_validate(response.json())
+
+
+async def fetch_markets(config: CliConfig, limit: int) -> MarketListResponse:
+    """Fetch recommended Polymarket markets from Prism's gateway."""
+    safe_limit = max(1, min(100, limit))
+    url = f"{config.normalized_polymarket_gateway_url()}/markets/recommended?limit={safe_limit}"
+    async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
+        response = await client.get(url)
+    if response.status_code != 200:
+        raise PrismCliError(f"Markets API returned {response.status_code}: {response.text[:160]}")
+    return MarketListResponse.model_validate(response.json())
+
+
+async def resolve_market(config: CliConfig, query: str) -> MarketResolveResponse:
+    """Resolve a market query to an explicit Polymarket token ID."""
+    params = urlencode({"query": query})
+    url = f"{config.normalized_polymarket_gateway_url()}/markets/resolve?{params}"
+    async with httpx.AsyncClient(timeout=config.timeout_seconds) as client:
+        response = await client.get(url)
+    if response.status_code != 200:
+        raise PrismCliError(
+            f"Market resolve API returned {response.status_code}: {response.text[:160]}"
+        )
+    return MarketResolveResponse.model_validate(response.json())
 
 
 def dashboard_from_trace_url(value: str) -> str | None:

@@ -9,7 +9,7 @@ import pino from "pino";
 import { persistTrade } from "./db.js";
 import { getEnv } from "./env.js";
 import { checkGeofence } from "./geofence.js";
-import { fetchMarkets, resolveTokenId } from "./markets.js";
+import { fetchMarkets, fetchRecommendedMarkets, resolveMarketToken } from "./markets.js";
 import { placePrismOrder } from "./trade.js";
 import type { TradeSide } from "./trade.js";
 
@@ -30,11 +30,44 @@ export function createApp(): Hono {
 
   app.get("/markets", async (c) => {
     try {
-      const markets = await fetchMarkets();
-      return c.json({ markets, count: markets.length });
+      const limit = parseLimit(c.req.query("limit"));
+      const markets = await fetchMarkets({
+        limit,
+        fresh: parseBooleanQuery(c.req.query("fresh"), true),
+        binary: parseBooleanQuery(c.req.query("binary"), true),
+        resolved: parseBooleanQuery(c.req.query("resolved"), true),
+      });
+      return c.json({ markets, count: markets.length, filters: { limit } });
     } catch (err) {
       logger.error({ err }, "Failed to fetch markets");
       return c.json({ error: "Failed to fetch market data" }, 500);
+    }
+  });
+
+  app.get("/markets/recommended", async (c) => {
+    try {
+      const limit = parseLimit(c.req.query("limit"));
+      const markets = await fetchRecommendedMarkets(limit);
+      return c.json({ markets, count: markets.length, filters: { limit } });
+    } catch (err) {
+      logger.error({ err }, "Failed to fetch recommended markets");
+      return c.json({ error: "Failed to fetch recommended market data" }, 500);
+    }
+  });
+
+  app.get("/markets/resolve", async (c) => {
+    const query = c.req.query("query") ?? c.req.query("q") ?? "";
+    const marketQuestion = c.req.query("marketQuestion") ?? c.req.query("question");
+    if (!query.trim()) {
+      return c.json({ error: "Missing required query parameter: query" }, 422);
+    }
+
+    try {
+      const resolution = await resolveMarketToken(query, marketQuestion);
+      return c.json({ query, marketQuestion: marketQuestion ?? null, resolution });
+    } catch (err) {
+      logger.error({ err, query }, "Failed to resolve market token");
+      return c.json({ error: "Failed to resolve market token" }, 500);
     }
   });
 
@@ -86,33 +119,19 @@ export function createApp(): Hono {
     }
 
     try {
-      // In live mode, resolve the real Polymarket token ID if not provided.
-      // Internal IDs like "0xbtc_150k_2026" are not valid ERC-1155 token IDs
-      // and will cause the SDK to crash with "Cannot read properties of
-      // undefined (reading 'toString')". We resolve via market data lookup.
-      let resolvedTokenId: string | undefined = tokenId;
       if (env.PRISM_TRADE_MODE === "live" && !tokenId) {
-        resolvedTokenId = (await resolveTokenId(
+        const resolution = await resolveMarketToken(
           String(marketId),
           marketQuestion ? String(marketQuestion) : undefined,
-        )) ?? undefined;
-        if (!resolvedTokenId) {
-          logger.error(
-            { marketId, marketQuestion },
-            "Could not resolve Polymarket token ID for live order",
-          );
-          return c.json(
-            {
-              error:
-                `Cannot resolve Polymarket token ID for marketId '${String(marketId)}'. ` +
-                "Provide a valid tokenId or marketQuestion in the request body.",
-            },
-            422,
-          );
-        }
-        logger.info(
-          { marketId, resolvedTokenId, marketQuestion },
-          "Resolved tokenId for live trade",
+        );
+        return c.json(
+          {
+            error:
+              "tokenId is required for live trades. Call GET /markets/resolve first, " +
+              "then resubmit with the explicit tokenId.",
+            resolution,
+          },
+          422,
         );
       }
 
@@ -122,7 +141,7 @@ export function createApp(): Hono {
         marketId: String(marketId),
         side: side as TradeSide,
         sizeUsdc,
-        tokenId: resolvedTokenId ?? undefined,
+        tokenId: tokenId ?? undefined,
         priceLimit,
       });
 
@@ -146,4 +165,18 @@ export function createApp(): Hono {
   });
 
   return app;
+}
+
+function parseLimit(raw: string | undefined): number {
+  const parsed = Number(raw ?? 20);
+  if (!Number.isFinite(parsed)) return 20;
+  return Math.max(1, Math.min(Math.floor(parsed), 100));
+}
+
+function parseBooleanQuery(raw: string | undefined, defaultValue: boolean): boolean {
+  if (raw === undefined) return defaultValue;
+  const normalised = raw.trim().toLowerCase();
+  if (["1", "true", "yes"].includes(normalised)) return true;
+  if (["0", "false", "no"].includes(normalised)) return false;
+  return defaultValue;
 }

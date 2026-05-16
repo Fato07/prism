@@ -13,27 +13,52 @@ import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import {
   fetchMarkets,
   invalidateMarketCache,
+  fetchRecommendedMarkets,
+  resolveMarketToken,
   resolveTokenId,
   isConditionId,
+  isTokenId,
 } from "../src/markets.js";
 
 const sampleMarkets = [
   {
-    condition_id: "0x1234567890abcdef",
+    condition_id: "0x1111111111111111111111111111111111111111111111111111111111111111",
     question: "Will Prism pass scrutiny validation?",
     active: true,
+    end_date_iso: "2099-12-31T00:00:00Z",
     tokens: [
       { outcome: "Yes", price: 0.62, token_id: "21724971184084130220463928751225911389088428869686229328700041198682962586890" },
       { outcome: "No", price: 0.38, token_id: "48331043329952076881274542254071239369484953430501484932375043687602679054079" },
     ],
   },
   {
-    condition_id: "0xabcdef1234567890",
+    condition_id: "0x2222222222222222222222222222222222222222222222222222222222222222",
     question: "Will Bitcoin exceed $150,000 before the end of 2026?",
     active: true,
+    end_date_iso: "2099-12-31T00:00:00Z",
     tokens: [
       { outcome: "Yes", price: 0.45, token_id: "71321045978252263464351242973717930750633671251979332203087170846869688064221" },
       { outcome: "No", price: 0.55, token_id: "29132820984415231366458791876233988279296549034696091698989893586871598072999" },
+    ],
+  },
+  {
+    condition_id: "0x3333333333333333333333333333333333333333333333333333333333333333",
+    question: "Will a stale 2023 market be filtered out?",
+    active: true,
+    end_date_iso: "2023-03-15T00:00:00Z",
+    tokens: [
+      { outcome: "Yes", price: 1, token_id: "11111111111111111111111111111111111111111111111111111111111111111111" },
+      { outcome: "No", price: 0, token_id: "22222222222222222222222222222222222222222222222222222222222222222222" },
+    ],
+  },
+  {
+    condition_id: "0x4444444444444444444444444444444444444444444444444444444444444444",
+    question: "NCAAB: Team A vs Team B 2026-03-15",
+    active: true,
+    end_date_iso: "2099-12-31T00:00:00Z",
+    tokens: [
+      { outcome: "Team A", price: 0.5, token_id: "33333333333333333333333333333333333333333333333333333333333333333333" },
+      { outcome: "Team B", price: 0.5, token_id: "44444444444444444444444444444444444444444444444444444444444444444444" },
     ],
   },
 ];
@@ -110,34 +135,56 @@ describe("Market token ID extraction", () => {
       "71321045978252263464351242973717930750633671251979332203087170846869688064221",
     );
   });
+
+  it("recommended markets exclude stale and non-Yes/No markets", async () => {
+    const markets = await fetchRecommendedMarkets(20);
+    expect(markets.map((m) => m.question)).not.toContain(
+      "Will a stale 2023 market be filtered out?",
+    );
+    expect(markets.map((m) => m.question)).not.toContain("NCAAB: Team A vs Team B 2026-03-15");
+    expect(markets).toHaveLength(2);
+    for (const market of markets) {
+      expect(market.tokenResolution.status).toBe("resolved");
+      expect(market.surfaceReason).toContain("binary Yes/No");
+    }
+  });
 });
 
-describe("isConditionId", () => {
-  it("returns true for 66-char hex strings", () => {
+describe("ID classifiers", () => {
+  it("isConditionId returns true for 66-char hex strings", () => {
     expect(
       isConditionId("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
     ).toBe(true);
   });
 
-  it("returns false for internal IDs", () => {
+  it("isConditionId returns false for internal IDs", () => {
     expect(isConditionId("0xbtc_150k_2026")).toBe(false);
   });
 
-  it("returns false for short hex strings", () => {
+  it("isConditionId returns false for short hex strings", () => {
     expect(isConditionId("0x1234")).toBe(false);
   });
 
-  it("returns false for non-hex strings", () => {
+  it("isConditionId returns false for non-hex strings", () => {
     expect(isConditionId("not-a-hex-id")).toBe(false);
+  });
+
+  it("isTokenId returns true for decimal ERC-1155 token IDs", () => {
+    expect(
+      isTokenId("71321045978252263464351242973717930750633671251979332203087170846869688064221"),
+    ).toBe(true);
   });
 });
 
 describe("resolveTokenId", () => {
-  it("returns marketId as-is when it is a real condition ID", async () => {
+  it("resolves a condition ID to the market's Yes token ID, not the condition ID", async () => {
     const conditionId =
-      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+      "0x2222222222222222222222222222222222222222222222222222222222222222";
     const result = await resolveTokenId(conditionId);
-    expect(result).toBe(conditionId);
+    expect(result).toBe(
+      "71321045978252263464351242973717930750633671251979332203087170846869688064221",
+    );
+    expect(result).not.toBe(conditionId);
   });
 
   it("resolves via fuzzy question match when marketQuestion is provided", async () => {
@@ -163,5 +210,16 @@ describe("resolveTokenId", () => {
       "Will something that does not exist happen?",
     );
     expect(result).toBeNull();
+  });
+
+  it("resolveMarketToken exposes confidence and source", async () => {
+    const resolution = await resolveMarketToken(
+      "0xbtc_150k_2026",
+      "Will Bitcoin exceed $150,000 before the end of 2026?",
+    );
+    expect(resolution.status).toBe("resolved");
+    expect(resolution.source).toBe("question_fuzzy");
+    expect(resolution.confidence).toBeGreaterThan(0);
+    expect(resolution.matchedQuestion).toContain("Bitcoin");
   });
 });

@@ -26,6 +26,7 @@ beforeAll(() => {
             condition_id: "0x1234567890abcdef",
             question: "Will Prism pass scrutiny validation?",
             active: true,
+            end_date_iso: "2099-12-31T00:00:00Z",
             tokens: [
               { outcome: "Yes", price: 0.62, token_id: "1112223334445556667778889990001112223334445556667778889990001111" },
               { outcome: "No", price: 0.38, token_id: "9998887776665554443332221110009998887776665554443332221110009999" },
@@ -70,6 +71,25 @@ describe("API Routes", () => {
       expect(body).toHaveProperty("markets");
       expect(body).toHaveProperty("count");
       expect(Array.isArray(body.markets)).toBe(true);
+      expect(body.markets[0].tokenResolution.status).toBe("resolved");
+    });
+
+    it("GET /markets/recommended returns surfaced markets", async () => {
+      const res = await app.request("/markets/recommended?limit=1");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.count).toBe(1);
+      expect(body.markets[0].surfaceReason).toContain("binary Yes/No");
+    });
+
+    it("GET /markets/resolve resolves a query without placing a trade", async () => {
+      const res = await app.request(
+        "/markets/resolve?query=Will%20Prism%20pass%20scrutiny%20validation%3F",
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.resolution.status).toBe("resolved");
+      expect(body.resolution.source).toBe("question_fuzzy");
     });
   });
 

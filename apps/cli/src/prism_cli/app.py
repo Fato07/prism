@@ -10,10 +10,12 @@ import typer
 from prism_cli.client import (
     PrismCliError,
     dashboard_from_trace_url,
+    fetch_markets,
     fetch_public_history,
     fetch_public_report,
     fetch_public_stats,
     load_trace,
+    resolve_market,
 )
 from prism_cli.config import (
     BASE_SEPOLIA_EXPLORER,
@@ -21,6 +23,7 @@ from prism_cli.config import (
     CIRCLE_FAUCET_URL,
     DEFAULT_DASHBOARD_URL,
     DEFAULT_IPFS_GATEWAY,
+    DEFAULT_POLYMARKET_GATEWAY_URL,
     DEFAULT_SENTINEL_MCP_URL,
     CliConfig,
 )
@@ -30,6 +33,8 @@ from prism_cli.rendering import (
     print_history,
     print_inspect,
     print_json_model,
+    print_market_resolution,
+    print_markets,
     print_report,
     print_stats,
 )
@@ -40,7 +45,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 wallet_app = typer.Typer(help="Read-only wallet setup helpers.", no_args_is_help=True)
+market_app = typer.Typer(help="Polymarket market resolution helpers.", no_args_is_help=True)
 app.add_typer(wallet_app, name="wallet")
+app.add_typer(market_app, name="market")
 
 DashboardOpt = Annotated[
     str,
@@ -50,6 +57,10 @@ IpfsGatewayOpt = Annotated[
     str,
     typer.Option("--ipfs-gateway", help="IPFS gateway base URL."),
 ]
+PolymarketGatewayOpt = Annotated[
+    str,
+    typer.Option("--polymarket-gateway-url", help="Prism Polymarket gateway base URL."),
+]
 TimeoutOpt = Annotated[float, typer.Option("--timeout", help="HTTP timeout in seconds.")]
 JsonOpt = Annotated[bool, typer.Option("--json", help="Print machine-readable JSON.")]
 
@@ -58,6 +69,7 @@ def _config(
     *,
     dashboard_url: str = DEFAULT_DASHBOARD_URL,
     ipfs_gateway: str = DEFAULT_IPFS_GATEWAY,
+    polymarket_gateway_url: str = DEFAULT_POLYMARKET_GATEWAY_URL,
     timeout: float = 30.0,
 ) -> CliConfig:
     """Build a CLI config from command options."""
@@ -65,6 +77,7 @@ def _config(
         dashboard_url=dashboard_url,
         sentinel_url=DEFAULT_SENTINEL_MCP_URL,
         ipfs_gateway=ipfs_gateway,
+        polymarket_gateway_url=polymarket_gateway_url,
         timeout_seconds=timeout,
     )
 
@@ -145,6 +158,52 @@ def history_command(
             print_json_model(response)
         else:
             print_history(response)
+
+    _run(_inner())
+
+
+@app.command("markets")
+def markets_command(
+    limit: Annotated[int, typer.Option("--limit", help="Number of recommended markets.")] = 10,
+    polymarket_gateway_url: PolymarketGatewayOpt = DEFAULT_POLYMARKET_GATEWAY_URL,
+    timeout: TimeoutOpt = 30.0,
+    json_output: JsonOpt = False,
+) -> None:
+    """Show fresh binary Polymarket markets with resolved token IDs."""
+
+    async def _inner() -> None:
+        response = await fetch_markets(
+            _config(polymarket_gateway_url=polymarket_gateway_url, timeout=timeout),
+            limit=limit,
+        )
+        if json_output:
+            print_json_model(response)
+        else:
+            print_markets(response)
+
+    _run(_inner())
+
+
+@market_app.command("resolve")
+def market_resolve_command(
+    query: Annotated[
+        str, typer.Argument(help="Market question, alias, condition ID, or token ID.")
+    ],
+    polymarket_gateway_url: PolymarketGatewayOpt = DEFAULT_POLYMARKET_GATEWAY_URL,
+    timeout: TimeoutOpt = 30.0,
+    json_output: JsonOpt = False,
+) -> None:
+    """Resolve a market query to an explicit Polymarket token ID."""
+
+    async def _inner() -> None:
+        response = await resolve_market(
+            _config(polymarket_gateway_url=polymarket_gateway_url, timeout=timeout),
+            query=query,
+        )
+        if json_output:
+            print_json_model(response)
+        else:
+            print_market_resolution(response)
 
     _run(_inner())
 

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from prism_cli.client import extract_cid, extract_trace_id, is_ipfs_cid
-from prism_cli.config import DEFAULT_SENTINEL_MCP_URL
+from prism_cli.config import DEFAULT_POLYMARKET_GATEWAY_URL, DEFAULT_SENTINEL_MCP_URL
 
 
 def test_default_sentinel_url_keeps_mcp_trailing_slash() -> None:
     assert DEFAULT_SENTINEL_MCP_URL.endswith("/mcp/")
+
+
+def test_default_polymarket_gateway_url_is_public_railway_service() -> None:
+    assert DEFAULT_POLYMARKET_GATEWAY_URL.startswith("https://")
+    assert "prism-polymarket-gateway" in DEFAULT_POLYMARKET_GATEWAY_URL
 
 
 def test_ipfs_cid_helpers_accept_known_good_cid() -> None:

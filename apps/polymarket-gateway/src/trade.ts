@@ -189,9 +189,9 @@ async function buildLiveReceipt(
     throw new Error(sizeCheck.reason ?? "live size invalid");
   }
 
-  const tokenId = params.tokenId ?? params.marketId;
+  const tokenId = params.tokenId;
   if (!tokenId) {
-    throw new Error("tokenId (or marketId fallback) required for live order");
+    throw new Error("tokenId is required for live orders; resolve it before calling /trade");
   }
 
   let response: LiveOrderResponse;

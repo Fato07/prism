@@ -41,6 +41,19 @@ beforeEach(async () => {
 const { placePrismOrder } = await import("../src/trade.js");
 
 describe("VAL-TRADE-001: Live mode executes real Polymarket CLOB order", () => {
+  it("rejects live orders without an explicit tokenId", async () => {
+    await expect(
+      placePrismOrder({
+        agentId: 1,
+        traceId: "trace-no-token",
+        marketId: "0xmarket1",
+        side: "BUY",
+        sizeUsdc: 7,
+      }),
+    ).rejects.toThrow(/tokenId is required/);
+    expect(submitLiveOrderMock).not.toHaveBeenCalled();
+  });
+
   it("submits an order and returns the real Polymarket orderID", async () => {
     submitLiveOrderMock.mockResolvedValueOnce({
       success: true,

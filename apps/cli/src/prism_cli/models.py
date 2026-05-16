@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 Readiness = Literal["usable", "needs_review", "not_ready"]
 VerdictLabel = Literal["REJECT", "WARN", "PASS", "ENDORSE"]
@@ -117,3 +117,63 @@ class PublicTraceReport(BaseModel):
     readiness: Readiness | None
     warnings: list[str] = Field(default_factory=list)
     receipts: dict[str, Any]
+
+
+class MarketOutcome(BaseModel):
+    """A Polymarket CLOB outcome with token ID."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    outcome: str
+    price: float
+    token_id: str = Field(alias="tokenId")
+
+
+class TokenResolution(BaseModel):
+    """Auditable token resolution returned by Prism's Polymarket gateway."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: Literal["resolved", "unresolved"]
+    token_id: str | None = Field(alias="tokenId")
+    condition_id: str | None = Field(alias="conditionId")
+    confidence: float
+    source: str
+    matched_question: str | None = Field(default=None, alias="matchedQuestion")
+    reason: str | None = None
+
+
+class MarketData(BaseModel):
+    """A surfaced Polymarket market."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    condition_id: str = Field(alias="conditionId")
+    question: str
+    outcomes: list[MarketOutcome]
+    yes_token_id: str | None = Field(alias="yesTokenId")
+    no_token_id: str | None = Field(default=None, alias="noTokenId")
+    end_date: str | None = Field(alias="endDate")
+    active: bool
+    accepting_orders: bool = Field(default=True, alias="acceptingOrders")
+    token_resolution: TokenResolution = Field(alias="tokenResolution")
+    surface_reason: str = Field(alias="surfaceReason")
+    surface_score: int | float = Field(alias="surfaceScore")
+
+
+class MarketListResponse(BaseModel):
+    """Gateway market list response."""
+
+    markets: list[MarketData]
+    count: int
+    filters: dict[str, Any] | None = None
+
+
+class MarketResolveResponse(BaseModel):
+    """Gateway market resolution response."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    query: str
+    market_question: str | None = Field(default=None, alias="marketQuestion")
+    resolution: TokenResolution

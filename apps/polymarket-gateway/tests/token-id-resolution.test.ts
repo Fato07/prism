@@ -1,10 +1,10 @@
-/** Tests for live trade token ID resolution via the /trade route.
+/** Tests for live trade token ID policy via the /trade route.
 
-When PRISM_TRADE_MODE=live and tokenId is not provided in the request:
-- If marketId is a 66-char hex condition ID, it's used as-is
-- If marketQuestion is provided, fuzzy-matched against cached market data
-- If no match, returns 422 with an explanatory error
-- Paper mode is unaffected (no resolution needed)
+Product-standard behavior:
+- Live /trade requires an explicit tokenId.
+- Missing tokenId returns 422 plus an auditable suggested resolution.
+- /markets/resolve performs fuzzy/condition resolution without placing a trade.
+- Paper mode is unaffected.
 */
 
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -85,14 +85,8 @@ describe("Live trade token ID resolution via /trade", () => {
     return createApp();
   }
 
-  it("resolves tokenId via fuzzy match when marketQuestion is provided", async () => {
+  it("requires explicit tokenId in live mode and returns suggested resolution", async () => {
     const app = await setupLiveApp();
-
-    submitLiveOrderMock.mockResolvedValueOnce({
-      success: true,
-      orderID: "ord-resolved-token",
-      status: "live",
-    });
 
     const res = await app.request("/trade", {
       method: "POST",
@@ -107,17 +101,14 @@ describe("Live trade token ID resolution via /trade", () => {
       }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(422);
     const body = await res.json();
-    expect(body.receipt.status).not.toBe("failed");
-
-    // Verify the SDK was called with the resolved token ID (not the internal ID)
-    expect(submitLiveOrderMock).toHaveBeenCalledOnce();
-    const callArgs = submitLiveOrderMock.mock.calls[0][0];
-    expect(callArgs.tokenId).toBe(
+    expect(body.error).toContain("tokenId is required for live trades");
+    expect(body.resolution.status).toBe("resolved");
+    expect(body.resolution.tokenId).toBe(
       "71321045978252263464351242973717930750633671251979332203087170846869688064221",
     );
-    expect(callArgs.tokenId).not.toBe("0xbtc_150k_2026");
+    expect(submitLiveOrderMock).not.toHaveBeenCalled();
   });
 
   it("uses provided tokenId as-is when explicitly given", async () => {
@@ -150,25 +141,20 @@ describe("Live trade token ID resolution via /trade", () => {
     expect(callArgs.tokenId).toBe(explicitTokenId);
   });
 
-  it("returns 422 when tokenId cannot be resolved and none is provided", async () => {
+  it("/markets/resolve returns an auditable token resolution", async () => {
     const app = await setupLiveApp();
 
-    const res = await app.request("/trade", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId: 1,
-        traceId: "trace-no-resolve",
-        marketId: "0xcompletely_unknown_market",
-        marketQuestion: "Will something totally unrelated happen?",
-        side: "BUY",
-        sizeUsdc: 7,
-      }),
-    });
+    const res = await app.request(
+      "/markets/resolve?query=0xbtc_150k_2026&marketQuestion=Will%20Bitcoin%20exceed%20%24150%2C000%20before%20the%20end%20of%202026%3F",
+    );
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.error).toContain("Cannot resolve Polymarket token ID");
+    expect(body.resolution.status).toBe("resolved");
+    expect(body.resolution.source).toBe("question_fuzzy");
+    expect(body.resolution.tokenId).toBe(
+      "71321045978252263464351242973717930750633671251979332203087170846869688064221",
+    );
   });
 
   it("paper mode does not require tokenId resolution", async () => {

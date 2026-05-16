@@ -101,7 +101,7 @@ The sentinel is a paid public service: any external agent can pay $0.01 USDC and
 
 ### CLI (local preview)
 
-The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. The current local preview is read-only: trace inspection, public stats/history, trace reports, and wallet funding guidance. Paid x402 validation will be added after the reporting contract is stable.
+The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. The current local preview is read-only: trace inspection, public stats/history, trace reports, market surfacing, token resolution, and wallet funding guidance. Paid x402 validation will be added after the reporting contract is stable.
 
 ```bash
 cd apps/cli
@@ -109,6 +109,8 @@ uv run prism inspect ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 --jso
 uv run prism stats
 uv run prism history --limit 5
 uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
+uv run prism markets --limit 5
+uv run prism market resolve "<question from prism markets>" --json
 ```
 
 ---
@@ -322,10 +324,10 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 |---------|-------|---------------|
 | **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health`, `POST /treasury/park`, `POST /treasury/unpark` |
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
-| **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `POST /trade`, `GET /health` |
+| **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `GET /markets/recommended`, `GET /markets/resolve`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
 | **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report` |
-| **CLI** | Python, Typer | `prism inspect`, `prism stats`, `prism history`, `prism report` local preview |
+| **CLI** | Python, Typer | `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve` local preview |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
 ---
@@ -413,11 +415,12 @@ cd apps/dashboard && pnpm test
 | Suite | Tests |
 |-------|-------|
 | Dashboard | 475 |
-| CLI | 7 |
+| CLI | 10 |
+| Polymarket Gateway | 93 |
 | Sentinel | 118 |
 | Trader | 156 |
 | Calibration | 149 |
-| **Total** | **905** |
+| **Total** | **1,001** |
 
 ---
 
