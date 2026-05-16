@@ -497,6 +497,85 @@ Testnet. See `apps/trader/src/trader/treasury.py`.
 
 ---
 
+## Calibration corpus pipeline
+
+The calibration corpus is the sentinel's evaluation ground truth — a
+local-first, deterministically split, immutably sealed dataset of labeled
+reasoning traces. It ships as `packages/calibration-python/` with a CLI
+front door.
+
+**CLI-first, local-first architecture:** frozen exports on disk are
+authoritative. Braintrust is a mirror and experiment surface. Every
+command is idempotent and can be re-run without side effects.
+
+```bash
+uv run python -m prism_calibration.cli --help   # 8 commands: build, harvest, label, freeze, sync, eval, inspect, validate
+```
+
+### Data flow
+
+```
+Neon (traces table)
+  → harvest (select rows, fetch from IPFS, normalize, hash-verify)
+  → write local .calibration/corpus/<name>/rows/
+  → label (AI prelabel or synthetic generation)
+  → freeze (manifest.json + rows/ + .sealed marker)
+  → sync (mirror to Braintrust: dataset + review queue)
+  → eval (run sentinel against held-out rows, score discrimination)
+  → validate (regression assertions on sealed milestones)
+```
+
+### Frozen export format
+
+A frozen export is an immutable directory:
+
+```
+.calibration/corpus/<name>/frozen/<milestone>/
+  manifest.json       # row hashes, split counts, lineage, created_at
+  rows/               # one JSON file per row
+  .sealed             # empty marker — presence prevents mutation
+```
+
+Once `.sealed` exists, no row can be added, removed, or modified.
+Regression validation re-reads the manifest, verifies row hashes, and
+confirms the sentinel's discrimination scores match the original run.
+
+### Braintrust integration
+
+Braintrust receives a **mirror** of each frozen export:
+
+- **Datasets** — one per corpus, populated on `sync`
+- **Experiments** — created by `eval`, log per-row scores and latency
+- **Review queue** — rows awaiting human judgment are pushed on `sync`
+- **Runtime logs** — eval runs stream structured logs to Braintrust for observability
+
+Braintrust never writes back to the local corpus. It is a read-only
+experiment surface for prompt tuning and comparison.
+
+### Deterministic splits
+
+Rows are assigned to `train` / `val` / `holdout` via **lineage-hash-v1**:
+a deterministic hash of the row's content hash and the corpus name. No
+random seed, no shuffling — the same corpus always produces the same
+splits, regardless of machine or time.
+
+### Holdout isolation and lockout
+
+- Holdout rows are **never exposed** to the labeling or prelabel pipeline
+- After a milestone is frozen, holdout rows are **locked**: no score
+  leakage, no re-labeling, no inspection beyond metadata
+- `eval` runs the sentinel only on holdout rows, ensuring an unbiased
+  discrimination score
+
+### Regression / clean replay
+
+`validate` re-runs the sentinel on any sealed milestone and
+bit-compares the resulting scores to the original. If a prompt change
+degrades discrimination, the regression fails. 43/43 contract assertions
+passed across 5 sealed milestones at implementation time.
+
+---
+
 ## Dashboard wallet connection (Reown AppKit)
 
 **Stack:** Reown AppKit + wagmi + ArcChainGuard component
