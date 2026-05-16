@@ -14,6 +14,7 @@ from sentinel.evidence_tools import (
     EvidenceSearchRequest,
     NoopEvidenceProvider,
     ParallelSearchEvidenceProvider,
+    TavilySearchEvidenceProvider,
     evidence_provider_from_env,
     query_for_challenge,
 )
@@ -109,6 +110,119 @@ async def test_parallel_search_provider_returns_empty_on_http_failure() -> None:
 
     provider = ParallelSearchEvidenceProvider(
         api_key="parallel-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_tavily_search_provider_posts_query_and_parses_results() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["authorization"] = request.headers.get("authorization")
+        body = request.read().decode()
+        captured["body"] = body
+        return httpx.Response(
+            200,
+            json={
+                "query": "LeBron current status",
+                "results": [
+                    {
+                        "title": "Tavily current evidence",
+                        "url": "https://example.com/tavily-current",
+                        "content": "Current Tavily source excerpt.",
+                        "score": 0.86,
+                    }
+                ],
+                "response_time": 1.2,
+            },
+        )
+
+    provider = TavilySearchEvidenceProvider(
+        api_key="tavily-key",
+        search_depth="advanced",
+        topic="news",
+        time_range="week",
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert captured["authorization"] == "Bearer tavily-key"
+    request_body = json.loads(str(captured["body"]))
+    assert request_body["query"] == _request().query
+    assert request_body["search_depth"] == "advanced"
+    assert request_body["topic"] == "news"
+    assert request_body["time_range"] == "week"
+    assert request_body["max_results"] == 5
+    assert request_body["include_raw_content"] is False
+    assert len(results) == 1
+    assert results[0].provider == "tavily_search"
+    assert results[0].snippet == "Current Tavily source excerpt."
+    assert results[0].confidence == 0.86
+
+
+@pytest.mark.asyncio
+async def test_tavily_search_provider_falls_back_for_missing_title_and_score() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "url": "https://example.com/no-title",
+                        "content": "Untitled result is still useful evidence.",
+                        "score": 1.7,
+                    },
+                    {
+                        "title": "No score result",
+                        "url": "https://example.com/no-score",
+                        "content": "Missing score should use fallback confidence.",
+                    },
+                ]
+            },
+        )
+
+    provider = TavilySearchEvidenceProvider(
+        api_key="tavily-key",
+        search_depth="invalid",
+        topic="sports",
+        time_range="forever",
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert provider.search_depth == "basic"
+    assert provider.topic == "general"
+    assert provider.time_range is None
+    assert results[0].title == "https://example.com/no-title"
+    assert results[0].confidence == 1.0
+    assert results[1].confidence == 0.72
+
+
+@pytest.mark.asyncio
+async def test_tavily_search_provider_returns_empty_on_invalid_json() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    provider = TavilySearchEvidenceProvider(
+        api_key="tavily-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_tavily_search_provider_returns_empty_on_http_failure() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"detail": {"error": "unauthorized"}})
+
+    provider = TavilySearchEvidenceProvider(
+        api_key="tavily-key",
         transport=httpx.MockTransport(handler),
     )
 
@@ -276,6 +390,52 @@ def test_evidence_provider_from_env_falls_back_to_noop_without_parallel_key(
 ) -> None:
     monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "parallel_search")
     monkeypatch.delenv("PARALLEL_API_KEY", raising=False)
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
+
+
+def test_evidence_provider_from_env_uses_tavily_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "tavily_search")
+    monkeypatch.setenv("TAVILY_API_KEY", "tavily-key")
+    monkeypatch.setenv("TAVILY_SEARCH_DEPTH", "fast")
+    monkeypatch.setenv("TAVILY_SEARCH_TOPIC", "news")
+    monkeypatch.setenv("TAVILY_SEARCH_TIME_RANGE", "week")
+    monkeypatch.setenv("TAVILY_SEARCH_TIMEOUT_SECONDS", "bad-value")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, TavilySearchEvidenceProvider)
+    assert provider.api_key == "tavily-key"
+    assert provider.search_depth == "fast"
+    assert provider.topic == "news"
+    assert provider.time_range == "week"
+    assert provider.timeout_seconds == 20.0
+
+
+def test_evidence_provider_from_env_falls_back_to_tavily_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "tavily_search")
+    monkeypatch.setenv("TAVILY_API_KEY", "tavily-key")
+    monkeypatch.setenv("TAVILY_SEARCH_DEPTH", "invalid")
+    monkeypatch.setenv("TAVILY_SEARCH_TOPIC", "sports")
+    monkeypatch.setenv("TAVILY_SEARCH_TIME_RANGE", "forever")
+    monkeypatch.setenv("TAVILY_SEARCH_TIMEOUT_SECONDS", "0")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, TavilySearchEvidenceProvider)
+    assert provider.search_depth == "basic"
+    assert provider.topic == "general"
+    assert provider.time_range is None
+    assert provider.timeout_seconds == 20.0
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_without_tavily_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "tavily_search")
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
 
     assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
 

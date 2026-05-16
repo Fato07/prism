@@ -36,8 +36,8 @@ resolution loop.
 Examples:
 - `prism.parallel_search` — Parallel Search API with BYO Parallel API key.
 - `prism.parallel_x402` — future x402-paid search/research via Circle-compatible services.
+- `prism.tavily_search` — agent-oriented web retrieval with BYO Tavily API key.
 - `prism.brave_search` — web/news search with BYO Brave API key.
-- `prism.tavily` — agent-oriented web retrieval.
 - `prism.exa` — semantic/neural research search.
 - `prism.firecrawl` — scrape/extract specific pages after search.
 - `prism.polymarket_gamma` — market metadata, tags, end dates, resolution status.
@@ -105,6 +105,8 @@ evidence:
       bearer_token_env: PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN
     - type: parallel_search
       api_key_env: PARALLEL_API_KEY
+    - type: tavily_search
+      api_key_env: TAVILY_API_KEY
     - type: brave_search
       api_key_env: BRAVE_SEARCH_API_KEY
 
@@ -183,6 +185,7 @@ The first plugin seam lives in `apps/sentinel/src/sentinel/evidence_tools.py`:
 - `StaticEvidenceProvider` — deterministic tests.
 - `CustomWebhookEvidenceProvider` — BYO HTTP endpoint.
 - `ParallelSearchEvidenceProvider` — native Parallel Search API adapter.
+- `TavilySearchEvidenceProvider` — native Tavily Search API adapter.
 - `BraveSearchEvidenceProvider` — native Brave Search Web Search API adapter.
 
 Custom webhook environment:
@@ -207,6 +210,18 @@ PARALLEL_SEARCH_TIMEOUT_SECONDS=30        # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
+Tavily Search environment:
+
+```bash
+PRISM_EVIDENCE_PROVIDER=tavily_search
+TAVILY_API_KEY=your-tavily-api-key
+TAVILY_SEARCH_DEPTH=basic             # optional: basic, advanced, fast, ultra-fast
+TAVILY_SEARCH_TOPIC=general           # optional: general, news, finance
+TAVILY_SEARCH_TIME_RANGE=             # optional: day/week/month/year or d/w/m/y
+TAVILY_SEARCH_TIMEOUT_SECONDS=20      # optional
+ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+```
+
 Brave Search environment:
 
 ```bash
@@ -219,5 +234,5 @@ BRAVE_SEARCH_TIMEOUT_SECONDS=20      # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
-This is intentionally small and reversible. Native adapters for Parallel x402, Tavily, Exa,
+This is intentionally small and reversible. Native adapters for Parallel x402, Exa,
 Firecrawl, and domain APIs can be added behind the same contract.

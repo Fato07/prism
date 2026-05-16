@@ -203,6 +203,71 @@ class BraveSearchEvidenceProvider:
         return _parse_brave_results(body)
 
 
+class TavilySearchEvidenceProvider:
+    """Evidence provider backed by Tavily Search."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint: str = "https://api.tavily.com/search",
+        search_depth: str = "basic",
+        topic: str = "general",
+        time_range: str | None = None,
+        timeout_seconds: float = 20.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """Create a Tavily Search provider with a user-supplied API key."""
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.search_depth = _normalize_tavily_search_depth(search_depth)
+        self.topic = _normalize_tavily_topic(topic)
+        self.time_range = _normalize_tavily_time_range(time_range)
+        self.timeout_seconds = timeout_seconds
+        self.transport = transport
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Query Tavily Search and normalize ranked web results."""
+        payload: dict[str, Any] = {
+            "query": request.query,
+            "search_depth": self.search_depth,
+            "max_results": request.max_results,
+            "topic": self.topic,
+            "include_answer": False,
+            "include_raw_content": False,
+        }
+        if self.time_range:
+            payload["time_range"] = self.time_range
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.post(self.endpoint, json=payload, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "tavily_search_failed",
+                challenge_id=request.challenge.id,
+                error=str(exc),
+            )
+            return []
+
+        body = _response_json_or_none(
+            response,
+            provider="tavily_search",
+            challenge_id=request.challenge.id,
+        )
+        if body is None:
+            return []
+        return _parse_tavily_results(body)
+
+
 class CustomWebhookEvidenceProvider:
     """BYO evidence provider backed by a user-controlled HTTP webhook.
 
@@ -267,6 +332,7 @@ def evidence_provider_from_env() -> EvidenceProvider:
     - `custom_webhook`: POST requests to `PRISM_EVIDENCE_WEBHOOK_URL`.
     - `brave_search`: query Brave's Web Search API with `BRAVE_SEARCH_API_KEY`.
     - `parallel_search`: query Parallel's Search API with `PARALLEL_API_KEY`.
+    - `tavily_search`: query Tavily Search with `TAVILY_API_KEY`.
     """
     provider = os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop").strip().lower()
     if provider == "noop":
@@ -285,6 +351,22 @@ def evidence_provider_from_env() -> EvidenceProvider:
             mode=_parallel_mode_from_env(),
             location=os.environ.get("PARALLEL_SEARCH_LOCATION"),
             max_chars_total=_int_env_or_none("PARALLEL_SEARCH_MAX_CHARS_TOTAL"),
+            timeout_seconds=timeout_seconds,
+        )
+    if provider in {"tavily", "tavily_search"}:
+        api_key = os.environ.get("TAVILY_API_KEY", "").strip()
+        if not api_key:
+            logger.warning(
+                "tavily_search_missing_api_key",
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        timeout_seconds = _float_env("TAVILY_SEARCH_TIMEOUT_SECONDS", 20.0)
+        return TavilySearchEvidenceProvider(
+            api_key=api_key,
+            search_depth=_tavily_search_depth_from_env(),
+            topic=_tavily_topic_from_env(),
+            time_range=_tavily_time_range_from_env(),
             timeout_seconds=timeout_seconds,
         )
     if provider in {"brave", "brave_search"}:
@@ -337,6 +419,64 @@ def _parallel_mode_from_env() -> str:
         fallback="advanced",
     )
     return "advanced"
+
+
+def _tavily_search_depth_from_env() -> str:
+    """Return a supported Tavily search depth from environment config."""
+    return _normalize_tavily_search_depth(os.environ.get("TAVILY_SEARCH_DEPTH", "basic"))
+
+
+def _normalize_tavily_search_depth(search_depth: str) -> str:
+    """Return a supported Tavily search depth."""
+    normalized = search_depth.strip().lower()
+    if normalized in {"advanced", "basic", "fast", "ultra-fast"}:
+        return normalized
+    logger.warning(
+        "invalid_tavily_search_depth",
+        search_depth=normalized,
+        fallback="basic",
+    )
+    return "basic"
+
+
+def _tavily_topic_from_env() -> str:
+    """Return a supported Tavily topic from environment config."""
+    return _normalize_tavily_topic(os.environ.get("TAVILY_SEARCH_TOPIC", "general"))
+
+
+def _normalize_tavily_topic(topic: str) -> str:
+    """Return a supported Tavily topic."""
+    normalized = topic.strip().lower()
+    if normalized in {"general", "news", "finance"}:
+        return normalized
+    logger.warning(
+        "invalid_tavily_search_topic",
+        topic=normalized,
+        fallback="general",
+    )
+    return "general"
+
+
+def _tavily_time_range_from_env() -> str | None:
+    """Return a supported Tavily time range from environment config."""
+    return _normalize_tavily_time_range(os.environ.get("TAVILY_SEARCH_TIME_RANGE", ""))
+
+
+def _normalize_tavily_time_range(time_range: str | None) -> str | None:
+    """Return a supported Tavily time range."""
+    if time_range is None:
+        return None
+    normalized = time_range.strip().lower()
+    if normalized == "":
+        return None
+    if normalized in {"day", "week", "month", "year", "d", "w", "m", "y"}:
+        return normalized
+    logger.warning(
+        "invalid_tavily_search_time_range",
+        time_range=normalized,
+        fallback=None,
+    )
+    return None
 
 
 def _int_env_or_none(name: str) -> int | None:
@@ -483,6 +623,45 @@ def _parse_parallel_results(body: Any) -> list[EvidenceSearchResult]:
             )
         )
     return results
+
+
+def _parse_tavily_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Tavily Search results into evidence results."""
+    if not isinstance(body, dict):
+        return []
+    raw_results = body.get("results")
+    if not isinstance(raw_results, list):
+        return []
+
+    results: list[EvidenceSearchResult] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title")
+        url = item.get("url")
+        content = item.get("content") or item.get("raw_content")
+        if not isinstance(url, str) or not isinstance(content, str):
+            continue
+        score = item.get("score")
+        published_date = item.get("published_date") or item.get("publish_date")
+        results.append(
+            EvidenceSearchResult(
+                title=title if isinstance(title, str) and title else url,
+                url=url,
+                snippet=content,
+                provider="tavily_search",
+                published_at=published_date if isinstance(published_date, str) else None,
+                confidence=_confidence_from_score(score, fallback=0.72),
+            )
+        )
+    return results
+
+
+def _confidence_from_score(value: Any, *, fallback: float) -> float:
+    """Clamp provider relevance scores into Prism's confidence range."""
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return max(0.0, min(1.0, float(value)))
+    return fallback
 
 
 def _parse_brave_results(body: Any) -> list[EvidenceSearchResult]:
