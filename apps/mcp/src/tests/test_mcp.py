@@ -1,4 +1,4 @@
-"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-015.
+"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-016.
 
 Covers:
   * VAL-MCP-001 — tools/list returns ``validate`` with the expected schema.
@@ -15,7 +15,8 @@ Covers:
   * VAL-MCP-012 — get_calibration tool returns calibration metrics.
   * VAL-MCP-013 — get_tool_manifest returns redacted connector capabilities.
   * VAL-MCP-014 — get_issue_ledger returns read-only structured issue ledgers.
-  * VAL-MCP-015 — All 6 tools discoverable via tools/list.
+  * VAL-MCP-015 — verify_receipt verifies pinned verdict receipts.
+  * VAL-MCP-016 — All 7 tools discoverable via tools/list.
 """
 
 from __future__ import annotations
@@ -1142,6 +1143,7 @@ class TestGetToolManifestTool:
         data = result.data
         assert data is not None
         assert "get_issue_ledger" in data.prism_mcp_tools
+        assert "verify_receipt" in data.prism_mcp_tools
         connector = data.evidence_connectors[0]
         assert connector.provider == "mcp"
         assert connector.transport == "mcp_http"
@@ -1482,14 +1484,198 @@ class TestGetIssueLedgerTool:
 
 
 # ---------------------------------------------------------------------------
-# VAL-MCP-015: All 6 tools discoverable via tools/list
+# VAL-MCP-015: verify_receipt verifies pinned verdict receipts
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyReceiptTool:
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_verify_receipt(self) -> None:
+        """verify_receipt appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "verify_receipt" in names
+
+    @pytest.mark.asyncio
+    async def test_verify_receipt_by_cid_and_content_hash(self) -> None:
+        """verify_receipt validates a pinned verdict against an expected hash."""
+        from prism_mcp.server import build_mcp_server
+
+        verdict = _make_verdict()
+        expected_hash = verdict.content_hash().hex()
+
+        with patch(
+            "prism_mcp.server._fetch_verdict_json_from_response_uri",
+            new=AsyncMock(return_value=verdict.model_dump(mode="json", exclude_defaults=True)),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "verify_receipt",
+                    {"cid": "QmReceipt", "content_hash_hex": expected_hash},
+                )
+
+        data = result.data
+        assert data is not None
+        assert data.verified is True
+        assert data.response_uri == "ipfs://QmReceipt"
+        assert data.checks.response_uri_resolved is True
+        assert data.checks.schema_valid is True
+        assert data.checks.content_hash_matches is True
+        assert data.verdict_content_hash_hex == expected_hash
+        assert data.validation is None
+
+    @pytest.mark.asyncio
+    async def test_verify_receipt_requires_anchor_for_verified_true(self) -> None:
+        """A schema-valid receipt without DB/hash anchor is not fully verified."""
+        from prism_mcp.server import build_mcp_server
+
+        verdict = _make_verdict()
+
+        with patch(
+            "prism_mcp.server._fetch_verdict_json_from_response_uri",
+            new=AsyncMock(return_value=verdict.model_dump(mode="json", exclude_defaults=True)),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("verify_receipt", {"cid": "QmReceipt"})
+
+        data = result.data
+        assert data is not None
+        assert data.verified is False
+        assert data.checks.schema_valid is True
+        assert data.checks.content_hash_matches is None
+        assert data.validation is None
+        assert "anchor" in " ".join(data.notes).lower()
+
+    @pytest.mark.asyncio
+    async def test_verify_receipt_returns_false_for_wrong_content_hash(self) -> None:
+        """verify_receipt returns verified=false instead of throwing on hash mismatch."""
+        from prism_mcp.server import build_mcp_server
+
+        verdict = _make_verdict()
+        wrong_hash = hashlib.sha256(b"wrong-receipt").hexdigest()
+
+        with patch(
+            "prism_mcp.server._fetch_verdict_json_from_response_uri",
+            new=AsyncMock(return_value=verdict.model_dump(mode="json", exclude_defaults=True)),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "verify_receipt",
+                    {"response_uri": "ipfs://QmReceipt", "content_hash_hex": wrong_hash},
+                )
+
+        data = result.data
+        assert data is not None
+        assert data.verified is False
+        assert data.checks.content_hash_matches is False
+        assert data.verdict_content_hash_hex != wrong_hash
+
+    @pytest.mark.asyncio
+    async def test_verify_receipt_checks_db_receipt_identity(self) -> None:
+        """verify_receipt compares DB receipt identity fields with the pinned verdict."""
+        from prism_mcp.server import build_mcp_server
+
+        request_hash = hashlib.sha256(b"verify-db-row").hexdigest()
+        trace_id = str(uuid.uuid4())
+        verdict = _make_verdict(trace_id=trace_id).model_copy(
+            update={"request_hash": request_hash, "verdict_score": 72}
+        )
+        mock_row = (
+            request_hash,
+            trace_id,
+            2,
+            72,
+            "ipfs://QmVerifyReceipt",
+            "0xarcanchor",
+            datetime.now(UTC),
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = mock_row
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "TEST_DSN_PLACEHOLDER"}, clear=False),
+            patch("psycopg.connect", return_value=mock_conn),
+            patch(
+                "prism_mcp.server._fetch_verdict_json_from_response_uri",
+                new=AsyncMock(return_value=verdict.model_dump(mode="json", exclude_defaults=True)),
+            ),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "verify_receipt",
+                    {
+                        "request_hash": request_hash,
+                        "content_hash_hex": verdict.content_hash().hex(),
+                    },
+                )
+
+        data = result.data
+        assert data is not None
+        assert data.verified is True
+        assert data.validation is not None
+        assert data.validation.request_hash == request_hash
+        assert data.checks.db_receipt_found is True
+        assert data.checks.response_uri_matches_db is True
+        assert data.checks.request_hash_matches is True
+        assert data.checks.trace_id_matches is True
+        assert data.checks.sentinel_agent_id_matches is True
+        assert data.checks.verdict_score_matches is True
+        serialized = json.dumps(result.structured_content)
+        assert "TEST_DSN_PLACEHOLDER" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_verify_receipt_requires_identifier(self) -> None:
+        """verify_receipt rejects calls without receipt or DB identifiers."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("verify_receipt", {}, raise_on_error=False)
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "missing_identifier" in message
+
+    def test_verify_receipt_result_model_validates(self) -> None:
+        """VerifyReceiptResult Pydantic model validates correctly."""
+        from prism_mcp.server import ReceiptVerificationChecks, VerifyReceiptResult
+
+        result = VerifyReceiptResult(
+            verified=True,
+            checks=ReceiptVerificationChecks(
+                response_uri_resolved=True,
+                schema_valid=True,
+                content_hash_matches=True,
+            ),
+            response_uri="ipfs://QmReceipt",
+            verdict_content_hash_hex=hashlib.sha256(b"receipt").hexdigest(),
+        )
+        assert result.verified is True
+        assert result.redacted is True
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-016: All 7 tools discoverable via tools/list
 # ---------------------------------------------------------------------------
 
 
 class TestAllToolsDiscoverable:
     @pytest.mark.asyncio
-    async def test_tools_list_returns_all_six_tools(self) -> None:
-        """tools/list returns validate, price, stats, calibration, manifest, ledger."""
+    async def test_tools_list_returns_all_seven_tools(self) -> None:
+        """tools/list returns validate, price, stats, calibration, manifest, ledger, verify."""
         from prism_mcp.server import build_mcp_server
 
         server = build_mcp_server()
@@ -1502,6 +1688,7 @@ class TestAllToolsDiscoverable:
         assert "get_calibration" in names
         assert "get_tool_manifest" in names
         assert "get_issue_ledger" in names
+        assert "verify_receipt" in names
         expected_tools = {
             "validate",
             "get_price",
@@ -1509,6 +1696,7 @@ class TestAllToolsDiscoverable:
             "get_calibration",
             "get_tool_manifest",
             "get_issue_ledger",
+            "verify_receipt",
         }
         assert expected_tools.issubset(set(names))
-        assert sum(1 for n in names if n in expected_tools) == 6
+        assert sum(1 for n in names if n in expected_tools) == 7

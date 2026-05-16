@@ -13,6 +13,7 @@ Tools exposed:
   ``get_calibration`` — Return the latest sentinel calibration metrics.
   ``get_tool_manifest`` — Return a redacted connector/tool capability manifest.
   ``get_issue_ledger`` — Return a read-only issue ledger for a validation receipt.
+  ``verify_receipt`` — Verify a pinned verdict receipt against DB/hash anchors.
 
 The ``validate`` tool runs the same pipeline as ``POST /validate``:
 
@@ -242,6 +243,37 @@ class GetIssueLedgerResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class ReceiptVerificationChecks(BaseModel):
+    """Boolean receipt verification checks; ``None`` means not requested."""
+
+    response_uri_resolved: bool
+    schema_valid: bool
+    content_hash_matches: bool | None = None
+    db_receipt_found: bool | None = None
+    response_uri_matches_db: bool | None = None
+    request_hash_matches: bool | None = None
+    trace_id_matches: bool | None = None
+    sentinel_agent_id_matches: bool | None = None
+    verdict_score_matches: bool | None = None
+
+
+class VerifyReceiptResult(BaseModel):
+    """Output schema for the read-only MCP ``verify_receipt`` tool."""
+
+    verified: bool
+    checks: ReceiptVerificationChecks
+    validation: IssueLedgerValidationRef | None = None
+    response_uri: str
+    receipt_request_hash: str | None = None
+    receipt_trace_id: str | None = None
+    receipt_verdict_score: int | None = Field(default=None, ge=0, le=100)
+    receipt_verdict_label: str | None = None
+    verdict_content_hash_hex: str | None = None
+    expected_content_hash_hex: str | None = None
+    redacted: bool = True
+    notes: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -334,6 +366,7 @@ def _tool_manifest_from_env() -> GetToolManifestResult:
             "get_calibration",
             "get_tool_manifest",
             "get_issue_ledger",
+            "verify_receipt",
         ],
         evidence_connectors=[connector],
         notes=notes,
@@ -378,13 +411,37 @@ def _is_known_evidence_input_mapper(mapper_name: str) -> bool:
 
 def _request_hash_bytes(request_hash: str) -> bytes:
     """Decode a public bytes32 request hash string for DB lookup."""
-    normalized = request_hash.strip().removeprefix("0x")
+    return bytes.fromhex(_normalize_bytes32_hex(request_hash, field_name="request_hash"))
+
+
+def _normalize_bytes32_hex(value: str, *, field_name: str) -> str:
+    """Normalize and validate a 32-byte hex string."""
+    normalized = value.strip().removeprefix("0x").lower()
     if len(normalized) != 64:
-        raise ToolError("invalid_request_hash: request_hash must be 32-byte hex")
+        raise ToolError(f"invalid_{field_name}: {field_name} must be 32-byte hex")
     try:
-        return bytes.fromhex(normalized)
+        bytes.fromhex(normalized)
     except ValueError as exc:
-        raise ToolError("invalid_request_hash: request_hash must be 32-byte hex") from exc
+        raise ToolError(f"invalid_{field_name}: {field_name} must be 32-byte hex") from exc
+    return normalized
+
+
+def _same_ipfs_reference(left: str | None, right: str | None) -> bool:
+    """Compare response URI/CID references without requiring the same prefix."""
+    if not left or not right:
+        return False
+    return _strip_ipfs_scheme(left.strip()) == _strip_ipfs_scheme(right.strip())
+
+
+def _response_uri_from_inputs(response_uri: str | None, cid: str | None) -> str | None:
+    """Return an IPFS-style response URI from explicit receipt inputs."""
+    cleaned_response_uri = response_uri.strip() if response_uri else None
+    cleaned_cid = cid.strip() if cid else None
+    if cleaned_response_uri:
+        return cleaned_response_uri
+    if cleaned_cid:
+        return f"ipfs://{_strip_ipfs_scheme(cleaned_cid)}"
+    return None
 
 
 def _isoformat_db_value(value: object) -> str | None:
@@ -481,21 +538,43 @@ async def _fetch_verdict_json_from_response_uri(response_uri: str) -> dict[str, 
     return verdict_json
 
 
+def _receipt_identity_checks(
+    *,
+    row: dict[str, Any],
+    verdict: SentinelVerdict,
+    response_uri: str | None = None,
+) -> ReceiptVerificationChecks:
+    """Return identity checks comparing a pinned verdict to its DB receipt row."""
+    verdict_hash = verdict.request_hash.strip().removeprefix("0x").lower()
+    row_hash = str(row["request_hash"]).strip().removeprefix("0x").lower()
+    return ReceiptVerificationChecks(
+        response_uri_resolved=True,
+        schema_valid=True,
+        db_receipt_found=True,
+        response_uri_matches_db=(
+            _same_ipfs_reference(response_uri, row["response_uri"]) if response_uri else True
+        ),
+        request_hash_matches=verdict_hash == row_hash,
+        trace_id_matches=verdict.trace_id == row["trace_id"],
+        sentinel_agent_id_matches=verdict.sentinel_agent_id == row["sentinel_agent_id"],
+        verdict_score_matches=verdict.verdict_score == row["verdict_score"],
+    )
+
+
 def _validate_verdict_matches_receipt(
     *,
     row: dict[str, Any],
     verdict: SentinelVerdict,
 ) -> None:
     """Fail closed if the pinned verdict does not match the DB receipt row."""
-    verdict_hash = verdict.request_hash.strip().removeprefix("0x").lower()
-    row_hash = str(row["request_hash"]).strip().removeprefix("0x").lower()
-    if verdict_hash != row_hash:
+    checks = _receipt_identity_checks(row=row, verdict=verdict)
+    if not checks.request_hash_matches:
         raise ToolError("verdict_receipt_mismatch: pinned verdict request_hash mismatch")
-    if verdict.trace_id != row["trace_id"]:
+    if not checks.trace_id_matches:
         raise ToolError("verdict_receipt_mismatch: pinned verdict trace_id mismatch")
-    if verdict.sentinel_agent_id != row["sentinel_agent_id"]:
+    if not checks.sentinel_agent_id_matches:
         raise ToolError("verdict_receipt_mismatch: pinned verdict sentinel_agent_id mismatch")
-    if verdict.verdict_score != row["verdict_score"]:
+    if not checks.verdict_score_matches:
         raise ToolError("verdict_receipt_mismatch: pinned verdict verdict_score mismatch")
 
 
@@ -570,6 +649,99 @@ async def _get_issue_ledger(
 
     _validate_verdict_matches_receipt(row=row, verdict=verdict)
     return _issue_ledger_from_verdict_row(row=row, verdict=verdict)
+
+
+async def _verify_receipt(
+    *,
+    response_uri: str | None,
+    cid: str | None,
+    content_hash_hex: str | None,
+    trace_id: str | None,
+    request_hash: str | None,
+) -> VerifyReceiptResult:
+    """Verify a pinned verdict receipt against optional DB/hash anchors."""
+    cleaned_trace_id = trace_id.strip() if trace_id else None
+    cleaned_request_hash = request_hash.strip() if request_hash else None
+    row: dict[str, Any] | None = None
+    if cleaned_trace_id or cleaned_request_hash:
+        row = await asyncio.to_thread(
+            _query_issue_ledger_validation,
+            trace_id=cleaned_trace_id,
+            request_hash=cleaned_request_hash,
+        )
+        if row is None:
+            raise ToolError("receipt_not_found: no validation receipt matched the identifier")
+
+    resolved_uri = _response_uri_from_inputs(response_uri, cid)
+    if resolved_uri is None and row is not None:
+        resolved_uri = row["response_uri"]
+    if resolved_uri is None:
+        raise ToolError("missing_identifier: provide response_uri, cid, trace_id, or request_hash")
+
+    expected_hash = (
+        _normalize_bytes32_hex(content_hash_hex, field_name="content_hash_hex")
+        if content_hash_hex
+        else None
+    )
+    verdict_json = await _fetch_verdict_json_from_response_uri(resolved_uri)
+    try:
+        verdict = SentinelVerdict.model_validate(verdict_json)
+    except Exception:
+        return VerifyReceiptResult(
+            verified=False,
+            checks=ReceiptVerificationChecks(response_uri_resolved=True, schema_valid=False),
+            response_uri=resolved_uri,
+            expected_content_hash_hex=expected_hash,
+            notes=["Pinned receipt resolved but does not match the SentinelVerdict schema."],
+        )
+
+    actual_hash = verdict.content_hash().hex()
+    if row is not None:
+        checks = _receipt_identity_checks(row=row, verdict=verdict, response_uri=resolved_uri)
+    else:
+        checks = ReceiptVerificationChecks(response_uri_resolved=True, schema_valid=True)
+    checks.content_hash_matches = actual_hash == expected_hash if expected_hash else None
+
+    validation = (
+        IssueLedgerValidationRef(
+            request_hash=row["request_hash"],
+            trace_id=row["trace_id"],
+            sentinel_agent_id=row["sentinel_agent_id"],
+            verdict_score=row["verdict_score"],
+            verdict_label=verdict.verdict_label,
+            response_uri=row["response_uri"],
+            tx_hash=row["tx_hash"],
+            created_at=row["created_at"],
+        )
+        if row is not None
+        else None
+    )
+    explicit_checks = checks.model_dump(mode="json", exclude_none=True).values()
+    has_anchor = expected_hash is not None or row is not None
+    verified = has_anchor and all(value is True for value in explicit_checks)
+    notes = ["Requester wallet addresses and connector secrets are not returned."]
+    if expected_hash is None:
+        notes.append(
+            "No expected content_hash_hex supplied; content hash was computed but not matched."
+        )
+    if row is None:
+        notes.append("No DB receipt identifier supplied; DB anchoring checks were not run.")
+    if not has_anchor:
+        notes.append("At least one DB or content-hash anchor is required for verified=true.")
+
+    return VerifyReceiptResult(
+        verified=verified,
+        checks=checks,
+        validation=validation,
+        response_uri=resolved_uri,
+        receipt_request_hash=verdict.request_hash,
+        receipt_trace_id=verdict.trace_id,
+        receipt_verdict_score=verdict.verdict_score,
+        receipt_verdict_label=verdict.verdict_label,
+        verdict_content_hash_hex=actual_hash,
+        expected_content_hash_hex=expected_hash,
+        notes=notes,
+    )
 
 
 def _query_stats_from_db(hours: int = 168) -> dict[str, Any]:
@@ -823,7 +995,8 @@ def build_mcp_server() -> FastMCP:
             "get_calibration — inspect the latest calibration metrics proving "
             "cross-family adversarial discrimination; "
             "get_tool_manifest — inspect redacted connector capabilities; "
-            "get_issue_ledger — inspect read-only structured issue ledgers."
+            "get_issue_ledger — inspect read-only structured issue ledgers; "
+            "verify_receipt — verify pinned verdict receipts against anchors."
         ),
     )
 
@@ -971,6 +1144,43 @@ def build_mcp_server() -> FastMCP:
             has_request_hash=bool(request_hash),
         )
         return await _get_issue_ledger(trace_id=trace_id, request_hash=request_hash)
+
+    # ------------------------------------------------------------------
+    # verify_receipt — verify pinned verdict receipt integrity
+    # ------------------------------------------------------------------
+
+    @server.tool(
+        name="verify_receipt",
+        description=(
+            "Verify a pinned SentinelVerdict receipt. Provide a response_uri or CID, "
+            "or a trace_id/request_hash that resolves to a validation receipt. "
+            "Optionally provide content_hash_hex to check against an on-chain or "
+            "previously returned content hash. The tool is read-only and redacts "
+            "requester wallet addresses and secrets."
+        ),
+    )
+    async def verify_receipt(
+        response_uri: str | None = None,
+        cid: str | None = None,
+        content_hash_hex: str | None = None,
+        trace_id: str | None = None,
+        request_hash: str | None = None,
+    ) -> VerifyReceiptResult:
+        logger.info(
+            "mcp_verify_receipt_invoked",
+            has_response_uri=bool(response_uri),
+            has_cid=bool(cid),
+            has_content_hash=bool(content_hash_hex),
+            has_trace_id=bool(trace_id),
+            has_request_hash=bool(request_hash),
+        )
+        return await _verify_receipt(
+            response_uri=response_uri,
+            cid=cid,
+            content_hash_hex=content_hash_hex,
+            trace_id=trace_id,
+            request_hash=request_hash,
+        )
 
     return server
 

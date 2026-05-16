@@ -342,7 +342,7 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health`, `POST /treasury/park`, `POST /treasury/unpark` |
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `GET /markets/recommended`, `GET /markets/resolve`, `POST /trade`, `GET /health` |
-| **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `validate`, stats, manifest, and issue-ledger tools |
+| **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `validate`, stats, manifest, issue-ledger, and receipt-verification tools |
 | **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report` |
 | **CLI** | Python, Typer | `prism doctor`, `prism demo`, `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve`, `prism quote`, `prism validate` |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
