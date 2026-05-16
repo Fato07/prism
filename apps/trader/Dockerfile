@@ -14,6 +14,11 @@ COPY uv.lock .
 # Copy shared schemas package (workspace member)
 COPY packages/schemas-python/ packages/schemas-python/
 
+# Copy calibration package because the root workspace project exposes it for
+# local CLI usage; uv must see the workspace member even though trader does
+# not import it at runtime.
+COPY packages/calibration-python/ packages/calibration-python/
+
 # Copy trader app (workspace member)
 COPY apps/trader/pyproject.toml apps/trader/
 COPY apps/trader/src/ apps/trader/src/
