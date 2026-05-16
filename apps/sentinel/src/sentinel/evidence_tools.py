@@ -8,15 +8,23 @@ provider-neutral result shape.
 
 from __future__ import annotations
 
+import json
 import os
-from typing import Any, Protocol
+from collections.abc import Callable
+from typing import Any, Literal, Protocol
 
 import httpx
 import structlog
+from fastmcp import Client
+from fastmcp.client.auth import BearerAuth
 from prism_schemas.verdict import AdversarialChallenge
 from pydantic import BaseModel, Field, ValidationError
 
 logger = structlog.get_logger("prism.sentinel.evidence_tools")
+
+EvidenceResultMapper = Callable[[Any], list["EvidenceSearchResult"]]
+EvidenceInputMapper = Callable[["EvidenceSearchRequest"], dict[str, Any]]
+ConnectorTransport = Literal["mcp_http", "x402_http", "custom_webhook", "direct_adapter"]
 
 
 class EvidenceSearchRequest(BaseModel):
@@ -47,6 +55,32 @@ class EvidenceProvider(Protocol):
         """Return evidence candidates for the targeted request."""
 
 
+class EvidenceConnectorConfig(BaseModel):
+    """Configuration for one trust-relevant evidence connector."""
+
+    id: str
+    transport: ConnectorTransport
+    result_mapper: str = "generic_search"
+    input_mapper: str = "query"
+    tool_name: str | None = None
+    server_url: str | None = None
+    server_url_env: str | None = None
+    endpoint: str | None = None
+    endpoint_env: str | None = None
+    adapter: str | None = None
+    auth_token_env: str | None = None
+    timeout_seconds: float = Field(default=20.0, gt=0)
+    max_results: int = Field(default=5, ge=1, le=20)
+    allowed_tools: list[str] = Field(default_factory=list)
+    max_usdc: float | None = Field(default=None, ge=0)
+
+
+class ToolConnectorManifest(BaseModel):
+    """MCP-first connector manifest used by Prism's tool layer."""
+
+    evidence: list[EvidenceConnectorConfig] = Field(default_factory=list)
+
+
 class NoopEvidenceProvider:
     """Safe default provider: records the gap without doing paid/network calls."""
 
@@ -70,6 +104,94 @@ class StaticEvidenceProvider:
     async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
         """Return static results for a challenge ID."""
         return self._results_by_challenge_id.get(request.challenge.id, [])
+
+
+class McpEvidenceProvider:
+    """Evidence provider that calls an MCP tool and maps its output explicitly."""
+
+    def __init__(
+        self,
+        *,
+        server_url: str | None = None,
+        tool_name: str,
+        result_mapper: str = "generic_search",
+        input_mapper: str = "query",
+        auth_token: str | None = None,
+        timeout_seconds: float = 20.0,
+        allowed_tools: list[str] | None = None,
+        transport: Any | None = None,
+    ) -> None:
+        """Create an MCP evidence provider.
+
+        `transport` is primarily for tests/in-process FastMCP servers. Production
+        config should use `server_url`.
+        """
+        self.transport = transport if transport is not None else server_url
+        self.server_url = server_url
+        self.tool_name = tool_name
+        self.result_mapper = result_mapper.strip().lower()
+        self.input_mapper = input_mapper.strip().lower()
+        self.auth_token = auth_token
+        self.timeout_seconds = timeout_seconds
+        self.allowed_tools = allowed_tools or [tool_name]
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Call the configured MCP tool and normalize the returned artifacts."""
+        if self.tool_name not in self.allowed_tools:
+            logger.warning(
+                "mcp_evidence_tool_not_allowed",
+                tool_name=self.tool_name,
+            )
+            return []
+        if self.transport is None:
+            logger.warning(
+                "mcp_evidence_missing_transport",
+                tool_name=self.tool_name,
+            )
+            return []
+
+        auth = BearerAuth(self.auth_token) if self.auth_token else None
+        try:
+            async with Client(
+                self.transport,
+                auth=auth,
+                timeout=self.timeout_seconds,
+            ) as client:
+                result = await client.call_tool(
+                    self.tool_name,
+                    _mcp_tool_arguments(self.input_mapper, request),
+                    raise_on_error=False,
+                    timeout=self.timeout_seconds,
+                )
+        except Exception as exc:
+            logger.warning(
+                "mcp_evidence_call_failed",
+                tool_name=self.tool_name,
+                mapper=self.result_mapper,
+                input_mapper=self.input_mapper,
+                error=str(exc),
+            )
+            return []
+
+        if getattr(result, "is_error", False):
+            logger.warning(
+                "mcp_evidence_tool_returned_error",
+                tool_name=self.tool_name,
+                mapper=self.result_mapper,
+                input_mapper=self.input_mapper,
+            )
+            return []
+
+        body = _mcp_result_body(result)
+        if body is None:
+            logger.warning(
+                "mcp_evidence_unparseable_result",
+                tool_name=self.tool_name,
+                mapper=self.result_mapper,
+                input_mapper=self.input_mapper,
+            )
+            return []
+        return map_evidence_results(self.result_mapper, body)[: request.max_results]
 
 
 class FirecrawlSearchEvidenceProvider:
@@ -485,6 +607,43 @@ def evidence_provider_from_env() -> EvidenceProvider:
     provider = os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop").strip().lower()
     if provider == "noop":
         return NoopEvidenceProvider()
+    if provider in {"mcp", "mcp_http"}:
+        server_url = _env_optional_string("PRISM_EVIDENCE_MCP_URL")
+        tool_name = _env_optional_string("PRISM_EVIDENCE_MCP_TOOL")
+        if server_url is None or tool_name is None:
+            logger.warning(
+                "mcp_evidence_missing_required_config",
+                has_server_url=server_url is not None,
+                has_tool_name=tool_name is not None,
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        result_mapper = os.environ.get("PRISM_EVIDENCE_RESULT_MAPPER", "generic_search")
+        input_mapper = os.environ.get("PRISM_EVIDENCE_MCP_INPUT_MAPPER", "query")
+        if not _is_known_evidence_result_mapper(result_mapper):
+            logger.warning(
+                "mcp_evidence_unknown_result_mapper",
+                mapper=result_mapper.strip().lower(),
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        if not _is_known_evidence_input_mapper(input_mapper):
+            logger.warning(
+                "mcp_evidence_unknown_input_mapper",
+                input_mapper=input_mapper.strip().lower(),
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        timeout_seconds = _float_env("PRISM_EVIDENCE_MCP_TIMEOUT_SECONDS", 20.0)
+        return McpEvidenceProvider(
+            server_url=server_url,
+            tool_name=tool_name,
+            result_mapper=result_mapper,
+            input_mapper=input_mapper,
+            auth_token=os.environ.get("PRISM_EVIDENCE_MCP_AUTH_TOKEN"),
+            timeout_seconds=timeout_seconds,
+            allowed_tools=_csv_env("PRISM_EVIDENCE_MCP_ALLOWED_TOOLS") or [tool_name],
+        )
     if provider in {"firecrawl", "firecrawl_search"}:
         api_key = os.environ.get("FIRECRAWL_API_KEY", "").strip()
         if not api_key:
@@ -594,6 +753,12 @@ def evidence_provider_from_env() -> EvidenceProvider:
 def _env_optional_string(name: str) -> str | None:
     """Return a stripped environment value, treating blanks as unset."""
     return _optional_string(os.environ.get(name))
+
+
+def _csv_env(name: str) -> list[str]:
+    """Return a comma-separated env var as stripped non-empty values."""
+    raw_value = os.environ.get(name, "")
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
 
 
 def _optional_string(value: str | None) -> str | None:
@@ -821,6 +986,89 @@ def _response_json_or_none(
             challenge_id=challenge_id,
             error=str(exc),
         )
+        return None
+
+
+def _mcp_tool_arguments(mapper_name: str, request: EvidenceSearchRequest) -> dict[str, Any]:
+    """Build MCP tool arguments using an explicit input mapper."""
+    normalized_name = mapper_name.strip().lower()
+    mapper = _EVIDENCE_INPUT_MAPPERS.get(normalized_name)
+    if mapper is None:
+        logger.warning(
+            "unknown_evidence_input_mapper",
+            input_mapper=normalized_name,
+        )
+        return {}
+    return mapper(request)
+
+
+def _input_query(request: EvidenceSearchRequest) -> dict[str, Any]:
+    """Map to the most common MCP search-tool shape."""
+    return {"query": request.query}
+
+
+def _input_query_limit(request: EvidenceSearchRequest) -> dict[str, Any]:
+    """Map to Firecrawl-style search-tool args."""
+    return {"query": request.query, "limit": request.max_results}
+
+
+def _input_query_max_results(request: EvidenceSearchRequest) -> dict[str, Any]:
+    """Map to agent-search tools that use max_results."""
+    return {"query": request.query, "max_results": request.max_results}
+
+
+def _input_q_count(request: EvidenceSearchRequest) -> dict[str, Any]:
+    """Map to web-search tools that use q/count names."""
+    return {"q": request.query, "count": request.max_results}
+
+
+def _input_prism_evidence_request(request: EvidenceSearchRequest) -> dict[str, Any]:
+    """Map to Prism's full provider-neutral evidence request shape."""
+    return {
+        "query": request.query,
+        "max_results": request.max_results,
+        "market_question": request.market_question,
+        "challenge": request.challenge.model_dump(mode="json"),
+    }
+
+
+_EVIDENCE_INPUT_MAPPERS: dict[str, EvidenceInputMapper] = {
+    "query": _input_query,
+    "query_limit": _input_query_limit,
+    "query_max_results": _input_query_max_results,
+    "q_count": _input_q_count,
+    "prism_evidence_request": _input_prism_evidence_request,
+}
+
+
+def _is_known_evidence_input_mapper(mapper_name: str) -> bool:
+    """Return whether an MCP input mapper is configured."""
+    return mapper_name.strip().lower() in _EVIDENCE_INPUT_MAPPERS
+
+
+def available_evidence_input_mappers() -> list[str]:
+    """Return the configured MCP evidence input mapper names."""
+    return sorted(_EVIDENCE_INPUT_MAPPERS)
+
+
+def _mcp_result_body(result: Any) -> Any | None:
+    """Extract structured content from a FastMCP call result."""
+    data = getattr(result, "data", None)
+    if data is not None:
+        return data
+    structured_content = getattr(result, "structured_content", None)
+    if structured_content is not None:
+        return structured_content
+
+    content = getattr(result, "content", None)
+    if not isinstance(content, list) or not content:
+        return None
+    text = getattr(content[0], "text", None)
+    if not isinstance(text, str):
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
         return None
 
 
@@ -1097,6 +1345,48 @@ def _parse_brave_results(body: Any) -> list[EvidenceSearchResult]:
             )
         )
     return results
+
+
+def _parse_generic_search_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Prism/generic search tool output into evidence results."""
+    return _parse_webhook_results(body, fallback_provider="generic_search")
+
+
+_EVIDENCE_RESULT_MAPPERS: dict[str, EvidenceResultMapper] = {
+    "generic_search": _parse_generic_search_results,
+    "custom_webhook": lambda body: _parse_webhook_results(
+        body,
+        fallback_provider="custom_webhook",
+    ),
+    "firecrawl_search": _parse_firecrawl_results,
+    "exa_search": _parse_exa_results,
+    "parallel_search": _parse_parallel_results,
+    "tavily_search": _parse_tavily_results,
+    "brave_search": _parse_brave_results,
+}
+
+
+def _is_known_evidence_result_mapper(mapper_name: str) -> bool:
+    """Return whether an evidence result mapper is configured."""
+    return mapper_name.strip().lower() in _EVIDENCE_RESULT_MAPPERS
+
+
+def map_evidence_results(mapper_name: str, body: Any) -> list[EvidenceSearchResult]:
+    """Map raw tool/provider output into normalized evidence results."""
+    normalized_name = mapper_name.strip().lower()
+    mapper = _EVIDENCE_RESULT_MAPPERS.get(normalized_name)
+    if mapper is None:
+        logger.warning(
+            "unknown_evidence_result_mapper",
+            mapper=normalized_name,
+        )
+        return []
+    return mapper(body)
+
+
+def available_evidence_result_mappers() -> list[str]:
+    """Return the configured evidence result mapper names."""
+    return sorted(_EVIDENCE_RESULT_MAPPERS)
 
 
 def query_for_challenge(market_question: str, challenge: AdversarialChallenge) -> str:

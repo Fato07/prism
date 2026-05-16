@@ -6,18 +6,25 @@ import json
 
 import httpx
 import pytest
+from fastmcp import FastMCP
 from prism_schemas.verdict import AdversarialChallenge
 
 from sentinel.evidence_tools import (
     BraveSearchEvidenceProvider,
     CustomWebhookEvidenceProvider,
+    EvidenceConnectorConfig,
     EvidenceSearchRequest,
     ExaSearchEvidenceProvider,
     FirecrawlSearchEvidenceProvider,
+    McpEvidenceProvider,
     NoopEvidenceProvider,
     ParallelSearchEvidenceProvider,
     TavilySearchEvidenceProvider,
+    ToolConnectorManifest,
+    available_evidence_input_mappers,
+    available_evidence_result_mappers,
     evidence_provider_from_env,
+    map_evidence_results,
     query_for_challenge,
 )
 
@@ -42,6 +49,224 @@ def _request() -> EvidenceSearchRequest:
         challenge=challenge,
         query=query_for_challenge(market_question, challenge),
     )
+
+
+def test_tool_connector_manifest_accepts_mcp_evidence_config() -> None:
+    manifest = ToolConnectorManifest(
+        evidence=[
+            EvidenceConnectorConfig(
+                id="firecrawl-mcp",
+                transport="mcp_http",
+                server_url_env="FIRECRAWL_MCP_URL",
+                tool_name="search",
+                result_mapper="firecrawl_search",
+                input_mapper="query_limit",
+                auth_token_env="FIRECRAWL_MCP_TOKEN",
+                allowed_tools=["search"],
+                timeout_seconds=15,
+                max_results=3,
+            )
+        ]
+    )
+
+    connector = manifest.evidence[0]
+    assert connector.transport == "mcp_http"
+    assert connector.tool_name == "search"
+    assert connector.result_mapper == "firecrawl_search"
+    assert connector.input_mapper == "query_limit"
+    assert connector.allowed_tools == ["search"]
+
+
+def test_evidence_result_mapper_registry_maps_generic_and_provider_shapes() -> None:
+    assert "generic_search" in available_evidence_result_mappers()
+    assert "firecrawl_search" in available_evidence_result_mappers()
+    assert "query" in available_evidence_input_mappers()
+    assert "query_limit" in available_evidence_input_mappers()
+
+    generic_results = map_evidence_results(
+        "generic_search",
+        {
+            "results": [
+                {
+                    "title": "Generic source",
+                    "url": "https://example.com/generic",
+                    "snippet": "Generic MCP tool output.",
+                }
+            ]
+        },
+    )
+    firecrawl_results = map_evidence_results(
+        "firecrawl_search",
+        {
+            "success": True,
+            "data": {
+                "web": [
+                    {
+                        "title": "Firecrawl source",
+                        "url": "https://example.com/firecrawl",
+                        "markdown": "Firecrawl mapped output.",
+                    }
+                ]
+            },
+        },
+    )
+
+    assert generic_results[0].provider == "generic_search"
+    assert firecrawl_results[0].provider == "firecrawl_search"
+    assert map_evidence_results("missing_mapper", {"results": []}) == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_calls_tool_and_maps_generic_results() -> None:
+    server = FastMCP("evidence-test")
+
+    @server.tool
+    def search(
+        query: str,
+        max_results: int,
+        market_question: str,
+        challenge: dict[str, object],
+    ) -> dict[str, object]:
+        assert "LeBron" in query
+        assert max_results == 5
+        assert "LeBron" in market_question
+        assert challenge["id"] == "sys-temporal-stale-evidence"
+        return {
+            "results": [
+                {
+                    "title": "MCP current source",
+                    "url": "https://example.com/mcp-current",
+                    "snippet": "MCP tool returned current evidence.",
+                    "confidence": 0.88,
+                }
+            ]
+        }
+
+    provider = McpEvidenceProvider(
+        tool_name="search",
+        result_mapper="generic_search",
+        input_mapper="prism_evidence_request",
+        transport=server,
+    )
+
+    results = await provider.search(_request())
+
+    assert len(results) == 1
+    assert results[0].provider == "generic_search"
+    assert results[0].url == "https://example.com/mcp-current"
+    assert results[0].confidence == 0.88
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_supports_query_only_tools() -> None:
+    server = FastMCP("evidence-test")
+
+    @server.tool
+    def search(query: str) -> dict[str, object]:
+        return {
+            "results": [
+                {
+                    "title": query,
+                    "url": "https://example.com/query-only",
+                    "snippet": "Query-only MCP tools remain compatible.",
+                }
+            ]
+        }
+
+    provider = McpEvidenceProvider(
+        tool_name="search",
+        result_mapper="generic_search",
+        input_mapper="query",
+        transport=server,
+    )
+
+    results = await provider.search(_request())
+
+    assert results[0].url == "https://example.com/query-only"
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_supports_query_limit_tools() -> None:
+    server = FastMCP("evidence-test")
+
+    @server.tool
+    def search(query: str, limit: int) -> dict[str, object]:
+        return {
+            "results": [
+                {
+                    "title": f"{query} {limit}",
+                    "url": "https://example.com/query-limit",
+                    "snippet": "Query-limit MCP tools remain compatible.",
+                }
+            ]
+        }
+
+    provider = McpEvidenceProvider(
+        tool_name="search",
+        result_mapper="generic_search",
+        input_mapper="query_limit",
+        transport=server,
+    )
+
+    results = await provider.search(_request())
+
+    assert "5" in results[0].title
+    assert results[0].url == "https://example.com/query-limit"
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_fails_closed_on_tool_error() -> None:
+    server = FastMCP("evidence-test")
+
+    @server.tool
+    def broken(query: str) -> dict[str, object]:
+        raise RuntimeError(f"boom for {query}")
+
+    provider = McpEvidenceProvider(
+        tool_name="broken",
+        result_mapper="generic_search",
+        input_mapper="query",
+        transport=server,
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_fails_closed_on_malformed_output() -> None:
+    server = FastMCP("evidence-test")
+
+    @server.tool
+    def malformed(query: str) -> dict[str, object]:
+        return {"items": [{"text": query}]}
+
+    provider = McpEvidenceProvider(
+        tool_name="malformed",
+        result_mapper="generic_search",
+        input_mapper="query",
+        transport=server,
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_enforces_allowlist() -> None:
+    server = FastMCP("evidence-test")
+
+    @server.tool
+    def search(query: str) -> dict[str, object]:
+        return {"results": [{"title": query, "url": "https://example.com", "snippet": query}]}
+
+    provider = McpEvidenceProvider(
+        tool_name="search",
+        result_mapper="generic_search",
+        input_mapper="query",
+        allowed_tools=["other_tool"],
+        transport=server,
+    )
+
+    assert await provider.search(_request()) == []
 
 
 @pytest.mark.asyncio
@@ -624,6 +849,60 @@ async def test_custom_webhook_provider_returns_empty_on_http_failure() -> None:
     )
 
     assert await provider.search(_request()) == []
+
+
+def test_evidence_provider_from_env_uses_mcp_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_URL", "https://tools.example.com/mcp/")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
+    monkeypatch.setenv("PRISM_EVIDENCE_RESULT_MAPPER", "firecrawl_search")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_INPUT_MAPPER", "query_limit")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_AUTH_TOKEN", "secret-token")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_ALLOWED_TOOLS", "search,extract")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TIMEOUT_SECONDS", "bad-value")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, McpEvidenceProvider)
+    assert provider.server_url == "https://tools.example.com/mcp/"
+    assert provider.tool_name == "search"
+    assert provider.result_mapper == "firecrawl_search"
+    assert provider.input_mapper == "query_limit"
+    assert provider.auth_token == "secret-token"
+    assert provider.allowed_tools == ["search", "extract"]
+    assert provider.timeout_seconds == 20.0
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_for_unknown_mcp_mapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_URL", "https://tools.example.com/mcp/")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
+    monkeypatch.setenv("PRISM_EVIDENCE_RESULT_MAPPER", "not-real")
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_for_unknown_mcp_input_mapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_URL", "https://tools.example.com/mcp/")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_INPUT_MAPPER", "not-real")
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_without_mcp_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
+    monkeypatch.delenv("PRISM_EVIDENCE_MCP_URL", raising=False)
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
 
 
 def test_evidence_provider_from_env_uses_firecrawl_search(

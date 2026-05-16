@@ -6,10 +6,15 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from fastmcp import FastMCP
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
 from prism_schemas.verdict import AdversarialChallenge, SentinelVerdict
 
-from sentinel.evidence_tools import EvidenceSearchResult, StaticEvidenceProvider
+from sentinel.evidence_tools import (
+    EvidenceSearchResult,
+    McpEvidenceProvider,
+    StaticEvidenceProvider,
+)
 from sentinel.resolution_loop import generate_verdict_with_resolution
 
 
@@ -144,3 +149,98 @@ async def test_resolution_loop_allows_pass_after_provider_resolves_blocker(
     assert verdict.resolution_metadata is not None
     assert verdict.resolution_metadata.unresolved_blocking_count == 0
     assert verdict.resolution_metadata.stop_reason == "confidence_reached"
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_allows_pass_after_mcp_provider_resolves_blocker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MCP evidence tools can resolve blockers inside the resolution loop."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    server = FastMCP("resolution-evidence")
+
+    @server.tool
+    def search(query: str, limit: int) -> dict[str, object]:
+        assert "Fed" in query
+        assert limit == 5
+        return {
+            "results": [
+                {
+                    "title": "MCP official current report",
+                    "url": "https://example.com/mcp-current-report",
+                    "snippet": "MCP-retrieved primary data resolves the freshness issue.",
+                    "confidence": 0.91,
+                }
+            ]
+        }
+
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = McpEvidenceProvider(
+        tool_name="search",
+        result_mapper="generic_search",
+        input_mapper="query_limit",
+        transport=server,
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+    )
+
+    assert verdict.verdict_label == "PASS"
+    assert verdict.verdict_score == 65
+    assert verdict.structured_challenges[0].resolution_status == "resolved"
+    assert verdict.challenge_resolutions[0].responder == "evidence_tool"
+    assert "mcp-current-report" in verdict.challenge_resolutions[0].response
+    assert verdict.resolution_metadata is not None
+    assert verdict.resolution_metadata.unresolved_blocking_count == 0
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_keeps_blocker_when_mcp_provider_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed MCP evidence should not falsely clear a blocker."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    server = FastMCP("resolution-evidence")
+
+    @server.tool
+    def search(query: str, limit: int) -> dict[str, object]:
+        assert limit == 5
+        return {"items": [{"text": query}]}
+
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = McpEvidenceProvider(
+        tool_name="search",
+        result_mapper="generic_search",
+        input_mapper="query_limit",
+        transport=server,
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+    )
+
+    assert verdict.verdict_label == "WARN"
+    assert verdict.verdict_score == 50
+    assert verdict.structured_challenges[0].resolution_status == "conceded"
+    assert verdict.resolution_metadata is not None
+    assert verdict.resolution_metadata.unresolved_blocking_count == 1
+    assert verdict.resolution_metadata.stop_reason == "unresolved_blockers"

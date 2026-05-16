@@ -194,6 +194,7 @@ tools:
       server_url_env: FIRECRAWL_MCP_URL
       tool_name: search
       result_mapper: firecrawl_search
+      input_mapper: query_limit
       timeout_seconds: 30
       max_results: 5
 
@@ -203,6 +204,7 @@ tools:
       server_url_env: INTERNAL_RESEARCH_MCP_URL
       tool_name: search_market_context
       result_mapper: generic_search
+      input_mapper: query
       timeout_seconds: 20
 
     - id: parallel-paid-search
@@ -301,12 +303,17 @@ billing:
 ## Current implementation status
 
 The current implementation lives in `apps/sentinel/src/sentinel/evidence_tools.py`.
-It was built as a direct-adapter seam before the MCP-first correction.
+It now includes the MCP-first seam while preserving the earlier direct adapters as
+fallback/reference implementations.
 
-Keep these pieces, but reframe them correctly:
+Current pieces:
 
 - `NoopEvidenceProvider` — safe default, no network calls.
 - `StaticEvidenceProvider` — deterministic tests.
+- `McpEvidenceProvider` — preferred MCP client connector for external tools.
+- `EvidenceConnectorConfig` / `ToolConnectorManifest` — small Pydantic manifest models.
+- explicit result mapper registry — `generic_search`, `firecrawl_search`, `exa_search`,
+  `tavily_search`, `parallel_search`, `brave_search`, `custom_webhook`.
 - `CustomWebhookEvidenceProvider` — BYO bridge; useful for wrapping MCP/internal tools.
 - `ParallelSearchEvidenceProvider` — direct adapter fallback/reference mapper.
 - `TavilySearchEvidenceProvider` — direct adapter fallback/reference mapper.
@@ -321,8 +328,21 @@ These are not wasted work. They provide:
 3. hosted-mode shortcuts;
 4. test fixtures for result mappers.
 
-But the next implementation step should be a generic `McpEvidenceProvider`, not another
-provider-specific wrapper.
+Direct adapter env blocks remain available, but new integrations should prefer MCP first.
+
+MCP evidence connector environment:
+
+```bash
+PRISM_EVIDENCE_PROVIDER=mcp
+PRISM_EVIDENCE_MCP_URL=https://example.com/mcp/
+PRISM_EVIDENCE_MCP_TOOL=search
+PRISM_EVIDENCE_RESULT_MAPPER=generic_search
+PRISM_EVIDENCE_MCP_INPUT_MAPPER=query
+PRISM_EVIDENCE_MCP_AUTH_TOKEN=optional-bearer-token
+PRISM_EVIDENCE_MCP_ALLOWED_TOOLS=search
+PRISM_EVIDENCE_MCP_TIMEOUT_SECONDS=20
+ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+```
 
 ## Ralph implementation roadmap
 
@@ -339,6 +359,8 @@ provider-specific wrapper.
   - `server_url_env`;
   - `tool_name`;
   - `result_mapper`;
+  - `input_mapper` (`query`, `query_limit`, `query_max_results`, `q_count`,
+    `prism_evidence_request`);
   - auth headers or token env refs;
   - timeout/budget fields;
   - explicit tool allowlist;
@@ -359,18 +381,11 @@ provider-specific wrapper.
 
 ### Phase 4 — Resolution-loop integration
 
-- Add env/config support:
-
-```bash
-PRISM_EVIDENCE_PROVIDER=mcp
-PRISM_EVIDENCE_MCP_URL=https://example.com/mcp/
-PRISM_EVIDENCE_MCP_TOOL=search
-PRISM_EVIDENCE_RESULT_MAPPER=generic_search
-ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
-```
-
+- Add env/config support for `PRISM_EVIDENCE_PROVIDER=mcp`.
 - Ensure unresolved blockers still fail closed if the MCP tool errors or returns unusable
   output.
+- Add integration coverage proving MCP evidence can resolve a blocker and MCP failure
+  leaves it unresolved.
 
 ### Phase 5 — Queryable Prism surface
 
