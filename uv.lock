@@ -2066,6 +2066,7 @@ version = "0.1.0"
 source = { editable = "packages/calibration-python" }
 dependencies = [
     { name = "prism-schemas" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "structlog" },
 ]
@@ -2073,6 +2074,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "prism-schemas", editable = "packages/schemas-python" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3" },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "structlog", specifier = ">=24.1" },
 ]

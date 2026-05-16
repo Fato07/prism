@@ -19,6 +19,14 @@ from prism_calibration.freeze import (
     parse_slice_name,
     validate_frozen_export,
 )
+from prism_calibration.harvest import (
+    HarvestDatabaseError,
+    HarvestSchemaError,
+    HarvestSelectionError,
+    harvest_summary,
+    parse_selection,
+    run_harvest_from_environment,
+)
 from prism_calibration.layout import (
     DEFAULT_CORPUS_ROOT,
     CorpusLayout,
@@ -226,6 +234,28 @@ def _handle_freeze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_harvest(args: argparse.Namespace) -> int:
+    """Run Neon schema preflight and deterministic trace selection."""
+    root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
+    limit = _namespace_int(args, "limit")
+    selection_value = str(args.selection)
+    preflight_only = bool(args.preflight_only)
+    try:
+        selection = parse_selection(selection_value)
+        result = run_harvest_from_environment(
+            root=root,
+            limit=limit,
+            selection=selection,
+            preflight_only=preflight_only,
+        )
+    except (HarvestDatabaseError, HarvestSchemaError, HarvestSelectionError) as error:
+        _write_error(str(error))
+        return 1
+
+    _write_json(harvest_summary(result))
+    return 0
+
+
 def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:
     """Return a handler for commands reserved by later mission milestones."""
 
@@ -269,7 +299,7 @@ def build_parser() -> argparse.ArgumentParser:
     harvest.add_argument("--limit", type=int, default=10)
     harvest.add_argument("--selection", choices=("recent", "oldest"), default="recent")
     harvest.add_argument("--preflight-only", action="store_true")
-    harvest.set_defaults(handler=_deferred_handler("harvest", "harvest-provenance"))
+    harvest.set_defaults(handler=_handle_harvest)
 
     label = subparsers.add_parser(
         "label",
