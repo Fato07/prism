@@ -72,6 +72,71 @@ class StaticEvidenceProvider:
         return self._results_by_challenge_id.get(request.challenge.id, [])
 
 
+class ParallelSearchEvidenceProvider:
+    """Evidence provider backed by Parallel's Search API."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint: str = "https://api.parallel.ai/v1/search",
+        mode: str = "advanced",
+        location: str | None = None,
+        max_chars_total: int | None = None,
+        timeout_seconds: float = 30.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """Create a Parallel Search provider with a user-supplied API key."""
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.mode = mode
+        self.location = location
+        self.max_chars_total = max_chars_total
+        self.timeout_seconds = timeout_seconds
+        self.transport = transport
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Query Parallel Search and normalize excerpted web results."""
+        payload: dict[str, Any] = {
+            "objective": _parallel_objective(request),
+            "search_queries": [request.query],
+            "mode": self.mode,
+            "advanced_settings": {"max_results": request.max_results},
+        }
+        if self.location:
+            payload["advanced_settings"]["location"] = self.location
+        if self.max_chars_total is not None:
+            payload["max_chars_total"] = self.max_chars_total
+
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.post(self.endpoint, json=payload, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "parallel_search_failed",
+                challenge_id=request.challenge.id,
+                error=str(exc),
+            )
+            return []
+
+        body = _response_json_or_none(
+            response,
+            provider="parallel_search",
+            challenge_id=request.challenge.id,
+        )
+        if body is None:
+            return []
+        return _parse_parallel_results(body)
+
+
 class BraveSearchEvidenceProvider:
     """Evidence provider backed by Brave Search's Web Search API."""
 
@@ -201,10 +266,27 @@ def evidence_provider_from_env() -> EvidenceProvider:
     - `noop` (default): no network or paid calls.
     - `custom_webhook`: POST requests to `PRISM_EVIDENCE_WEBHOOK_URL`.
     - `brave_search`: query Brave's Web Search API with `BRAVE_SEARCH_API_KEY`.
+    - `parallel_search`: query Parallel's Search API with `PARALLEL_API_KEY`.
     """
     provider = os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop").strip().lower()
     if provider == "noop":
         return NoopEvidenceProvider()
+    if provider in {"parallel", "parallel_search"}:
+        api_key = os.environ.get("PARALLEL_API_KEY", "").strip()
+        if not api_key:
+            logger.warning(
+                "parallel_search_missing_api_key",
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        timeout_seconds = _float_env("PARALLEL_SEARCH_TIMEOUT_SECONDS", 30.0)
+        return ParallelSearchEvidenceProvider(
+            api_key=api_key,
+            mode=_parallel_mode_from_env(),
+            location=os.environ.get("PARALLEL_SEARCH_LOCATION"),
+            max_chars_total=_int_env_or_none("PARALLEL_SEARCH_MAX_CHARS_TOTAL"),
+            timeout_seconds=timeout_seconds,
+        )
     if provider in {"brave", "brave_search"}:
         api_key = os.environ.get("BRAVE_SEARCH_API_KEY", "").strip()
         if not api_key:
@@ -244,13 +326,50 @@ def evidence_provider_from_env() -> EvidenceProvider:
     return NoopEvidenceProvider()
 
 
+def _parallel_mode_from_env() -> str:
+    """Return a supported Parallel Search mode from environment config."""
+    mode = os.environ.get("PARALLEL_SEARCH_MODE", "advanced").strip().lower()
+    if mode in {"basic", "advanced"}:
+        return mode
+    logger.warning(
+        "invalid_parallel_search_mode",
+        mode=mode,
+        fallback="advanced",
+    )
+    return "advanced"
+
+
+def _int_env_or_none(name: str) -> int | None:
+    """Parse an optional positive integer env var with fail-closed fallback."""
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value.strip() == "":
+        return None
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "invalid_int_env",
+            name=name,
+            fallback=None,
+        )
+        return None
+    if parsed <= 0:
+        logger.warning(
+            "invalid_positive_int_env",
+            name=name,
+            fallback=None,
+        )
+        return None
+    return parsed
+
+
 def _float_env(name: str, default: float) -> float:
     """Parse a float environment variable with fail-closed fallback."""
     raw_value = os.environ.get(name)
     if raw_value is None or raw_value.strip() == "":
         return default
     try:
-        return float(raw_value)
+        parsed = float(raw_value)
     except ValueError:
         logger.warning(
             "invalid_float_env",
@@ -258,6 +377,14 @@ def _float_env(name: str, default: float) -> float:
             fallback=default,
         )
         return default
+    if parsed <= 0:
+        logger.warning(
+            "invalid_positive_float_env",
+            name=name,
+            fallback=default,
+        )
+        return default
+    return parsed
 
 
 def _response_json_or_none(
@@ -309,6 +436,52 @@ def _parse_webhook_results(
         except ValidationError:
             continue
         results.append(parsed)
+    return results
+
+
+def _parallel_objective(request: EvidenceSearchRequest) -> str:
+    """Build a focused Parallel Search objective for one open challenge."""
+    return (
+        "Resolve this Prism adversarial validation issue with current, source-linked evidence. "
+        f"Market: {request.market_question}. "
+        f"Issue: {request.challenge.question}. "
+        f"Required resolution: {request.challenge.required_resolution}."
+    )
+
+
+def _parse_parallel_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Parallel Search results into evidence results."""
+    if not isinstance(body, dict):
+        return []
+    raw_results = body.get("results")
+    if not isinstance(raw_results, list):
+        return []
+
+    results: list[EvidenceSearchResult] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str):
+            continue
+        raw_excerpts = item.get("excerpts")
+        if not isinstance(raw_excerpts, list):
+            continue
+        excerpts = [excerpt for excerpt in raw_excerpts if isinstance(excerpt, str) and excerpt]
+        if not excerpts:
+            continue
+        title = item.get("title")
+        publish_date = item.get("publish_date")
+        results.append(
+            EvidenceSearchResult(
+                title=title if isinstance(title, str) and title else url,
+                url=url,
+                snippet="\n\n".join(excerpts[:2]),
+                provider="parallel_search",
+                published_at=publish_date if isinstance(publish_date, str) else None,
+                confidence=0.78,
+            )
+        )
     return results
 
 

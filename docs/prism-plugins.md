@@ -34,7 +34,8 @@ Evidence plugins provide current, source-linked context for open issues in the a
 resolution loop.
 
 Examples:
-- `prism.parallel_x402` — x402-paid search/research via Circle-compatible services.
+- `prism.parallel_search` — Parallel Search API with BYO Parallel API key.
+- `prism.parallel_x402` — future x402-paid search/research via Circle-compatible services.
 - `prism.brave_search` — web/news search with BYO Brave API key.
 - `prism.tavily` — agent-oriented web retrieval.
 - `prism.exa` — semantic/neural research search.
@@ -102,8 +103,10 @@ evidence:
     - type: custom_webhook
       url_env: PRISM_EVIDENCE_WEBHOOK_URL
       bearer_token_env: PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN
+    - type: parallel_search
+      api_key_env: PARALLEL_API_KEY
     - type: brave_search
-      api_key_env: BRAVE_API_KEY
+      api_key_env: BRAVE_SEARCH_API_KEY
 
 policy:
   max_resolution_rounds: 2
@@ -179,6 +182,7 @@ The first plugin seam lives in `apps/sentinel/src/sentinel/evidence_tools.py`:
 - `NoopEvidenceProvider` — default, no network calls.
 - `StaticEvidenceProvider` — deterministic tests.
 - `CustomWebhookEvidenceProvider` — BYO HTTP endpoint.
+- `ParallelSearchEvidenceProvider` — native Parallel Search API adapter.
 - `BraveSearchEvidenceProvider` — native Brave Search Web Search API adapter.
 
 Custom webhook environment:
@@ -188,6 +192,18 @@ PRISM_EVIDENCE_PROVIDER=custom_webhook
 PRISM_EVIDENCE_WEBHOOK_URL=https://your-service.example/evidence
 PRISM_EVIDENCE_WEBHOOK_BEARER_TOKEN=optional-secret
 PRISM_EVIDENCE_WEBHOOK_TIMEOUT_SECONDS=20
+ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+```
+
+Parallel Search environment:
+
+```bash
+PRISM_EVIDENCE_PROVIDER=parallel_search
+PARALLEL_API_KEY=your-parallel-api-key
+PARALLEL_SEARCH_MODE=advanced             # optional: basic or advanced
+PARALLEL_SEARCH_LOCATION=us               # optional: ISO country code
+PARALLEL_SEARCH_MAX_CHARS_TOTAL=6000      # optional
+PARALLEL_SEARCH_TIMEOUT_SECONDS=30        # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 

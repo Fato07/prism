@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from prism_schemas.verdict import AdversarialChallenge
@@ -11,6 +13,7 @@ from sentinel.evidence_tools import (
     CustomWebhookEvidenceProvider,
     EvidenceSearchRequest,
     NoopEvidenceProvider,
+    ParallelSearchEvidenceProvider,
     evidence_provider_from_env,
     query_for_challenge,
 )
@@ -36,6 +39,80 @@ def _request() -> EvidenceSearchRequest:
         challenge=challenge,
         query=query_for_challenge(market_question, challenge),
     )
+
+
+@pytest.mark.asyncio
+async def test_parallel_search_provider_posts_objective_and_parses_excerpts() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["api_key"] = request.headers.get("x-api-key")
+        body = request.read().decode()
+        captured["body"] = body
+        return httpx.Response(
+            200,
+            json={
+                "search_id": "search_test",
+                "session_id": "session_test",
+                "results": [
+                    {
+                        "url": "https://example.com/parallel-current",
+                        "title": "Parallel current evidence",
+                        "publish_date": "2026-05-16",
+                        "excerpts": ["Current source excerpt.", "Second relevant excerpt."],
+                    }
+                ],
+            },
+        )
+
+    provider = ParallelSearchEvidenceProvider(
+        api_key="parallel-key",
+        location="us",
+        max_chars_total=4000,
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert captured["api_key"] == "parallel-key"
+    request_body = json.loads(str(captured["body"]))
+    assert request_body["objective"].startswith(
+        "Resolve this Prism adversarial validation issue"
+    )
+    assert request_body["search_queries"] == [_request().query]
+    assert request_body["mode"] == "advanced"
+    assert request_body["advanced_settings"] == {"max_results": 5, "location": "us"}
+    assert request_body["max_chars_total"] == 4000
+    assert len(results) == 1
+    assert results[0].provider == "parallel_search"
+    assert results[0].snippet == "Current source excerpt.\n\nSecond relevant excerpt."
+    assert results[0].published_at == "2026-05-16"
+
+
+@pytest.mark.asyncio
+async def test_parallel_search_provider_returns_empty_on_invalid_json() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    provider = ParallelSearchEvidenceProvider(
+        api_key="parallel-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_parallel_search_provider_returns_empty_on_http_failure() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(422, json={"error": "bad request"})
+
+    provider = ParallelSearchEvidenceProvider(
+        api_key="parallel-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
 
 
 @pytest.mark.asyncio
@@ -157,6 +234,50 @@ async def test_custom_webhook_provider_returns_empty_on_http_failure() -> None:
     )
 
     assert await provider.search(_request()) == []
+
+
+def test_evidence_provider_from_env_uses_parallel_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "parallel_search")
+    monkeypatch.setenv("PARALLEL_API_KEY", "parallel-key")
+    monkeypatch.setenv("PARALLEL_SEARCH_MODE", "basic")
+    monkeypatch.setenv("PARALLEL_SEARCH_LOCATION", "us")
+    monkeypatch.setenv("PARALLEL_SEARCH_MAX_CHARS_TOTAL", "6000")
+    monkeypatch.setenv("PARALLEL_SEARCH_TIMEOUT_SECONDS", "bad-value")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, ParallelSearchEvidenceProvider)
+    assert provider.api_key == "parallel-key"
+    assert provider.mode == "basic"
+    assert provider.location == "us"
+    assert provider.max_chars_total == 6000
+    assert provider.timeout_seconds == 30.0
+
+
+def test_evidence_provider_from_env_falls_back_to_parallel_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "parallel_search")
+    monkeypatch.setenv("PARALLEL_API_KEY", "parallel-key")
+    monkeypatch.setenv("PARALLEL_SEARCH_MODE", "invalid")
+    monkeypatch.setenv("PARALLEL_SEARCH_MAX_CHARS_TOTAL", "-1")
+    monkeypatch.setenv("PARALLEL_SEARCH_TIMEOUT_SECONDS", "0")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, ParallelSearchEvidenceProvider)
+    assert provider.mode == "advanced"
+    assert provider.max_chars_total is None
+    assert provider.timeout_seconds == 30.0
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_without_parallel_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "parallel_search")
+    monkeypatch.delenv("PARALLEL_API_KEY", raising=False)
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
 
 
 def test_evidence_provider_from_env_uses_brave_search(monkeypatch: pytest.MonkeyPatch) -> None:
