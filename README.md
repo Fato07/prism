@@ -100,20 +100,51 @@ The sentinel is a paid public service: any external agent can pay $0.01 USDC and
 
 ---
 
+## Calibration Corpus
+
+The calibration corpus is the sentinel's evaluation ground truth — a local-first, deterministically split, immutably sealed dataset of labeled reasoning traces. It ships as a CLI in `packages/calibration-python/`.
+
+```bash
+uv run python -m prism_calibration.cli --help
+```
+
+**Key workflows:**
+
+1. **Build** — scaffold a new corpus with schema and split configuration
+2. **Harvest** — pull real traces from Neon → IPFS → normalize → hash-verify → write local rows
+3. **Label** — generate synthetic traces, mutations, or AI-prelabel existing rows (3 subcommands: `generate-synthetic`, `generate-mutations`, `prelabel`)
+4. **Freeze** — export an immutable snapshot (manifest.json + rows/ + .sealed marker)
+5. **Sync** — mirror the frozen export to Braintrust (datasets, review queue)
+6. **Eval** — run the sentinel against the corpus and score discrimination
+7. **Inspect** — examine corpus metadata, splits, and sealed milestones
+8. **Validate** — run regression assertions against sealed milestones (43/43 passed across 5 milestones)
+
+**Architecture — local-first:**
+
+- Local frozen exports are the **authoritative** data source
+- Braintrust is a **mirror and experiment surface** (datasets, experiments, review queue, runtime logs)
+- Deterministic split assignment via lineage-hash-v1 (no randomness, fully reproducible)
+- Holdout lockout: holdout rows are isolated from training/labeling and locked after freeze
+- Immutable sealed exports: once a milestone is sealed, its rows cannot be modified
+- Clean-replay regression: re-run eval on any sealed milestone and bit-compare to the original result
+
+---
+
 ## What's Open / What's Gated
 
 | Open | Gated (not in this repo) |
 |------|--------------------------|
-| ERC-8004 client & validator SDK scaffolding | Full calibration corpus (eval ground truth) |
-| Agent harness & trace generation pipeline | Production sentinel prompts (MIPROv2-optimized) |
-| Sample reasoning traces | HMAC seed material |
-| Dashboard (all 7 routes + wallet connection) | Circle Entity Secret & wallet private keys |
+| ERC-8004 client & validator SDK scaffolding | Production sentinel prompts (MIPROv2-optimized) |
+| Agent harness & trace generation pipeline | HMAC seed material |
+| Sample reasoning traces | Circle Entity Secret & wallet private keys |
+| Dashboard (all 7 routes + wallet connection) | |
 | Self-serve x402 validation page | |
 | Builder fees leaderboard | |
 | Contract addresses & ABIs | |
 | x402 middleware setup (dual facilitator mode) | |
 | DSPy `TraceAdversary` signature | |
 | Treasury module (USYC park/unpark) | |
+| Calibration CLI + schemas (8 commands, 149 tests) | |
 
 ---
 
@@ -370,7 +401,8 @@ cd apps/dashboard && pnpm test
 | Dashboard | 444 |
 | Sentinel | 118 |
 | Trader | 156 |
-| **Total** | **718** |
+| Calibration | 149 |
+| **Total** | **867** |
 
 ---
 
@@ -388,7 +420,8 @@ prism/
 │   ├── schemas-python/           # Pydantic v2 models (Trace, Verdict, Feedback)
 │   ├── schemas-typescript/       # Zod mirrors of Python schemas
 │   ├── arc-contracts/            # Contract addresses + ABIs
-│   └── builder-codes/           # HMAC-based builder code extraction from ERC-8004 agent IDs
+│   ├── builder-codes/           # HMAC-based builder code extraction from ERC-8004 agent IDs
+│   └── calibration-python/      # Calibration corpus CLI — build, harvest, label, freeze, sync, eval, inspect, validate
 ├── tests/                        # E2E pipeline integration
 ├── docs/                         # Architecture, demo script, traction log
 └── infra/                        # Circle setup, Arc CLI wrappers
