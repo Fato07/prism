@@ -49,6 +49,11 @@ from prism_calibration.lineage import (
     validate_lineage_integrity,
     validate_mutation_lineage,
 )
+from prism_calibration.prelabel import (
+    PrelabelError,
+    prelabel_summary,
+    run_prelabeling,
+)
 from prism_calibration.splits import build_deterministic_splits
 from prism_calibration.validation import (
     RowLoadError,
@@ -319,6 +324,25 @@ def _handle_label_generate_mutations(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_label_prelabel(args: argparse.Namespace) -> int:
+    """Apply normalized AI pre-labels and review routing to a local slice."""
+    root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
+    slice_name = str(args.slice_name)
+    try:
+        result = run_prelabeling(root=root, slice_name=slice_name)
+    except (PrelabelError, RowLoadError, LineageValidationError) as error:
+        _write_error(str(error))
+        return 1
+    except ValidationError as error:
+        _write_error("Schema validation failed while applying pre-labels:")
+        for message in format_validation_errors(error):
+            _write_error(f"- {message}")
+        return 1
+
+    _write_json(prelabel_summary(result))
+    return 0
+
+
 def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:
     """Return a handler for commands reserved by later mission milestones."""
 
@@ -394,6 +418,15 @@ def build_parser() -> argparse.ArgumentParser:
     generate_mutations.add_argument("--count", type=_positive_int, required=True)
     generate_mutations.add_argument("--seed", type=int, default=DEFAULT_LABEL_SEED)
     generate_mutations.set_defaults(handler=_handle_label_generate_mutations)
+
+    prelabel = label_subparsers.add_parser(
+        "prelabel",
+        help="Normalize AI rubric outputs and route rows for review.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    prelabel.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
+    prelabel.add_argument("--slice", dest="slice_name", required=True)
+    prelabel.set_defaults(handler=_handle_label_prelabel)
 
     freeze = subparsers.add_parser(
         "freeze",

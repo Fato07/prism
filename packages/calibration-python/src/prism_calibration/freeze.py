@@ -26,6 +26,7 @@ ROW_HASH_ALGORITHM: Literal["sha256:normalized-row-json-v1"] = (
     "sha256:normalized-row-json-v1"
 )
 SPLIT_NAMES = frozenset(cast(tuple[str, ...], get_args(SplitName)))
+TUNING_EXPORT_SLICES = frozenset({"pilot", "dev"})
 
 
 class FrozenExportError(ValueError):
@@ -134,6 +135,7 @@ def normalized_row_hash(row: CalibrationRow) -> str:
 def _selected_rows(root: Path, slice_name: SplitName) -> tuple[LoadedRow, ...]:
     """Load and select rows belonging to one local slice."""
     all_rows = load_corpus_rows(root, include_sample=True)
+    _validate_holdout_export_policy(all_rows, slice_name)
     validate_lineage_integrity(all_rows)
 
     if slice_name == "sample":
@@ -143,6 +145,38 @@ def _selected_rows(root: Path, slice_name: SplitName) -> tuple[LoadedRow, ...]:
         selected = [loaded for loaded in private_rows if loaded.row.split.name == slice_name]
 
     return tuple(sorted(selected, key=lambda loaded: loaded.row.row_id))
+
+
+def _validate_holdout_export_policy(
+    rows: tuple[LoadedRow, ...],
+    slice_name: SplitName,
+) -> None:
+    """Reject holdout lineages that are merged into tuning/dev exports."""
+    if slice_name not in TUNING_EXPORT_SLICES:
+        return
+
+    selected_lineages = {
+        loaded.row.provenance.lineage_id
+        for loaded in rows
+        if loaded.row.split.name == slice_name
+    }
+    if not selected_lineages:
+        return
+
+    for lineage_id in sorted(selected_lineages):
+        holdout_rows = sorted(
+            loaded.row.row_id
+            for loaded in rows
+            if loaded.row.split.name == "holdout"
+            and loaded.row.provenance.lineage_id == lineage_id
+        )
+        if holdout_rows:
+            joined_rows = ", ".join(holdout_rows)
+            raise FrozenExportError(
+                f"Holdout lineage '{lineage_id}' is locked for manual/eval only "
+                f"and cannot be merged into the {slice_name} tuning/dev export. "
+                f"Holdout rows: {joined_rows}"
+            )
 
 
 def _row_entry(row: CalibrationRow) -> FrozenRowManifest:

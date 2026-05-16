@@ -11,9 +11,19 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 SourceType = Literal["sample", "synthetic", "mutated", "real"]
 SplitName = Literal["sample", "pilot", "dev", "holdout", "canary"]
 ValidationStatus = Literal["validated", "unvalidated"]
+VerdictBand = Literal["REJECT", "WARN", "PASS", "ENDORSE"]
+ReviewDestination = Literal["manual_review", "auto_resolved"]
+ReviewRouteReason = Literal[
+    "low_confidence",
+    "label_disagreement",
+    "holdout_locked",
+    "high_confidence_consensus",
+    "needs_manual_review",
+]
 ReviewStatus = Literal[
     "unreviewed",
     "ai_labeled",
+    "ai_resolved",
     "manual_review",
     "human_reviewed",
     "approved",
@@ -102,6 +112,32 @@ class CorpusProvenance(BaseModel):
         return self
 
 
+class RubricPreLabel(BaseModel):
+    """Normalized Prism-compatible AI rubric output for one calibration row."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reasoning_quality: int = Field(ge=0, le=100)
+    evidence_quality: int = Field(ge=0, le=100)
+    calibration_quality: int = Field(ge=0, le=100)
+    verdict_band: VerdictBand
+    failure_tags: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+    model_family: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
+    labeled_at: datetime
+
+
+class ReviewRouting(BaseModel):
+    """Routing metadata that explains whether a row needs manual review."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    destination: ReviewDestination
+    route_reasons: list[ReviewRouteReason] = Field(default_factory=list)
+    routed_at: datetime
+
+
 class ReviewState(BaseModel):
     """Review metadata that proves the row has an explicit review state."""
 
@@ -110,6 +146,9 @@ class ReviewState(BaseModel):
     status: ReviewStatus
     rubric_version: str = Field(min_length=1)
     failure_tags: list[str] = Field(default_factory=list)
+    ai_labels: list[RubricPreLabel] = Field(default_factory=list)
+    canonical_label: RubricPreLabel | None = None
+    routing: ReviewRouting | None = None
     notes: str | None = None
     reviewer: str | None = None
     reviewed_at: datetime | None = None
