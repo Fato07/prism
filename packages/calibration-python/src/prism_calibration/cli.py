@@ -11,6 +11,13 @@ from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
+from prism_calibration.braintrust_sync import (
+    BraintrustSyncError,
+    pull_review_from_braintrust,
+    push_flagged_to_braintrust,
+    sync_pull_summary,
+    sync_push_summary,
+)
 from prism_calibration.freeze import (
     FrozenExportError,
     freeze_slice,
@@ -49,6 +56,7 @@ from prism_calibration.lineage import (
     validate_lineage_integrity,
     validate_mutation_lineage,
 )
+from prism_calibration.pilot import PilotBuildError, build_pilot_slice, pilot_build_summary
 from prism_calibration.prelabel import (
     PrelabelError,
     prelabel_summary,
@@ -113,6 +121,25 @@ def _handle_build(args: argparse.Namespace) -> int:
     """Bootstrap or validate the authoritative local corpus root."""
     root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
     seed = _namespace_int(args, "seed")
+    pilot_size: object = getattr(args, "pilot_size", None)
+
+    # Pilot build mode: create a mixed-source pilot slice
+    if pilot_size is not None:
+        if not isinstance(pilot_size, int) or pilot_size <= 0:
+            _write_error("--pilot-size must be a positive integer")
+            return 2
+        try:
+            result = build_pilot_slice(root=root, pilot_size=pilot_size, seed=seed)
+        except PilotBuildError as error:
+            _write_error(str(error))
+            return 1
+        except (RowLoadError, ValidationError, LineageValidationError) as error:
+            _write_error(f"Pilot build failed: {error}")
+            return 1
+        _write_json(pilot_build_summary(result))
+        return 0
+
+    # Standard build mode: bootstrap and apply deterministic splits
     layout = bootstrap_corpus_root(root)
     try:
         split_manifest = build_deterministic_splits(layout.root, seed=seed)
@@ -343,6 +370,40 @@ def _handle_label_prelabel(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_sync(args: argparse.Namespace) -> int:
+    """Sync local calibration rows with Braintrust for review round-trip."""
+    root = _namespace_path(args, "root") or DEFAULT_CORPUS_ROOT
+    slice_name = getattr(args, "slice_name", None)
+    pull_review = bool(getattr(args, "pull_review", False))
+
+    if slice_name is None:
+        _write_error("--slice is required for sync operations")
+        return 2
+
+    try:
+        if pull_review:
+            # Pull reviewed decisions from Braintrust and sync back locally
+            pull_result = pull_review_from_braintrust(root=root, slice_name=slice_name)
+            _write_json(sync_pull_summary(pull_result))
+        else:
+            # Push flagged rows to Braintrust for review
+            push_result = push_flagged_to_braintrust(root=root, slice_name=slice_name)
+            _write_json(sync_push_summary(push_result))
+    except BraintrustSyncError as error:
+        _write_error(str(error))
+        return 1
+    except (RowLoadError, LineageValidationError) as error:
+        _write_error(str(error))
+        return 1
+    except ValidationError as error:
+        _write_error("Schema validation failed while syncing:")
+        for message in format_validation_errors(error):
+            _write_error(f"- {message}")
+        return 1
+
+    return 0
+
+
 def _deferred_handler(command_name: str, milestone: str) -> CommandHandler:
     """Return a handler for commands reserved by later mission milestones."""
 
@@ -375,6 +436,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     build.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
     build.add_argument("--seed", type=int, default=42)
+    build.add_argument("--pilot-size", type=int, default=None, metavar="N",
+                       help="Build a mixed-source pilot slice of N rows instead of standard build.")
     build.set_defaults(handler=_handle_build)
 
     harvest = subparsers.add_parser(
@@ -439,13 +502,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync = subparsers.add_parser(
         "sync",
-        help="Sync a frozen local slice to Braintrust while preserving local authority.",
+        help="Sync flagged rows to Braintrust review and pull reviewed decisions back.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     sync.add_argument("--root", type=Path, default=DEFAULT_CORPUS_ROOT)
-    sync.add_argument("--slice", dest="slice_name")
-    sync.add_argument("--pull-review", action="store_true")
-    sync.set_defaults(handler=_deferred_handler("sync", "braintrust-integration"))
+    sync.add_argument("--slice", dest="slice_name", required=True)
+    sync.add_argument("--pull-review", action="store_true",
+                      help="Pull reviewed decisions from Braintrust and sync back to local rows.")
+    sync.set_defaults(handler=_handle_sync)
 
     eval_command = subparsers.add_parser(
         "eval",
