@@ -337,11 +337,11 @@ async def _run_validation(
     trace_id = str(trace_data.get("trace_id", "")) if isinstance(trace_data, dict) else ""
     trace_json_str = json.dumps(trace_data)
 
-    from sentinel.adversarial import generate_verdict
+    from sentinel.resolution_loop import generate_verdict_with_resolution
 
     sentinel_agent_id = _sentinel_agent_id()
     try:
-        verdict: SentinelVerdict = await generate_verdict(
+        verdict: SentinelVerdict = await generate_verdict_with_resolution(
             trace_json=trace_json_str,
             request_hash=request_hash,
             trace_id=trace_id,
@@ -353,7 +353,7 @@ async def _run_validation(
 
     try:
         pinata = PinataClient()
-        ipfs_cid = await pinata.pin_json(verdict.model_dump(mode="json"))
+        ipfs_cid = await pinata.pin_json(verdict.model_dump(mode="json", exclude_defaults=True))
         await pinata.close()
     except Exception as exc:
         logger.error("mcp_ipfs_pin_failed", error=str(exc))

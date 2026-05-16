@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import structlog
 
-from sentinel.adversarial import generate_verdict
 from sentinel.ipfs import PinataClient
 from sentinel.persistence import persist_verdict, update_verdict_response_uri
+from sentinel.resolution_loop import generate_verdict_with_resolution
 
 logger = structlog.get_logger("prism.sentinel.validation")
 
@@ -45,7 +45,7 @@ async def validate_trace_full(
 
     sentinel_agent_id = int(os.environ.get("SENTINEL_AGENT_ID", "2"))
 
-    verdict = await generate_verdict(
+    verdict = await generate_verdict_with_resolution(
         trace_json=trace_json_str,
         request_hash=request_hash,
         trace_id=trace_id,
@@ -53,7 +53,7 @@ async def validate_trace_full(
     )
 
     # Pin verdict to IPFS
-    ipfs_cid = await pinata.pin_json(verdict.model_dump(mode="json"))
+    ipfs_cid = await pinata.pin_json(verdict.model_dump(mode="json", exclude_defaults=True))
 
     # Persist to DB
     persist_verdict(verdict)

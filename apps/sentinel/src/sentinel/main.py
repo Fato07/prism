@@ -30,13 +30,10 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from prism_mcp.server import build_mcp_server
 from prism_schemas.db import run_migration
+from prism_schemas.startup import startup_check
 from prism_schemas.verdict import SentinelVerdict
 from pydantic import BaseModel, Field
-from prism_schemas.startup import startup_check
 
-from sentinel.adversarial import (
-    generate_verdict,
-)
 from sentinel.ipfs import PinataClient
 from sentinel.persistence import (
     ensure_agent_row,
@@ -44,6 +41,7 @@ from sentinel.persistence import (
     update_validation_tx_hash,
     update_verdict_response_uri,
 )
+from sentinel.resolution_loop import generate_verdict_with_resolution as generate_verdict
 from sentinel.x402_middleware import (
     assert_bypass_safe_at_startup,
     is_x402_bypass_enabled,
@@ -225,7 +223,7 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
     ipfs_cid: str
     try:
         pinata = PinataClient()
-        ipfs_cid = await pinata.pin_json(verdict.model_dump(mode="json"))
+        ipfs_cid = await pinata.pin_json(verdict.model_dump(mode="json", exclude_defaults=True))
         await pinata.close()
     except Exception as exc:
         logger.error("ipfs_pin_failed", error=str(exc))

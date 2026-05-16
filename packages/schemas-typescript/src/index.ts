@@ -12,9 +12,21 @@ export {
 } from "./trace.js";
 
 export {
+  AdversarialChallengeSchema,
+  AdversarialResolutionMetadataSchema,
+  ChallengeResolutionSchema,
+  ChallengeResolutionStatusSchema,
+  ChallengeSeveritySchema,
+  ChallengeTypeSchema,
   DialogueMessageSchema,
+  ResolutionRoundSchema,
+  ResolutionStopReasonSchema,
   SentinelVerdictSchema,
+  type AdversarialChallenge,
+  type AdversarialResolutionMetadata,
+  type ChallengeResolution,
   type DialogueMessage,
+  type ResolutionRound,
   type SentinelVerdict,
 } from "./verdict.js";
 

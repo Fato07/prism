@@ -1,5 +1,7 @@
 """Schema validation tests."""
 
+import hashlib
+import json
 from datetime import datetime, timezone
 
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
@@ -61,3 +63,30 @@ def test_sentinel_verdict_validates():
     )
     assert verdict.content_hash() is not None
     assert verdict.verdict_label == "PASS"
+
+
+def test_old_sentinel_verdict_hash_omits_new_default_fields():
+    old_verdict_json = {
+        "request_hash": "0xdeadbeef",
+        "trace_id": "test-001",
+        "sentinel_agent_id": 2,
+        "evidence_challenges": ["coingecko data may be stale"],
+        "thesis_challenges": ["regulatory risk underweighted"],
+        "calibration_critique": "60% seems reasonable given evidence.",
+        "verdict_score": 72,
+        "verdict_label": "PASS",
+        "dialogue_messages": [
+            {"role": "sentinel", "content": "Challenge: source reliability"}
+        ],
+        "model_family": "openai-gpt",
+        "model_name": "gpt-4o-mini",
+        "created_at": "2026-05-16T00:00:00Z",
+    }
+    expected = hashlib.sha256(
+        json.dumps(old_verdict_json, sort_keys=True).encode()
+    ).digest()
+
+    verdict = SentinelVerdict.model_validate(old_verdict_json)
+
+    assert verdict.structured_challenges == []
+    assert verdict.content_hash() == expected

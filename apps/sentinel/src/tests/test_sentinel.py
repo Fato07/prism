@@ -456,7 +456,10 @@ class TestVerdictContentHash:
         verdict = _make_verdict()
         computed_hash = verdict.content_hash()
 
-        canonical = json.dumps(verdict.model_dump(mode="json"), sort_keys=True)
+        canonical = json.dumps(
+            verdict.model_dump(mode="json", exclude_defaults=True),
+            sort_keys=True,
+        )
         expected_hash = hashlib.sha256(canonical.encode()).digest()
 
         assert computed_hash == expected_hash

@@ -129,6 +129,8 @@ export function SentinelPanel({
     ? `${ipfsGateway}/${verdictCid}`
     : undefined;
   const tone = labelTone(verdict.verdict_label);
+  const structuredChallenges = verdict.structured_challenges ?? [];
+  const resolutionMetadata = verdict.resolution_metadata ?? null;
 
   return (
     <>
@@ -172,6 +174,35 @@ export function SentinelPanel({
             </Pill>
           </div>
         </div>
+
+        {/* Structured issue ledger */}
+        {structuredChallenges.length > 0 && (
+          <section>
+            <Eyebrow icon={Target}>
+              Issue ledger · {structuredChallenges.length}
+            </Eyebrow>
+            {resolutionMetadata && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 px-3 py-2 text-mono text-[10px] text-fg-faint">
+                <span>
+                  confidence · <span className="text-fg-muted">{Math.round(resolutionMetadata.confidence * 100)}%</span>
+                </span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>
+                  blockers · <span className="text-fg-muted">{resolutionMetadata.unresolved_blocking_count}</span>
+                </span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>
+                  stop · <span className="text-fg-muted">{resolutionMetadata.stop_reason}</span>
+                </span>
+              </div>
+            )}
+            <ol className="space-y-2.5">
+              {structuredChallenges.map((challenge) => (
+                <StructuredChallengeItem key={challenge.id} challenge={challenge} />
+              ))}
+            </ol>
+          </section>
+        )}
 
         {/* Evidence challenges */}
         {verdict.evidence_challenges.length > 0 && (
@@ -286,6 +317,57 @@ function Eyebrow({
       <Icon className="h-3 w-3" strokeWidth={2} />
       {children}
     </h4>
+  );
+}
+
+type StructuredChallenge = NonNullable<SentinelVerdict["structured_challenges"]>[number];
+
+function StructuredChallengeItem({ challenge }: { challenge: StructuredChallenge }) {
+  const accent =
+    challenge.severity === "blocking"
+      ? "var(--color-danger)"
+      : challenge.severity === "material"
+        ? "var(--color-warning)"
+        : "var(--color-fg-muted)";
+
+  return (
+    <li
+      className="rounded-lg border p-3.5"
+      style={{
+        borderColor: `color-mix(in oklch, ${accent} 25%, var(--color-border))`,
+        backgroundColor: `color-mix(in oklch, ${accent} 5%, transparent)`,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 inline-flex min-w-16 justify-center rounded px-1.5 py-1 text-mono text-[9px] font-semibold uppercase"
+          style={{
+            color: accent,
+            backgroundColor: `color-mix(in oklch, ${accent} 15%, transparent)`,
+          }}
+        >
+          {challenge.severity}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2 text-mono text-[10px] text-fg-faint">
+            <span>{challenge.id}</span>
+            <span>·</span>
+            <span>{challenge.type}</span>
+            <span>·</span>
+            <span>{challenge.resolution_status}</span>
+            {challenge.blocking_pass && (
+              <span className="rounded bg-[var(--color-danger)]/15 px-1.5 py-0.5 text-[var(--color-danger)]">
+                blocks PASS
+              </span>
+            )}
+          </div>
+          <p className="text-sm leading-relaxed text-fg">{challenge.question}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-fg-faint">
+            Required: {challenge.required_resolution}
+          </p>
+        </div>
+      </div>
+    </li>
   );
 }
 

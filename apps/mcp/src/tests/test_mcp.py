@@ -118,7 +118,7 @@ def _patches_for_sentinel_pipeline(
     # The PinataClient is imported inside `_run_validation`, so the patch
     # below targets the *sentinel* module which is where the symbol lives.
     sentinel_pinata_patch = patch("sentinel.ipfs.PinataClient")
-    generate_patch = patch("sentinel.adversarial.generate_verdict")
+    generate_patch = patch("sentinel.resolution_loop.generate_verdict")
     persist_patch = patch("sentinel.persistence.persist_verdict")
     update_uri_patch = patch("sentinel.persistence.update_verdict_response_uri")
 
@@ -272,7 +272,7 @@ class TestStructuredErrors:
         from prism_mcp.server import build_mcp_server
 
         sentinel_pinata_patch = patch("sentinel.ipfs.PinataClient")
-        generate_patch = patch("sentinel.adversarial.generate_verdict")
+        generate_patch = patch("sentinel.resolution_loop.generate_verdict")
         persist_patch = patch("sentinel.persistence.persist_verdict")
 
         sentinel_pinata_cls = sentinel_pinata_patch.start()

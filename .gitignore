@@ -64,3 +64,6 @@ packages/research-*.md
 # Pitch-video rendered output (regenerate with pnpm render)
 apps/pitch-video/out/*.mp4
 apps/pitch-video/out/*.webm
+
+# Local agent loop state
+.ralph/

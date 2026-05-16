@@ -12,6 +12,78 @@ export const DialogueMessageSchema = z.object({
 
 export type DialogueMessage = z.infer<typeof DialogueMessageSchema>;
 
+export const ChallengeTypeSchema = z.enum([
+  "temporal",
+  "source_quality",
+  "relevance",
+  "calibration",
+  "logic",
+  "market_structure",
+  "risk",
+]);
+
+export const ChallengeSeveritySchema = z.enum(["minor", "material", "blocking"]);
+
+export const ChallengeResolutionStatusSchema = z.enum([
+  "open",
+  "answered",
+  "resolved",
+  "conceded",
+  "superseded",
+]);
+
+export const ResolutionStopReasonSchema = z.enum([
+  "single_shot",
+  "confidence_reached",
+  "max_rounds",
+  "unresolved_blockers",
+  "insufficient_evidence",
+]);
+
+export const AdversarialChallengeSchema = z.object({
+  id: z.string(),
+  type: ChallengeTypeSchema,
+  severity: ChallengeSeveritySchema,
+  question: z.string(),
+  required_resolution: z.string(),
+  blocking_pass: z.boolean().default(false),
+  claim_ref: z.string().nullable().optional(),
+  resolution_status: ChallengeResolutionStatusSchema.default("open"),
+});
+
+export type AdversarialChallenge = z.infer<typeof AdversarialChallengeSchema>;
+
+export const ChallengeResolutionSchema = z.object({
+  challenge_id: z.string(),
+  status: ChallengeResolutionStatusSchema,
+  responder: z.enum(["trader", "sentinel", "evidence_tool", "system"]),
+  response: z.string(),
+  created_at: z.string(),
+});
+
+export type ChallengeResolution = z.infer<typeof ChallengeResolutionSchema>;
+
+export const ResolutionRoundSchema = z.object({
+  round_index: z.number().int().min(0),
+  opened_challenge_ids: z.array(z.string()),
+  resolved_challenge_ids: z.array(z.string()),
+  prompt: z.string(),
+  response: z.string(),
+  created_at: z.string(),
+});
+
+export type ResolutionRound = z.infer<typeof ResolutionRoundSchema>;
+
+export const AdversarialResolutionMetadataSchema = z.object({
+  confidence: z.number().min(0).max(1),
+  stop_reason: ResolutionStopReasonSchema,
+  unresolved_blocking_count: z.number().int().min(0),
+  unresolved_material_count: z.number().int().min(0),
+  max_rounds: z.number().int().min(0),
+});
+
+export type AdversarialResolutionMetadata = z.infer<typeof AdversarialResolutionMetadataSchema>;
+
 /** Adversarial validation verdict from the sentinel. */
 export const SentinelVerdictSchema = z.object({
   request_hash: z.string(),
@@ -26,6 +98,11 @@ export const SentinelVerdictSchema = z.object({
   verdict_label: z.enum(["REJECT", "WARN", "PASS", "ENDORSE"]),
 
   dialogue_messages: z.array(DialogueMessageSchema),
+
+  structured_challenges: z.array(AdversarialChallengeSchema).default([]),
+  challenge_resolutions: z.array(ChallengeResolutionSchema).default([]),
+  resolution_rounds: z.array(ResolutionRoundSchema).default([]),
+  resolution_metadata: AdversarialResolutionMetadataSchema.nullable().optional(),
 
   model_family: z.enum(["anthropic-claude", "openai-gpt"]),
   model_name: z.string(),

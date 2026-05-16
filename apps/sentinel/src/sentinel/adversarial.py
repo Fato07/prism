@@ -15,6 +15,8 @@ import dspy
 import structlog
 from prism_schemas.verdict import SentinelVerdict
 
+from sentinel.issues import apply_unresolved_issue_caps, build_structured_challenges
+
 logger = structlog.get_logger("prism.sentinel.adversarial")
 
 # Default model — overridden by SENTINEL_MODEL env var.
@@ -271,6 +273,7 @@ async def generate_verdict(
     request_hash: str = "",
     trace_id: str = "",
     sentinel_agent_id: int = 0,
+    apply_issue_caps: bool = True,
 ) -> SentinelVerdict:
     """Generate an adversarial SentinelVerdict from a trace.
 
@@ -278,13 +281,15 @@ async def generate_verdict(
     1. Configures DSPy with the sentinel's GPT model
     2. Runs ChainOfThought adversarial validation
     3. Parses and enforces constraints (min challenges, label/score consistency)
-    4. Returns a validated SentinelVerdict
+    4. Optionally applies issue-ledger score caps for single-shot verdicts
+    5. Returns a validated SentinelVerdict
 
     Args:
         trace_json: The complete trading trace JSON string
         request_hash: Hash of the validation request
         trace_id: ID of the trace being validated
         sentinel_agent_id: ID of the sentinel agent
+        apply_issue_caps: Whether unresolved issue caps should be applied immediately
 
     Returns:
         A complete SentinelVerdict with all required fields.
@@ -348,6 +353,21 @@ async def generate_verdict(
             "probability calibration accuracy in this trace."
         )
 
+    structured_challenges = build_structured_challenges(
+        trace_json=trace_json,
+        evidence_challenges=evidence_challenges,
+        thesis_challenges=thesis_challenges,
+        calibration_critique=calibration_critique,
+    )
+    resolution_metadata = None
+    if apply_issue_caps:
+        score, label, resolution_metadata = apply_unresolved_issue_caps(
+            score=score,
+            label=label,
+            challenges=structured_challenges,
+            max_rounds=0,
+        )
+
     # Build the SentinelVerdict
     verdict = SentinelVerdict(
         request_hash=request_hash,
@@ -359,6 +379,8 @@ async def generate_verdict(
         verdict_score=score,
         verdict_label=label,  # type: ignore[arg-type]
         dialogue_messages=dialogue_messages,
+        structured_challenges=structured_challenges,
+        resolution_metadata=resolution_metadata,
         model_family="openai-gpt",
         model_name=_model_name_short(),
         created_at=datetime.now(UTC),
