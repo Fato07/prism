@@ -27,6 +27,7 @@ ROW_HASH_ALGORITHM: Literal["sha256:normalized-row-json-v1"] = (
 )
 SPLIT_NAMES = frozenset(cast(tuple[str, ...], get_args(SplitName)))
 TUNING_EXPORT_SLICES = frozenset({"pilot", "dev"})
+SEAL_FILE_NAME: Literal[".sealed"] = ".sealed"
 
 
 class FrozenExportError(ValueError):
@@ -278,6 +279,67 @@ def build_frozen_manifest(
     )
 
 
+def _write_seal(export_dir: Path, manifest: FrozenExportManifest) -> Path:
+    """Write a tamper-evident seal marker into a frozen export directory.
+
+    The seal records the manifest hash and export identity so that later
+    live-corpus edits or direct file tampering can be detected.  Once the
+    seal is written, the frozen export is considered immutable.
+    """
+    manifest_path = export_dir / "manifest.json"
+    manifest_hash = _hash_bytes(manifest_path.read_bytes())
+    seal_payload: dict[str, Any] = {
+        "export_id": manifest.export_id,
+        "manifest_hash": manifest_hash,
+        "row_count": manifest.row_count,
+        "row_ids": manifest.row_ids,
+    }
+    seal_path = export_dir / SEAL_FILE_NAME
+    seal_path.write_text(
+        json.dumps(seal_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return seal_path
+
+
+def _verify_seal(export_dir: Path, manifest: FrozenExportManifest) -> None:
+    """Verify that a frozen export's seal marker matches the current manifest.
+
+    Raises ``FrozenExportError`` if the seal is missing or tampered.
+    """
+    seal_path = export_dir / SEAL_FILE_NAME
+    if not seal_path.exists():
+        raise FrozenExportError(
+            f"{export_dir}: frozen export is missing a {SEAL_FILE_NAME} marker; "
+            "cannot verify immutability"
+        )
+    try:
+        seal_payload = json.loads(seal_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        raise FrozenExportError(
+            f"{seal_path}: unable to read seal marker: {error}"
+        ) from error
+
+    manifest_path = export_dir / "manifest.json"
+    current_manifest_hash = _hash_bytes(manifest_path.read_bytes())
+
+    sealed_manifest_hash = seal_payload.get("manifest_hash")
+    if sealed_manifest_hash != current_manifest_hash:
+        raise FrozenExportError(
+            f"{export_dir}: seal manifest_hash {sealed_manifest_hash} does not match "
+            f"current manifest hash {current_manifest_hash}; frozen export may have "
+            "been tampered with"
+        )
+
+    sealed_export_id = seal_payload.get("export_id")
+    if sealed_export_id != manifest.export_id:
+        raise FrozenExportError(
+            f"{export_dir}: seal export_id {sealed_export_id} does not match "
+            f"manifest export_id {manifest.export_id}; frozen export may have "
+            "been tampered with"
+        )
+
+
 def freeze_slice(root: Path, slice_name: SplitName) -> FrozenExport:
     """Freeze a named local slice into a portable export directory."""
     layout = bootstrap_corpus_root(root)
@@ -294,6 +356,10 @@ def freeze_slice(root: Path, slice_name: SplitName) -> FrozenExport:
 
     manifest_path = export_dir / "manifest.json"
     manifest_path.write_bytes(_manifest_bytes(manifest))
+
+    # Write the immutability seal after all files are in place.
+    _write_seal(export_dir, manifest)
+
     return FrozenExport(export_dir=export_dir, manifest_path=manifest_path, manifest=manifest)
 
 
@@ -396,6 +462,7 @@ def validate_frozen_export(path: Path) -> FrozenValidation:
     manifest = _load_manifest(manifest_path)
     _validate_manifest_counts(manifest)
     _validate_identity(manifest)
+    _verify_seal(export_dir, manifest)
 
     row_hashes: dict[str, str] = {}
     for entry in manifest.rows:
