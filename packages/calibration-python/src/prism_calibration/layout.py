@@ -11,6 +11,19 @@ SAMPLE_DIR_NAME = "sample"
 SAMPLE_SUBDIR_NAMES = ("rows",)
 PRIVATE_DIR_NAMES = ("rows", "manifests", "frozen", "quarantine", "state")
 
+# Authoritative .gitignore content for corpus roots.
+# Blanket ignore everything, then exempt the publishable sample subtree
+# and the .gitignore file itself so the directory stays visible to git.
+_CORPUS_ROOT_GITIGNORE = """\
+# Private calibration artifacts are gated local state.
+*
+
+# Publishable fixtures live here.
+!.gitignore
+!sample/
+!sample/**
+"""
+
 
 @dataclass(frozen=True)
 class CorpusLayout:
@@ -44,14 +57,36 @@ def resolve_root(root: str | Path | None) -> Path:
     return Path(root) if root is not None else DEFAULT_CORPUS_ROOT
 
 
+def _write_corpus_gitignore(root: Path) -> None:
+    """Write the authoritative .gitignore into the corpus root.
+
+    Idempotent: if the file already exists with the expected content,
+    no write is performed.  If it exists with different content, it is
+    overwritten so the boundary rules remain consistent.
+    """
+    gitignore_path = root / ".gitignore"
+    if gitignore_path.is_file():
+        existing = gitignore_path.read_text(encoding="utf-8")
+        if existing == _CORPUS_ROOT_GITIGNORE:
+            return
+    gitignore_path.write_text(_CORPUS_ROOT_GITIGNORE, encoding="utf-8")
+
+
 def bootstrap_corpus_root(root: str | Path | None = None) -> CorpusLayout:
-    """Create the local corpus root with publishable and gated subtrees."""
+    """Create the local corpus root with publishable and gated subtrees.
+
+    Also writes a ``.gitignore`` into the root so that private corpus
+    artifacts (rows, manifests, frozen exports, quarantine, state) stay
+    local while the publishable ``sample/`` subtree remains trackable.
+    This protects non-default corpus locations from leaking private rows.
+    """
     layout = CorpusLayout(root=resolve_root(root))
     layout.sample_dir.mkdir(parents=True, exist_ok=True)
     for directory in layout.sample_dirs:
         directory.mkdir(parents=True, exist_ok=True)
     for directory in layout.private_dirs:
         directory.mkdir(parents=True, exist_ok=True)
+    _write_corpus_gitignore(layout.root)
     return layout
 
 
