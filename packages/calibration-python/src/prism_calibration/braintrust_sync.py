@@ -92,26 +92,30 @@ class SyncSliceResult:
 
 
 def _review_context(row: CalibrationRow) -> dict[str, Any]:
-    """Build the review context payload for one flagged row."""
+    """Build the review context payload for one flagged row.
+
+    The context surfaces the six fields required for balanced human review
+    (VAL-BT-006): source type, lineage, AI label, confidence, route reason,
+    and holdout status.  Each field appears at the top level so that
+    Braintrust review UI columns surface them without nested drilling.
+    """
     canonical = row.review.canonical_label
     routing = row.review.routing
 
-    context: dict[str, Any] = {
-        "row_id": row.row_id,
-        "source_type": row.provenance.source_type,
+    # Structured lineage: always includes lineage_id; mutated rows
+    # also carry parent_row_id and mutation_type for full provenance.
+    lineage: dict[str, Any] = {
         "lineage_id": row.provenance.lineage_id,
-        "split": row.split.name,
-        "failure_tags": row.review.failure_tags,
-        "route_reasons": list(routing.route_reasons) if routing else [],
-        "holdout_status": row.split.name == "holdout",
     }
-
     if row.provenance.source_type == "mutated":
-        context["parent_row_id"] = row.provenance.parent_row_id
-        context["mutation_type"] = row.provenance.mutation_type
+        lineage["parent_row_id"] = row.provenance.parent_row_id
+        lineage["mutation_type"] = row.provenance.mutation_type
 
+    # AI label: full rubric breakdown for the reviewer, or null when
+    # no canonical label exists (e.g. unreviewed rows without prelabels).
+    ai_label: dict[str, Any] | None = None
     if canonical is not None:
-        context["ai_label"] = {
+        ai_label = {
             "verdict_band": canonical.verdict_band,
             "reasoning_quality": canonical.reasoning_quality,
             "evidence_quality": canonical.evidence_quality,
@@ -119,6 +123,21 @@ def _review_context(row: CalibrationRow) -> dict[str, Any]:
             "failure_tags": canonical.failure_tags,
             "confidence": canonical.confidence,
         }
+
+    context: dict[str, Any] = {
+        # VAL-BT-006 required fields (top-level for UI visibility)
+        "row_id": row.row_id,
+        "source_type": row.provenance.source_type,
+        "lineage": lineage,
+        "ai_label": ai_label,
+        "confidence": canonical.confidence if canonical is not None else 0.0,
+        "route_reasons": list(routing.route_reasons) if routing else [],
+        "holdout_status": row.split.name == "holdout",
+        # Supporting context
+        "split": row.split.name,
+        "failure_tags": row.review.failure_tags,
+        "review_status": row.review.status,
+    }
 
     return context
 
@@ -139,11 +158,17 @@ def _ai_suggestion(row: CalibrationRow) -> dict[str, Any] | None:
 
 
 def _review_metadata(row: CalibrationRow) -> dict[str, Any]:
-    """Return metadata for the Braintrust record."""
+    """Return metadata for the Braintrust record.
+
+    Carries the same VAL-BT-006 context fields as metadata so that
+    CLI-visible state and Braintrust record metadata agree on the
+    review-surface context (VAL-BT-008 parity).
+    """
     return {
         "confidence": row.review.canonical_label.confidence if row.review.canonical_label else 0.0,
         "route_reasons": list(row.review.routing.route_reasons) if row.review.routing else [],
         "source_type": row.provenance.source_type,
+        "holdout_status": row.split.name == "holdout",
         "original_status": row.review.status,
     }
 
@@ -570,6 +595,91 @@ def push_flagged_to_braintrust(
         skipped_row_ids=skipped_row_ids,
         manifest_path=manifest_path,
     )
+
+
+@dataclass(frozen=True)
+class PublishReviewResult:
+    """Summary of a publish-review operation (freeze + push flagged rows)."""
+
+    slice_name: str
+    dataset_name: str
+    dataset_id: str
+    pushed_count: int
+    pushed_row_ids: list[str]
+    skipped_row_ids: list[str]
+    manifest_path: Path
+    export_id: str | None
+    freeze_skipped: bool
+
+
+def publish_review(
+    *,
+    root: Path,
+    slice_name: str,
+) -> PublishReviewResult:
+    """Freeze the slice (if needed) and push flagged rows to Braintrust review.
+
+    This is a convenience operation that combines ``sync --slice <name>``
+    (to ensure a frozen export exists) with ``sync --slice <name>
+    --push-review`` (to surface flagged cases in the review queue).  The
+    resulting review dataset rows carry the full VAL-BT-006 context:
+    source type, lineage, AI label, confidence, route reason, and holdout
+    status.
+    """
+    from prism_calibration.freeze import freeze_slice
+    from prism_calibration.models import SplitName
+
+    layout = bootstrap_corpus_root(root)
+
+    # Ensure a frozen export exists so review rows can be traced back
+    freeze_skipped = False
+    export_id: str | None = None
+    found = _find_frozen_export(layout.root, slice_name)
+    if found is not None:
+        _export_dir, manifest_path = found
+        from prism_calibration.freeze import _load_manifest
+
+        frozen_manifest = _load_manifest(manifest_path)
+        if frozen_manifest.row_count > 0:
+            freeze_skipped = True
+            export_id = frozen_manifest.export_id
+
+    if not freeze_skipped:
+        slice_typed: SplitName = slice_name  # type: ignore[assignment]
+        export = freeze_slice(layout.root, slice_typed)
+        export_id = export.manifest.export_id
+
+    # Push flagged rows to the review dataset
+    push_result = push_flagged_to_braintrust(root=root, slice_name=slice_name)
+
+    return PublishReviewResult(
+        slice_name=slice_name,
+        dataset_name=push_result.dataset_name,
+        dataset_id=push_result.dataset_id,
+        pushed_count=push_result.pushed_count,
+        pushed_row_ids=push_result.pushed_row_ids,
+        skipped_row_ids=push_result.skipped_row_ids,
+        manifest_path=push_result.manifest_path,
+        export_id=export_id,
+        freeze_skipped=freeze_skipped,
+    )
+
+
+def publish_review_summary(result: PublishReviewResult) -> dict[str, Any]:
+    """Return a machine-readable CLI summary for a publish-review operation."""
+    return {
+        "authority": "local",
+        "dataset_id": result.dataset_id,
+        "dataset_name": result.dataset_name,
+        "export_id": result.export_id,
+        "freeze_skipped": result.freeze_skipped,
+        "manifest_path": str(result.manifest_path),
+        "operation": "publish-review",
+        "pushed_count": result.pushed_count,
+        "pushed_row_ids": sorted(result.pushed_row_ids),
+        "skipped_row_ids": sorted(result.skipped_row_ids),
+        "slice": result.slice_name,
+    }
 
 
 def _parse_review_decision(

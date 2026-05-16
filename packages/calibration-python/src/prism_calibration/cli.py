@@ -13,6 +13,8 @@ from pydantic import ValidationError
 
 from prism_calibration.braintrust_sync import (
     BraintrustSyncError,
+    publish_review,
+    publish_review_summary,
     pull_review_from_braintrust,
     push_flagged_to_braintrust,
     sync_pull_summary,
@@ -383,13 +385,18 @@ def _handle_sync(args: argparse.Namespace) -> int:
     slice_name = getattr(args, "slice_name", None)
     pull_review = bool(getattr(args, "pull_review", False))
     push_review = bool(getattr(args, "push_review", False))
+    publish_review_flag = bool(getattr(args, "publish_review", False))
 
     if slice_name is None:
         _write_error("--slice is required for sync operations")
         return 2
 
     try:
-        if pull_review:
+        if publish_review_flag:
+            # Freeze (if needed) + push flagged rows to Braintrust review queue
+            result = publish_review(root=root, slice_name=slice_name)
+            _write_json(publish_review_summary(result))
+        elif pull_review:
             # Pull reviewed decisions from Braintrust and sync back locally
             pull_result = pull_review_from_braintrust(root=root, slice_name=slice_name)
             _write_json(sync_pull_summary(pull_result))
@@ -536,6 +543,9 @@ def build_parser() -> argparse.ArgumentParser:
                       help="Push flagged rows to the Braintrust review dataset.")
     sync.add_argument("--pull-review", action="store_true",
                       help="Pull reviewed decisions from Braintrust and sync back to local rows.")
+    sync.add_argument("--publish-review", action="store_true",
+                      help=("Freeze slice (if needed) and push flagged rows "
+                            "to the Braintrust review queue."))
     sync.set_defaults(handler=_handle_sync)
 
     eval_command = subparsers.add_parser(
