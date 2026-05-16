@@ -53,11 +53,9 @@ Total user-visible time: under 30 seconds from clicking Validate to landing on t
 
 ## Why this matters
 
-This is the loop the hackathon judges said they wanted to see:
+This is the full public loop Prism is designed to make verifiable.
 
-> "Real users, real transactions, real volume during the event window. Great founders ship and get users in two weeks."
-
-Up to this point Prism's traction was internally generated traces (the trader auto-pipeline), one external x402 call from our own demo client (`scripts/call_prism_sentinel.py`), and a couple of paper trades. This receipt is qualitatively different: a human used the public product, paid stablecoin into the system, and got a verifiable on-chain settlement plus an adversarial verdict back.
+Up to this point Prism's activity was internally generated traces (the trader auto-pipeline), one external x402 call from our own demo client (`scripts/call_prism_sentinel.py`), and a couple of paper trades. This receipt is qualitatively different: a human used the public product, paid stablecoin into the system, and got a verifiable on-chain settlement plus an adversarial verdict back.
 
 It also closes the **self-serve** loop:
 
@@ -89,9 +87,8 @@ This run was the forcing function for two real fixes that were merged the same h
 
 ---
 
-## What this unlocks for the submission
+## What this unlocks
 
-- A receipt we can cite in `arc-canteen update traction` under RFB 02 and RFB 06
 - A real number for the "active users" traction metric: 1, going up
 - Concrete demo footage for the pitch video (the connect → fund → submit → verdict loop is the entire elevator pitch)
 - Validation of the x402 self-serve thesis without needing custom Solidity, custodial accounts, or any pre-shared credentials

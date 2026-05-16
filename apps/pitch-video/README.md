@@ -58,10 +58,10 @@ pnpm render --props='{"operatorVideoSrc":"operator.mp4","tractionNumbers":{"verd
 | 0–10s | **Hook** | "Autonomous AI agents are about to trade billions. Nobody audits their reasoning. I built Prism." |
 | 10–25s | **Problem** | Lucky bad reasoning → high score. Brilliant reasoning → no credit. ERC-8004 has a validation slot — nobody filled it. |
 | 25–45s | **Two-Agent Solution** | Trader (Claude / Mirascope) generates Trading-R1 trace. Sentinel (GPT / DSPy) adversarially challenges. Cross-family pressure catches family-correlated failures. |
-| 45–60s | **On-Chain Proof** | Every dialogue anchored on Arc (chain 5042002). Register → validationRequest → adversarial review → validationResponse. Gas sponsored via Circle Gas Station. |
+| 45–60s | **On-Chain Proof** | Every dialogue anchored on Arc (chain 5042002). Register → validationRequest → adversarial review → validationResponse. Gas paid in USDC by EOA wallets in Phase 0. |
 | 60–68s | **Polymarket Attribution** | Builder code = HMAC(agentId, salt). Deterministic identity → attribution without custodial bridging. |
 | 68–78s | **Platform Play** | Sentinel-as-a-Service. External agents call MCP endpoint. $0.01 USDC/validation via x402. Circle Gateway settlement. |
-| 78–85s | **Circle Surface** | Five Circle products: Programmable Wallets, Contract Execution, Native USDC gas, Gas Station, Nanopayments. |
+| 78–85s | **Circle Surface** | Circle surfaces: Developer-Controlled Wallets, Contract Execution, native USDC gas, x402 payments, App Kit Bridge. |
 | 85–90s | **Close** | "See through the reasoning." Logo + tagline + traction badges + live URL. |
 
 **Speaker notes (operator recording guide):**

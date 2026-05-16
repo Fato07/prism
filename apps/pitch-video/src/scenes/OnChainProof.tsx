@@ -4,7 +4,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate } from "remo
 /**
  * Scene 4: On-Chain Proof (45-60s)
  * Every dialogue lands on Arc. Registration, validation, verdict — all on-chain.
- * Gas Station sponsored. Sub-$0.01 in gas.
+ * Phase 0 uses EOA wallets that pay small Arc gas fees in USDC.
  */
 export const OnChainProof: React.FC = () => {
   const frame = useCurrentFrame();
@@ -82,7 +82,7 @@ export const OnChainProof: React.FC = () => {
         ))}
       </div>
 
-      {/* Gas Station callout */}
+      {/* Arc gas callout */}
       <div
         style={{
           opacity: opacity(9),
@@ -97,10 +97,10 @@ export const OnChainProof: React.FC = () => {
         }}
       >
         <div style={{ color: "#10b981", fontSize: 36, fontWeight: 700, fontFamily: "'SF Mono', monospace" }}>
-          $0.00
+          USDC
         </div>
         <div style={{ color: "white", fontSize: 22 }}>
-          Gas per transaction — Circle Gas Station sponsored
+          Gas paid by Circle EOA wallets on Arc Testnet
         </div>
       </div>
 
@@ -114,7 +114,7 @@ export const OnChainProof: React.FC = () => {
           marginTop: 8,
         }}
       >
-        Trader agentId: 4062 · Sentinel agentId: 4070 · Gas: sponsored · IPFS: pinned
+        Trader agentId: 4140 · Sentinel agentId: 4148 · Gas: USDC · IPFS: pinned
       </div>
     </AbsoluteFill>
   );

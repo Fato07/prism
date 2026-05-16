@@ -47,7 +47,7 @@ First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sep
   Trader Agent (Python)                    Sentinel Agent (Python)
   Mirascope · Claude family                DSPy · GPT-4o-mini
   Trading-R1 trace generation              TraceAdversary + MIPROv2
-  Treasury (park/unpark USDC into USYC)              │
+  Treasury (USYC dry-run scaffold)                  │
            │                                        │
   Polymarket V2 SDK                                 ▼
   (builder code)                           x402-protected MCP
@@ -88,8 +88,8 @@ First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sep
 
 - **Web3 wallet connection** — Reown AppKit + wagmi v2 across all pages; connected address available in `/me` and `/submit`
 - **Circle App Kit Bridge** — conditional bridge widget on `/submit` when wallet USDC < 0.01 (bridge USDC from other chains to Base Sepolia for x402 payments)
-- **Treasury module** — trader service parks/unparks USDC into USYC on Arc Testnet for yield optimization; tracked via `treasury_events` table
-- **Dual x402 facilitator mode** — sentinel accepts payments on Base Sepolia (public x402.org facilitator) **and** Arc Testnet (Circle facilitator), configured via `X402_FACILITATOR_MODE`
+- **Treasury module** — trader service includes a USYC park/unpark scaffold; it runs in dry-run mode until an Arc Testnet USYC address is configured. Events are tracked via `treasury_events`.
+- **Dual x402 facilitator scaffold** — public x402 payments settle on Base Sepolia today; Arc Testnet Circle-facilitator mode is implemented behind `X402_FACILITATOR_MODE` and remains off until Circle publishes a stable Arc facilitator endpoint.
 - **@prism/builder-codes** — shared workspace package for HMAC-based builder code extraction from ERC-8004 agent IDs
 - **Remotion pitch video** — 90s parameterized composition at `apps/pitch-video/`, served on port 3001
 - **3 Neon migrations** — `001_fill_price`, `002_requester_address`, `003_treasury_events`
@@ -143,7 +143,7 @@ uv run python -m prism_calibration.cli --help
 | Contract addresses & ABIs | |
 | x402 middleware setup (dual facilitator mode) | |
 | DSPy `TraceAdversary` signature | |
-| Treasury module (USYC park/unpark) | |
+| Treasury dry-run scaffold (USYC park/unpark path) | |
 | Calibration CLI + schemas (8 commands, 149 tests) | |
 
 ---
@@ -291,10 +291,10 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | IPFS | Pinata (pinning) + ipfs.io (gateway) |
 | Database | Neon serverless Postgres |
 | MCP | [FastMCP](https://github.com/jlowin/fastmcp) |
-| Payments | [x402](https://x402.org) protocol — HTTP-native USDC micropayments (dual facilitator: Base Sepolia + Arc Testnet) |
+| Payments | [x402](https://x402.org) protocol — HTTP-native USDC micropayments (Base Sepolia public facilitator live; Arc facilitator scaffolded) |
 | Polymarket | `@polymarket/clob-client-v2` (V2 SDK) |
 | Dashboard | Next.js 16 · React 19 · Tailwind · shadcn/ui · wagmi v2 · Reown AppKit |
-| Treasury | USYC (Arc Testnet yield token) — park/unpark USDC |
+| Treasury | USYC park/unpark scaffold — dry-run until Arc Testnet token address is configured |
 | Deployment | Railway (services) + Neon (DB) |
 | Python toolchain | `uv` · Python 3.12+ · FastAPI · ruff · mypy |
 | Node toolchain | `pnpm` · Node 20 LTS · Hono · TypeScript strict |
@@ -348,10 +348,10 @@ cp .env.example .env
 #   - PRISM_TRADE_MODE (paper or live — default: paper)
 #   - NEXT_PUBLIC_REOWN_PROJECT_ID (Reown AppKit project ID for wallet connection)
 #   - NEXT_PUBLIC_ARC_RPC_URL (Arc RPC URL exposed to the dashboard frontend)
-#   - TRADER_YIELD_MODE (park or idle — controls USYC treasury behavior)
-#   - X402_FACILITATOR_MODE (circle or public — dual facilitator mode for Arc Testnet vs Base Sepolia)
+#   - TRADER_YIELD_MODE (off, park, or smart — USYC treasury scaffold)
+#   - X402_FACILITATOR_MODE (public or circle — public Base Sepolia is live; circle is scaffolded)
 #   - X402_ARC_RECIPIENT_ADDRESS (USDC recipient on Arc Testnet when facilitator mode is circle)
-#   - USYC_ARC_TESTNET_ADDRESS (USYC token contract address on Arc Testnet for treasury)
+#   - USYC_ARC_TESTNET_ADDRESS (optional USYC token contract address; empty = treasury dry-run)
 
 # 3. Install Python dependencies
 uv sync
@@ -398,11 +398,11 @@ cd apps/dashboard && pnpm test
 
 | Suite | Tests |
 |-------|-------|
-| Dashboard | 444 |
+| Dashboard | 461 |
 | Sentinel | 118 |
 | Trader | 156 |
 | Calibration | 149 |
-| **Total** | **867** |
+| **Total** | **884** |
 
 ---
 
@@ -411,8 +411,8 @@ cd apps/dashboard && pnpm test
 ```
 prism/
 ├── apps/
-│   ├── trader/                   # Python · Claude · Mirascope · Treasury (USYC)
-│   ├── sentinel/                 # Python · GPT · DSPy · Dual x402 facilitator
+│   ├── trader/                   # Python · Claude · Mirascope · treasury scaffold
+│   ├── sentinel/                 # Python · GPT · DSPy · x402 + MCP
 │   ├── polymarket-gateway/       # Node · Hono · V2 SDK
 │   ├── dashboard/                # Next.js 16 · React 19 · wagmi · Reown AppKit
 │   └── pitch-video/              # Remotion 90s pitch
@@ -423,7 +423,7 @@ prism/
 │   ├── builder-codes/           # HMAC-based builder code extraction from ERC-8004 agent IDs
 │   └── calibration-python/      # Calibration corpus CLI — build, harvest, label, freeze, sync, eval, inspect, validate
 ├── tests/                        # E2E pipeline integration
-├── docs/                         # Architecture, demo script, traction log
+├── docs/                         # Architecture, demo receipts, puzzle submissions
 └── infra/                        # Circle setup, Arc CLI wrappers
 ```
 
@@ -436,10 +436,10 @@ prism/
 | **Programmable Wallets** | Every ERC-8004 tx goes through a Developer-Controlled Wallet (EOA on Arc Testnet) |
 | **Contract Execution** | `register`, `validationRequest`, `validationResponse`, `giveFeedback` via Circle SDK |
 | **Native USDC** (Arc) | Gas token — all costs denominated in USDC |
-| **Gas Station** | Gasless trader contract executions (Phase 1 — EOA wallets pay own gas in Phase 0) |
-| **Nanopayments** (x402) | Sentinel charges $0.01 USDC/validation via HTTP 402 + Circle settlement |
-| **App Kit Bridge** | Conditional bridge widget on `/submit` — bridges USDC to Base Sepolia when wallet balance < 0.01 |
-| **Circle Facilitator** | Arc Testnet x402 facilitator mode — USDC settlement on Arc in addition to Base Sepolia public facilitator |
+| **Gas Station** | Future SCA migration path; Phase 0 wallets are EOA and pay their own Arc gas in USDC |
+| **Nanopayments** (x402) | Sentinel charges $0.01 USDC/validation via HTTP 402 using the public Base Sepolia facilitator |
+| **App Kit Bridge** | Conditional bridge widget on `/submit` — guides users toward Base Sepolia testnet USDC |
+| **Circle Facilitator** | Arc Testnet x402 mode is scaffolded but disabled until a stable public Arc facilitator endpoint is available |
 
 ---
 
@@ -488,13 +488,6 @@ The shared `@prism/builder-codes` package (`packages/builder-codes/`) provides t
 ## Hackathon
 
 Prism is built for the **Agora Agent Hackathon** (Canteen × Circle × Arc), May 11–25, 2026.
-
-| Criterion | Weight | Prism's Strength |
-|-----------|--------|-----------------|
-| Agentic Sophistication | 30% | Two-agent adversarial system, cross-model validation, MCP-as-a-service |
-| Traction | 30% | X threads, Discord engagement, waitlist, sentinel calls from external agents, self-serve validation page |
-| Circle Tool Usage | 20% | Programmable Wallets, contract execution, native USDC, Paymaster, Nanopayments, App Kit Bridge, Circle facilitator |
-| Innovation | 20% | First adversarial AI validator on ERC-8004, first identity bridge to prediction markets, self-serve x402 validation |
 
 ---
 

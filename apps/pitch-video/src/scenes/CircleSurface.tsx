@@ -3,7 +3,7 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate } from "remo
 
 /**
  * Scene 7: Circle Product Surface (78-85s)
- * Five Circle products powering Prism: Wallets, Contract Execution, USDC gas, Gas Station, Nanopayments.
+ * Circle surfaces powering Prism: wallets, contract execution, USDC gas, x402 payments, and bridge UX.
  */
 export const CircleSurface: React.FC = () => {
   const frame = useCurrentFrame();
@@ -16,11 +16,11 @@ export const CircleSurface: React.FC = () => {
     });
 
   const products = [
-    { name: "Programmable Wallets", detail: "SCA wallets for every ERC-8004 call", icon: "🔐" },
+    { name: "Developer-Controlled Wallets", detail: "EOA wallets sign every ERC-8004 call", icon: "🔐" },
     { name: "Contract Execution", detail: "register · validationRequest · validationResponse", icon: "📜" },
     { name: "Native USDC", detail: "Arc gas token — costs denominated in USDC", icon: "💲" },
-    { name: "Gas Station", detail: "Zero-cost operations — gasless for agents", icon: "⛽" },
-    { name: "Nanopayments", detail: "$0.01/validation via x402 + Circle Gateway", icon: "💳" },
+    { name: "x402 Payments", detail: "$0.01/validation via the public facilitator", icon: "💳" },
+    { name: "App Kit Bridge", detail: "Guides users toward Base Sepolia testnet USDC", icon: "🌉" },
   ];
 
   return (

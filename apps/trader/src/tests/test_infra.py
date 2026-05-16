@@ -288,8 +288,8 @@ class TestCircleChain:
         assert BLOCKCHAIN == "ARC-TESTNET"
 
     def test_account_type_constant(self) -> None:
-        """Account type is SCA."""
-        assert ACCOUNT_TYPE == "SCA"
+        """Phase 0 Circle wallets are EOA."""
+        assert ACCOUNT_TYPE == "EOA"
 
 
 # ---------------------------------------------------------------------------

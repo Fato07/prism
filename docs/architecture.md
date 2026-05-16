@@ -4,8 +4,8 @@ The first adversarial AI validator on ERC-8004. Two agents from different
 model families challenge each other before capital moves; every verdict is
 anchored on Arc Testnet; the sentinel is sold by the call over x402.
 
-This document is the **operator and judge map** of the system — what
-services exist, how they talk, and what's verifiable on which chain.
+This document is the public system map: what services exist, how they
+talk, and what's verifiable on which chain.
 
 ---
 
@@ -15,7 +15,7 @@ services exist, how they talk, and what's verifiable on which chain.
 graph TB
     subgraph "External actors"
         EA["External AI agent<br/>(any team, any stack)"]
-        DJ["Hackathon judge /<br/>visitor"]
+        DJ["Dashboard visitor"]
     end
 
     subgraph "Prism services (Railway)"
