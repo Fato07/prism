@@ -38,16 +38,18 @@ External agents call Prism to validate traces and query the trust state Prism cu
 exposes. The x402-protected FastMCP endpoint mounted at `/mcp/` already exists;
 read-only receipt inspection now includes redacted connector capabilities and issue ledgers.
 
-Current tools include:
+Current MCP trust surface:
 
-- `validate` — adversarially validate a trace;
-- `get_price` — return x402 validation price;
-- `get_stats` — return aggregate validation stats;
-- `get_calibration` — return sentinel calibration state;
-- `get_tool_manifest` — return redacted connector capabilities;
-- `get_issue_ledger` — return a read-only structured issue ledger for a validation receipt;
-- `verify_receipt` — verify a pinned verdict receipt against DB/hash anchors;
-- `explain_verdict` — explain the sentinel verdict and active issue-ledger gates.
+| Tool | Inputs | Output | Mode |
+| --- | --- | --- | --- |
+| `validate` | `trace_uri`, `trace_hash`, optional `on_chain_request_hash` | `ValidateMcpResult` with verdict score/label, IPFS CID, content hash, payment tx, optional Arc tx | Mutating: runs validation, pins/persists receipt, optionally anchors on Arc |
+| `get_price` | none | x402 validation price, currency, settlement network | Read-only |
+| `get_stats` | optional `hours` lookback | aggregate validation counts, score distribution, latency, on-chain anchors | Read-only |
+| `get_calibration` | none | latest sentinel calibration gap and synthetic trace scores | Read-only |
+| `get_tool_manifest` | none | redacted Prism MCP tools and connector capability flags | Read-only |
+| `get_issue_ledger` | `trace_id` or `request_hash` | structured challenges, resolution attempts, rounds, metadata, unresolved counts | Read-only |
+| `verify_receipt` | `response_uri`/`cid` or `trace_id`/`request_hash`, optional `content_hash_hex` | receipt verification checks against schema, content hash, and/or DB identity | Read-only |
+| `explain_verdict` | `trace_id` or `request_hash` | deterministic verdict summary, active issue-ledger policy gates, latest resolution attempt per issue | Read-only |
 
 Future tools should include:
 
