@@ -17,20 +17,24 @@ Covers:
   * VAL-MCP-014 — get_issue_ledger returns read-only structured issue ledgers.
   * VAL-MCP-015 — verify_receipt verifies pinned verdict receipts.
   * VAL-MCP-016 — explain_verdict explains issue-ledger policy gates.
-  * VAL-MCP-017 — All 8 tools discoverable via tools/list.
+  * VAL-MCP-017 — Read-only trust tools work through real FastMCP HTTP.
+  * VAL-MCP-018 — All 8 tools discoverable via tools/list.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
+import socket
 import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
 from fastmcp import Client
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
@@ -1800,7 +1804,86 @@ class TestExplainVerdictTool:
 
 
 # ---------------------------------------------------------------------------
-# VAL-MCP-017: All 8 tools discoverable via tools/list
+# VAL-MCP-017: Read-only trust tools work through real FastMCP HTTP
+# ---------------------------------------------------------------------------
+
+
+class TestHttpTrustToolSmoke:
+    @pytest.mark.asyncio
+    async def test_read_only_trust_tools_work_through_real_http_fastmcp_server(self) -> None:
+        """Smoke-test Prism's own MCP server over real local HTTP transport."""
+        from prism_mcp.server import build_mcp_server
+
+        verdict = _make_verdict()
+        expected_hash = verdict.content_hash().hex()
+        ledger = TestExplainVerdictTool._ledger_with_blocker()
+        server = build_mcp_server()
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+
+        app = server.http_app(path="/mcp")
+        config = uvicorn.Config(
+            app,
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+            lifespan="on",
+        )
+        uvicorn_server = uvicorn.Server(config)
+        server_task = asyncio.create_task(uvicorn_server.serve())
+
+        try:
+            for _ in range(50):
+                if uvicorn_server.started:
+                    break
+                await asyncio.sleep(0.05)
+            assert uvicorn_server.started is True
+
+            with (
+                patch(
+                    "prism_mcp.server._fetch_verdict_json_from_response_uri",
+                    new=AsyncMock(
+                        return_value=verdict.model_dump(mode="json", exclude_defaults=True)
+                    ),
+                ),
+                patch("prism_mcp.server._get_issue_ledger", new=AsyncMock(return_value=ledger)),
+            ):
+                async with Client(f"http://127.0.0.1:{port}/mcp") as client:
+                    tools = await client.list_tools()
+                    names = [tool.name for tool in tools]
+                    assert "get_tool_manifest" in names
+                    assert "verify_receipt" in names
+                    assert "explain_verdict" in names
+
+                    manifest = await client.call_tool("get_tool_manifest", {})
+                    assert "verify_receipt" in manifest.data.prism_mcp_tools
+
+                    receipt = await client.call_tool(
+                        "verify_receipt",
+                        {"cid": "QmHttpReceipt", "content_hash_hex": expected_hash},
+                    )
+                    assert receipt.data.verified is True
+                    assert receipt.data.verdict_content_hash_hex == expected_hash
+
+                    issue_ledger = await client.call_tool(
+                        "get_issue_ledger",
+                        {"trace_id": ledger.validation.trace_id},
+                    )
+                    assert issue_ledger.data.unresolved_blocking_count == 1
+
+                    explanation = await client.call_tool(
+                        "explain_verdict",
+                        {"trace_id": ledger.validation.trace_id},
+                    )
+                    assert "PASS and ENDORSE" in explanation.data.policy_constraints[0]
+        finally:
+            uvicorn_server.should_exit = True
+            await asyncio.wait_for(server_task, timeout=5.0)
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-018: All 8 tools discoverable via tools/list
 # ---------------------------------------------------------------------------
 
 

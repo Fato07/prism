@@ -51,6 +51,15 @@ Current MCP trust surface:
 | `verify_receipt` | `response_uri`/`cid` or `trace_id`/`request_hash`, optional `content_hash_hex` | receipt verification checks against schema, content hash, and/or DB identity | Read-only |
 | `explain_verdict` | `trace_id` or `request_hash` | deterministic verdict summary, active issue-ledger policy gates, latest resolution attempt per issue | Read-only |
 
+HTTP smoke coverage for Prism's own MCP server starts a real local FastMCP HTTP
+server and calls read-only trust tools over the network transport:
+
+```bash
+uv run pytest \
+  apps/mcp/src/tests/test_mcp.py::TestHttpTrustToolSmoke::test_read_only_trust_tools_work_through_real_http_fastmcp_server \
+  -q
+```
+
 Future tools should include:
 
 - `submit_issue_response` or `propose_resolution`.
