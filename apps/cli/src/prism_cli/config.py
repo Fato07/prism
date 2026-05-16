@@ -33,3 +33,7 @@ class CliConfig(BaseModel):
     def normalized_polymarket_gateway_url(self) -> str:
         """Return the Polymarket gateway URL without a trailing slash."""
         return self.polymarket_gateway_url.rstrip("/")
+
+    def normalized_sentinel_url(self) -> str:
+        """Return the canonical sentinel MCP URL, preserving the trailing slash."""
+        return self.sentinel_url.rstrip("/") + "/"

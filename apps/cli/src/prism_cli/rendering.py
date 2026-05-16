@@ -15,6 +15,8 @@ from prism_cli.models import (
     PublicHistoryResponse,
     PublicStatsResponse,
     PublicTraceReport,
+    ValidationQuote,
+    ValidationReceipt,
 )
 
 console = Console()
@@ -133,6 +135,43 @@ def print_market_resolution(response: MarketResolveResponse) -> None:
         console.print(f"Matched:    {resolution.matched_question}")
     if resolution.reason:
         console.print(f"Reason:     {resolution.reason}")
+
+
+def print_validation_quote(quote: ValidationQuote) -> None:
+    """Render an x402 quote for sentinel validation."""
+    console.print("[bold]Prism sentinel validation quote[/bold]")
+    console.print(f"Trace URI:  {quote.trace_uri}")
+    console.print(f"Trace hash: {quote.trace_hash}")
+    console.print(f"Amount:     {quote.amount_usdc} {quote.asset} ({quote.amount_units} units)")
+    console.print(f"Network:    {quote.network}" + (f" / {quote.caip2}" if quote.caip2 else ""))
+    if quote.asset_contract:
+        console.print(f"Asset:      {quote.asset_contract}")
+    if quote.recipient:
+        console.print(f"Recipient:  {quote.recipient}")
+    if quote.facilitator:
+        console.print(f"Facilitator:{quote.facilitator}")
+    console.print("Signing is external: Prism CLI does not custody keys or private-key files.")
+
+
+def print_validation_receipt(receipt: ValidationReceipt) -> None:
+    """Render a paid sentinel validation receipt."""
+    result = receipt.result
+    console.print("[bold]Prism sentinel validation receipt[/bold]")
+    console.print(f"Trace:      {result.trace_id}")
+    console.print(f"Verdict:    {result.verdict_score} {result.verdict_label}")
+    console.print(f"Verdict IPFS: ipfs://{result.ipfs_cid}")
+    if result.payment_tx_hash:
+        console.print(f"Payment tx: {result.payment_tx_hash}")
+    if result.tx_hash:
+        console.print(f"Arc tx:     {result.tx_hash}")
+    if result.evidence_challenges:
+        console.print("[bold]Evidence challenges[/bold]")
+        for challenge in result.evidence_challenges:
+            console.print(f"- {challenge}")
+    if result.thesis_challenges:
+        console.print("[bold]Thesis challenges[/bold]")
+        for challenge in result.thesis_challenges:
+            console.print(f"- {challenge}")
 
 
 def print_report(report: PublicTraceReport) -> None:

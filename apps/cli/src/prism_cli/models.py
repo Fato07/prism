@@ -177,3 +177,45 @@ class MarketResolveResponse(BaseModel):
     query: str
     market_question: str | None = Field(default=None, alias="marketQuestion")
     resolution: TokenResolution
+
+
+class ValidationQuote(BaseModel):
+    """x402 quote for a paid Prism sentinel validation."""
+
+    trace_uri: str
+    trace_hash: str
+    amount_usdc: str
+    amount_units: str
+    asset: str
+    asset_contract: str | None = None
+    scheme: str
+    network: str
+    caip2: str | None = None
+    facilitator: str | None = None
+    facilitator_mode: str | None = None
+    recipient: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
+class SentinelValidationResult(BaseModel):
+    """Structured result returned by the Prism sentinel MCP validate tool."""
+
+    request_hash: str
+    trace_id: str
+    sentinel_agent_id: int
+    verdict_score: int = Field(ge=0, le=100)
+    verdict_label: VerdictLabel
+    evidence_challenges: list[str]
+    thesis_challenges: list[str]
+    calibration_critique: str
+    ipfs_cid: str
+    content_hash_hex: str
+    tx_hash: str | None = None
+    payment_tx_hash: str | None = None
+
+
+class ValidationReceipt(BaseModel):
+    """Receipt returned by `prism validate` when an external x402 payment is supplied."""
+
+    quote: ValidationQuote
+    result: SentinelValidationResult

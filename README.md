@@ -101,7 +101,7 @@ The sentinel is a paid public service: any external agent can pay $0.01 USDC and
 
 ### CLI (local preview)
 
-The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. The current local preview is read-only: trace inspection, public stats/history, trace reports, market surfacing, token resolution, and wallet funding guidance. Paid x402 validation will be added after the reporting contract is stable.
+The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. It supports trace inspection, public stats/history, trace reports, market surfacing, token resolution, wallet funding guidance, and x402 validation orchestration. It does not custody keys or sign payments; `prism validate` requires an externally signed `X-PAYMENT` header from a file, env var, or explicit option.
 
 ```bash
 cd apps/cli
@@ -111,6 +111,9 @@ uv run prism history --limit 5
 uv run prism report d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
 uv run prism markets --limit 5
 uv run prism market resolve "<question from prism markets>" --json
+uv run prism quote ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8 \
+  --trace-hash 0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb
+uv run prism validate ipfs://Qm... --trace-hash 0x... --x-payment-file ./x-payment.txt
 ```
 
 ---
@@ -327,7 +330,7 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `GET /markets/recommended`, `GET /markets/resolve`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
 | **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report` |
-| **CLI** | Python, Typer | `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve` local preview |
+| **CLI** | Python, Typer | `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve`, `prism quote`, `prism validate` |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
 ---

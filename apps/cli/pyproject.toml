@@ -1,7 +1,7 @@
 [project]
 name = "prism-cli"
 version = "0.1.0"
-description = "Prism command-line client for trace inspection and public reporting."
+description = "Prism command-line client for trace inspection, public reporting, market resolution, and x402 validation orchestration."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"

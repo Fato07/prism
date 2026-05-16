@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -15,7 +16,9 @@ from prism_cli.client import (
     fetch_public_report,
     fetch_public_stats,
     load_trace,
+    request_validation_quote,
     resolve_market,
+    submit_paid_validation,
 )
 from prism_cli.config import (
     BASE_SEPOLIA_EXPLORER,
@@ -37,6 +40,8 @@ from prism_cli.rendering import (
     print_markets,
     print_report,
     print_stats,
+    print_validation_quote,
+    print_validation_receipt,
 )
 
 app = typer.Typer(
@@ -61,6 +66,10 @@ PolymarketGatewayOpt = Annotated[
     str,
     typer.Option("--polymarket-gateway-url", help="Prism Polymarket gateway base URL."),
 ]
+SentinelOpt = Annotated[
+    str,
+    typer.Option("--sentinel-url", help="Prism sentinel MCP URL. Keep /mcp/ trailing slash."),
+]
 TimeoutOpt = Annotated[float, typer.Option("--timeout", help="HTTP timeout in seconds.")]
 JsonOpt = Annotated[bool, typer.Option("--json", help="Print machine-readable JSON.")]
 
@@ -70,12 +79,13 @@ def _config(
     dashboard_url: str = DEFAULT_DASHBOARD_URL,
     ipfs_gateway: str = DEFAULT_IPFS_GATEWAY,
     polymarket_gateway_url: str = DEFAULT_POLYMARKET_GATEWAY_URL,
+    sentinel_url: str = DEFAULT_SENTINEL_MCP_URL,
     timeout: float = 30.0,
 ) -> CliConfig:
     """Build a CLI config from command options."""
     return CliConfig(
         dashboard_url=dashboard_url,
-        sentinel_url=DEFAULT_SENTINEL_MCP_URL,
+        sentinel_url=sentinel_url,
         ipfs_gateway=ipfs_gateway,
         polymarket_gateway_url=polymarket_gateway_url,
         timeout_seconds=timeout,
@@ -208,6 +218,104 @@ def market_resolve_command(
     _run(_inner())
 
 
+@app.command("quote")
+def quote_command(
+    source: Annotated[str, typer.Argument(help="Trace ipfs://CID or raw IPFS CID.")],
+    trace_hash: Annotated[
+        str | None,
+        typer.Option("--trace-hash", help="Optional 0x-prefixed trace content hash."),
+    ] = None,
+    sentinel_url: SentinelOpt = DEFAULT_SENTINEL_MCP_URL,
+    ipfs_gateway: IpfsGatewayOpt = DEFAULT_IPFS_GATEWAY,
+    timeout: TimeoutOpt = 30.0,
+    json_output: JsonOpt = False,
+) -> None:
+    """Get the x402 price and payment requirements for sentinel validation."""
+
+    async def _inner() -> None:
+        response = await request_validation_quote(
+            _config(
+                sentinel_url=sentinel_url,
+                ipfs_gateway=ipfs_gateway,
+                timeout=timeout,
+            ),
+            source,
+            trace_hash=trace_hash,
+        )
+        if json_output:
+            print_json_model(response)
+        else:
+            print_validation_quote(response)
+
+    _run(_inner())
+
+
+@app.command("validate")
+def validate_command(
+    source: Annotated[str, typer.Argument(help="Trace ipfs://CID or raw IPFS CID.")],
+    trace_hash: Annotated[
+        str | None,
+        typer.Option("--trace-hash", help="Optional 0x-prefixed trace content hash."),
+    ] = None,
+    x_payment_header: Annotated[
+        str | None,
+        typer.Option(
+            "--x-payment-header",
+            envvar="PRISM_X_PAYMENT",
+            help=(
+                "Externally signed x402 X-PAYMENT header. Prefer PRISM_X_PAYMENT "
+                "or --x-payment-file over shell history."
+            ),
+        ),
+    ] = None,
+    x_payment_file: Annotated[
+        Path | None,
+        typer.Option("--x-payment-file", help="File containing an externally signed X-PAYMENT."),
+    ] = None,
+    sentinel_url: SentinelOpt = DEFAULT_SENTINEL_MCP_URL,
+    ipfs_gateway: IpfsGatewayOpt = DEFAULT_IPFS_GATEWAY,
+    timeout: TimeoutOpt = 180.0,
+    json_output: JsonOpt = False,
+) -> None:
+    """Submit a paid sentinel validation using an externally signed x402 payment."""
+
+    async def _inner() -> None:
+        config = _config(
+            sentinel_url=sentinel_url,
+            ipfs_gateway=ipfs_gateway,
+            timeout=timeout,
+        )
+        payment_header = _read_payment_header(
+            x_payment_header=x_payment_header,
+            x_payment_file=x_payment_file,
+        )
+        if not payment_header:
+            quote = await request_validation_quote(config, source, trace_hash=trace_hash)
+            if json_output:
+                print_json_model(quote)
+            else:
+                console.print("[bold yellow]Payment required[/bold yellow]")
+                print_validation_quote(quote)
+                console.print(
+                    "Provide an externally signed x402 header with "
+                    "[bold]--x-payment-file[/bold], PRISM_X_PAYMENT, or --x-payment-header."
+                )
+            raise typer.Exit(1)
+
+        response = await submit_paid_validation(
+            config,
+            source,
+            x_payment_header=payment_header,
+            trace_hash=trace_hash,
+        )
+        if json_output:
+            print_json_model(response)
+        else:
+            print_validation_receipt(response)
+
+    _run(_inner())
+
+
 @app.command("report")
 def report_command(
     trace: Annotated[str, typer.Argument(help="Trace UUID or dashboard /trace/<id> URL.")],
@@ -256,6 +364,22 @@ def wallet_status(
     if address:
         console.print(f"Explorer:         {BASE_SEPOLIA_EXPLORER}/address/{address}")
     console.print("No private key is required for read-only CLI commands.")
+
+
+def _read_payment_header(
+    *,
+    x_payment_header: str | None,
+    x_payment_file: Path | None,
+) -> str | None:
+    """Resolve the externally signed X-PAYMENT value from option/env/file."""
+    if x_payment_file is not None:
+        if not x_payment_file.exists():
+            raise PrismCliError(f"X-PAYMENT file not found: {x_payment_file}")
+        value = x_payment_file.read_text().strip()
+        if not value:
+            raise PrismCliError(f"X-PAYMENT file is empty: {x_payment_file}")
+        return value
+    return x_payment_header.strip() if x_payment_header else None
 
 
 def main() -> None:
