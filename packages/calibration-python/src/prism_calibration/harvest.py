@@ -149,7 +149,12 @@ class IpfsJsonFetcher(Protocol):
 
 
 class HttpIpfsFetcher:
-    """IPFS JSON fetcher using the repository's httpx gateway pattern."""
+    """IPFS JSON fetcher using the repository's httpx gateway pattern.
+
+    Reuses a single ``httpx.Client`` instance across CID fetches for
+    connection pooling and deterministic lifecycle management.  Use as a
+    context manager for explicit close, or call ``close()`` when done.
+    """
 
     def __init__(
         self,
@@ -158,14 +163,6 @@ class HttpIpfsFetcher:
         timeout_seconds: float = 30.0,
     ) -> None:
         """Initialize a public-gateway IPFS fetcher."""
-        configured_gateway = gateway_base_url or os.environ.get(
-            "PRISM_IPFS_GATEWAY", DEFAULT_IPFS_GATEWAY
-        )
-        self.gateway_base_url = configured_gateway.rstrip("/")
-        self.timeout_seconds = timeout_seconds
-
-    def fetch_json(self, cid: str) -> dict[str, Any]:
-        """Fetch one JSON object by CID from the configured IPFS gateway."""
         try:
             import httpx
         except ImportError as error:
@@ -173,11 +170,33 @@ class HttpIpfsFetcher:
                 "httpx is required for IPFS harvest; run `uv sync --all-packages`."
             ) from error
 
+        configured_gateway = gateway_base_url or os.environ.get(
+            "PRISM_IPFS_GATEWAY", DEFAULT_IPFS_GATEWAY
+        )
+        self.gateway_base_url: str = configured_gateway.rstrip("/")
+        self.timeout_seconds: float = timeout_seconds
+        self._client: httpx.Client = httpx.Client(timeout=self.timeout_seconds)
+
+    def close(self) -> None:
+        """Close the underlying ``httpx.Client`` deterministically."""
+        self._client.close()
+
+    def __enter__(self) -> HttpIpfsFetcher:
+        """Enter the context manager protocol."""
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        """Close the underlying client on context exit."""
+        self.close()
+
+    def fetch_json(self, cid: str) -> dict[str, Any]:
+        """Fetch one JSON object by CID from the configured IPFS gateway."""
+        import httpx
+
         url = f"{self.gateway_base_url}/{cid}"
         try:
-            with httpx.Client(timeout=self.timeout_seconds) as client:
-                response = client.get(url)
-                response.raise_for_status()
+            response = self._client.get(url)
+            response.raise_for_status()
         except httpx.HTTPError as error:
             raise HarvestIpfsError(f"IPFS gateway request failed for CID {cid}: {error}") from error
 
@@ -1291,14 +1310,24 @@ def run_harvest_from_environment(
 
     try:
         with psycopg.connect(dsn) as connection:
-            return run_harvest(
-                root=root,
-                connection=cast(ConnectionLike, connection),
-                limit=limit,
-                selection=selection,
-                preflight_only=preflight_only,
-                fetcher=None if preflight_only else HttpIpfsFetcher(),
-            )
+            if preflight_only:
+                return run_harvest(
+                    root=root,
+                    connection=cast(ConnectionLike, connection),
+                    limit=limit,
+                    selection=selection,
+                    preflight_only=True,
+                    fetcher=None,
+                )
+            with HttpIpfsFetcher() as fetcher:
+                return run_harvest(
+                    root=root,
+                    connection=cast(ConnectionLike, connection),
+                    limit=limit,
+                    selection=selection,
+                    preflight_only=False,
+                    fetcher=fetcher,
+                )
     except psycopg.Error as error:
         raise HarvestDatabaseError(
             f"Unable to read Neon for harvest preflight/selection: {error}"
