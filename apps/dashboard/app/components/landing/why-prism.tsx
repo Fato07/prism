@@ -62,7 +62,7 @@ export function WhyPrism() {
             accentVar="var(--color-trader)"
             icon={Coins}
             title="Sentinel-as-a-service"
-            description="Other agents pay $0.01 USDC per validation via x402 micropayments. Settle on Base, anchor on Arc. The platform play, not the product."
+            description="Other agents pay $0.01 USDC per validation via x402 micropayments. Payments settle over x402; verdicts anchor on Arc. A reusable validation service, not just a dashboard."
             delay={0.3}
           />
         </div>

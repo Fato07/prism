@@ -53,7 +53,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Stats — Prism",
   description:
-    "Platform analytics for Prism: verdict counts, unique wallets, on-chain anchors, builder fees, external x402 calls, latency, and calibration metrics.",
+    "Live Prism activity across adversarial verdicts, requester wallets, Arc anchors, x402 calls, builder attribution, latency, and calibration metrics.",
 };
 
 export default async function StatsPage() {
@@ -69,7 +69,7 @@ export default async function StatsPage() {
             Platform Stats
           </h1>
           <p className="mt-2 text-sm text-fg-muted">
-            Real-time analytics from Neon. Numbers reconcile with direct SQL queries.
+            Live Prism activity across validations, Arc anchors, x402 calls, and Polymarket attribution.
           </p>
         </div>
 
@@ -89,7 +89,7 @@ export default async function StatsPage() {
           <Tile
             title="Unique wallets connected"
             value={stats.uniqueWallets.toLocaleString()}
-            subtitle="Distinct external addresses that paid for validations — proves traction"
+            subtitle="Distinct requester wallets that paid for validations"
             icon={<Users className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
             sparklineData={stats.dailyWallets.map((d) => ({
@@ -126,7 +126,7 @@ export default async function StatsPage() {
           <Tile
             title="Builder fees attributed"
             value={`${formatFee(stats.builderFees)} USDC`}
-            subtitle="0.1% of fill notional from qualifying trades via HMAC builder codes"
+            subtitle="Paper-fill fee model plus live builder-code receipts via HMAC codes"
             icon={<DollarSign className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
             sparklineData={stats.dailyFees.map((d) => ({
@@ -174,7 +174,7 @@ export default async function StatsPage() {
           <Tile
             title="Calibration gap"
             value={stats.calibrationGap.toString()}
-            subtitle="Good vs bad synthetic-trace verdict spread — must be >= 30 per hard rule"
+            subtitle="Good-vs-bad synthetic trace verdict spread — target ≥30"
             icon={<Target className="h-4 w-4" strokeWidth={1.8} />}
             tone={stats.calibrationGap >= 30 ? "good" : "warn"}
             sparklineData={stats.dailyCalibrationGap.map((d) => ({
@@ -228,16 +228,17 @@ export default async function StatsPage() {
             Methodology
           </p>
           <p className="text-xs text-fg-muted leading-relaxed">
-            All metrics are computed from Neon Postgres via indexed queries. External x402
-            calls exclude the trader wallet{" "}
-            <span className="text-mono">0xc960…452b</span> and sentinel wallet{" "}
-            <span className="text-mono">0x5650…ac36</span>. On-chain anchors count traces
-            where both the ERC-8004 validationRequest and validationResponse transactions
-            are non-null. Builder fees are estimated at 0.1% of fill notional for{" "}
-            <span className="text-mono">paper_filled</span> and{" "}
-            <span className="text-mono">filled</span> trades. Calibration gap is the score
-            spread between high-scoring (&ge;75) and low-scoring (&le;25) verdicts. Sparklines
-            cover the last 7 days of daily aggregates.
+            Metrics are computed from Prism activity records and cross-linked to Arc,
+            IPFS, x402, and Polymarket receipts where available. External x402 calls
+            exclude the trader wallet <span className="text-mono">0xc960…452b</span> and
+            sentinel wallet <span className="text-mono">0x5650…ac36</span>. On-chain anchors
+            count traces where both the ERC-8004 validationRequest and validationResponse
+            transactions are present. Builder fees use the 0.1% fill-notional model for{" "}
+            <span className="text-mono">paper_filled</span> trades and reconcile to live
+            builder attribution for <span className="text-mono">filled</span> trades when
+            available. Calibration gap is the score spread between high-scoring (&ge;75) and
+            low-scoring (&le;25) verdicts. Sparklines cover the last 7 days of daily
+            aggregates.
           </p>
         </div>
       </main>

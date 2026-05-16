@@ -138,7 +138,7 @@ export function Hero({ waitlistCount }: HeroProps) {
         >
           Two AI agents from different model families challenge each other before
           capital moves. Every verdict is anchored on Arc with sub-second finality
-          and gasless settlement.
+          and USDC-native settlement.
         </motion.p>
 
         {/* Waitlist form */}

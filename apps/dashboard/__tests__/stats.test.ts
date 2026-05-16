@@ -207,7 +207,7 @@ describe("VAL-STATS-012: Calibration gap (good vs bad score spread)", () => {
     expect(gap).toBeGreaterThanOrEqual(30); // hard rule
   });
 
-  it("must be >= 30 per project hard rule", () => {
+  it("flags calibration spreads below the target threshold", () => {
     const goodAvg = 60;
     const badAvg = 35;
     const gap = Math.round(goodAvg - badAvg);
@@ -411,15 +411,15 @@ describe("VAL-STATS-014: Each tile has 7-day sparkline", () => {
 describe("VAL-STATS-013: Each tile has 'What this measures' subtitle", () => {
   const tiles = [
     { title: "Verdicts issued", subtitle: "Total adversarial verdicts produced by the sentinel" },
-    { title: "Unique wallets connected", subtitle: "Distinct external addresses that paid for validations — proves traction" },
+    { title: "Unique wallets connected", subtitle: "Distinct requester wallets that paid for validations" },
     { title: "Traces validated", subtitle: "Total reasoning traces in the system" },
     { title: "On-chain anchors", subtitle: "Traces with both validationRequest and validationResponse on ERC-8004" },
-    { title: "Builder fees attributed", subtitle: "0.1% of fill notional from qualifying trades via HMAC builder codes" },
+    { title: "Builder fees attributed", subtitle: "Paper-fill fee model plus live builder-code receipts via HMAC codes" },
     { title: "External x402 calls served", subtitle: "Validations requested by non-Prism wallets — excludes internal agent calls" },
     { title: "Avg sentinel verdict score", subtitle: "Mean verdict_score across all validations (0–100)" },
     { title: "Verdict latency p50", subtitle: "Median time from trace creation to sentinel verdict" },
     { title: "Verdict latency p95", subtitle: "95th-percentile time from trace creation to verdict — tail latency" },
-    { title: "Calibration gap", subtitle: "Good vs bad synthetic-trace verdict spread — must be >= 30 per hard rule" },
+    { title: "Calibration gap", subtitle: "Good-vs-bad synthetic trace verdict spread — target ≥30" },
   ];
 
   it("every tile has a non-empty subtitle", () => {

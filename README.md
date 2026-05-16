@@ -76,13 +76,14 @@ First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sep
 
 | Route | Description |
 |-------|-------------|
-| `/` | Split-screen trace + verdict dialogue, on-chain receipts |
+| `/` | Landing page with the product story, live activity strip, and waitlist |
+| `/dashboard` | Split-screen trace + verdict dialogue, on-chain receipts |
 | `/trace/[id]` | Trace detail page — server component with structured layout and dynamic OG image |
 | `/history` | Paginated history of all traces and verdicts |
 | `/me` | Wallet-connected verdict history (wagmi v2 + Reown AppKit) |
 | `/submit` | Self-serve x402 validation — sign EIP-3009 transfers from the browser; shows Circle App Kit Bridge widget when USDC balance < 0.01 |
-| `/builder-fees` | HMAC-attributed leaderboard of Polymarket builder codes |
-| `/stats` | Platform analytics — 10 metric tiles with sparklines (traces, verdicts, validations, fill rate, etc.) |
+| `/builder-fees` | Polymarket builder-code attribution — paper-fill fee model plus live-fill receipts when available |
+| `/stats` | Receipt-linked activity stats — validations, Arc anchors, x402 calls, builder attribution, latency, calibration |
 
 ### Infrastructure
 
@@ -111,7 +112,7 @@ uv run python -m prism_calibration.cli --help
 **Key workflows:**
 
 1. **Build** — scaffold a new corpus with schema and split configuration
-2. **Harvest** — pull real traces from Neon → IPFS → normalize → hash-verify → write local rows
+2. **Harvest** — pull real traces from Prism's activity store → IPFS → normalize → hash-verify → write local rows
 3. **Label** — generate synthetic traces, mutations, or AI-prelabel existing rows (3 subcommands: `generate-synthetic`, `generate-mutations`, `prelabel`)
 4. **Freeze** — export an immutable snapshot (manifest.json + rows/ + .sealed marker)
 5. **Sync** — mirror the frozen export to Braintrust (datasets, review queue)
@@ -137,9 +138,9 @@ uv run python -m prism_calibration.cli --help
 | ERC-8004 client & validator SDK scaffolding | Production sentinel prompts (MIPROv2-optimized) |
 | Agent harness & trace generation pipeline | HMAC seed material |
 | Sample reasoning traces | Circle Entity Secret & wallet private keys |
-| Dashboard (all 7 routes + wallet connection) | |
+| Dashboard public routes + wallet connection | |
 | Self-serve x402 validation page | |
-| Builder fees leaderboard | |
+| Builder-code attribution page | |
 | Contract addresses & ABIs | |
 | x402 middleware setup (dual facilitator mode) | |
 | DSPy `TraceAdversary` signature | |
@@ -311,7 +312,7 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — `tools/list` and `tools/call` work |
-| **Dashboard** | Next.js 16, React 19 | 7 routes — see [What's Live](#whats-live) |
+| **Dashboard** | Next.js 16, React 19 | Public routes — see [What's Live](#whats-live) |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
 ---

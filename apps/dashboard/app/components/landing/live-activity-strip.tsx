@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * LiveActivityStrip — animated count-up cells fed by Neon aggregates.
+ * LiveActivityStrip — animated count-up cells fed by Prism activity aggregates.
  *
  * Numbers tween from 0 to the live value when the section enters view.
  * The "live" dot pulses; each cell has its own faint accent bar above
@@ -72,7 +72,7 @@ export function LiveActivityStrip({
             id="live-activity"
             className="text-mono text-xs font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint"
           >
-            Live · Arc Testnet · pulled from Neon
+            Live · Arc Testnet · receipt-linked activity
           </h2>
         </div>
 

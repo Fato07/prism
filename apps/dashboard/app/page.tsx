@@ -6,7 +6,7 @@
  *   2. Hero — paper-design MeshGradient shader + headline + waitlist form
  *   3. How it works — three-step chromatic mechanism explainer
  *   4. Why it matters — asymmetric feature cards (no emojis, lucide icons)
- *   5. Live activity — real numbers from Neon
+ *   5. Live activity — receipt-linked Prism activity
  *   6. Tech stack — pills with gradient borders for primary tech
  *   7. Footer
  *
@@ -91,7 +91,7 @@ const SECONDARY_TECH: TechItem[] = [
 ];
 
 export default async function LandingPage() {
-  // Best-effort data fetch — landing must render even if Neon is down.
+  // Best-effort activity fetch — landing must render even if storage is unavailable.
   let waitlistCount = 0;
   let stats = { traces: 0, validations: 0, trades: 0, flagged: 0, uniqueWallets: 0, onChainAnchors: 0, externalX402Calls: 0 };
   try {

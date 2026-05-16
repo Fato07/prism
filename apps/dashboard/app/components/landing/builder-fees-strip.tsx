@@ -1,5 +1,5 @@
 /**
- * BuilderFeesStrip — widget for the landing page showing top-3 earning agents.
+ * BuilderFeesStrip — widget for landing-page builder-code attribution.
  *
  * Server component. Renders agent id, wallet HashChip, total USDC builder fees,
  * and a recharts sparkline of fee accumulation for each of the top 3.
@@ -52,13 +52,13 @@ export async function BuilderFeesStrip({ entries: propEntries }: BuilderFeesStri
                   className="h-4 w-4 text-[var(--color-verdict-good)]"
                   strokeWidth={1.8}
                 />
-                Builder Fees
+                Builder Attribution
               </CardTitle>
             </CardHeader>
             <CardContent>
               <EmptyState
-                title="No builder fees yet"
-                description="Once trades execute on Polymarket with our builder codes, fee attribution will appear here."
+                title="No builder attribution yet"
+                description="Once paper or live fills carry Prism builder codes, attribution will appear here."
               />
             </CardContent>
           </Card>
@@ -75,7 +75,7 @@ export async function BuilderFeesStrip({ entries: propEntries }: BuilderFeesStri
             id="builder-fees-strip"
             className="text-mono text-xs font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint"
           >
-            Builder fee attribution — top earners
+            Builder-code attribution — top agents
           </h2>
         </div>
 

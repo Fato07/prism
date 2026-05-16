@@ -1,5 +1,5 @@
 /**
- * Builder Fees Leaderboard — /builder-fees
+ * Builder Fee Attribution — /builder-fees
  *
  * Server component. Renders a leaderboard table showing:
  *   rank, agent ID, wallet (HashChip), # trades, total USDC fees,
@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Builder Fees — Prism",
   description:
-    "Leaderboard of Polymarket builder fees attributed to Prism agents via HMAC builder codes.",
+    "Polymarket builder-code attribution for Prism agents, with paper-fill estimates and live-fill receipts when available.",
 };
 
 /** HMAC secret from env — used to map builder_code → agent_id. */
@@ -57,11 +57,12 @@ export default async function BuilderFeesPage() {
       <main className="mx-auto max-w-5xl px-6 py-10">
         <div className="mb-8">
           <h1 className="text-2xl font-semibold tracking-[var(--tracking-tight)] text-fg">
-            Builder Fees Leaderboard
+            Builder Fee Attribution
           </h1>
           <p className="mt-2 text-sm text-fg-muted">
-            Polymarket builder fee attribution via HMAC-derived builder codes.
-            Fees calculated at 0.1% of fill notional for paper-filled and live-filled trades.
+            Polymarket builder-code attribution for Prism agents. Paper fills use the
+            0.1% fee model; live fills reconcile against Polymarket builder-trade
+            receipts when available.
           </p>
         </div>
 
@@ -70,7 +71,7 @@ export default async function BuilderFeesPage() {
             <CardContent>
               <EmptyState
                 title="No qualifying trades yet"
-                description="Once trades with 'paper_filled' or 'filled' status exist, the builder fees leaderboard will appear here."
+                description="Once paper or live fills carry Prism builder codes, attribution will appear here."
               />
             </CardContent>
           </Card>
@@ -182,15 +183,12 @@ export default async function BuilderFeesPage() {
             Methodology
           </p>
           <p className="text-xs text-fg-muted leading-relaxed">
-            Builder fees are estimated at <strong>0.1%</strong> of fill notional{" "}
-            <span className="text-mono">(size x fill_price x 0.001)</span> for trades
-            with <span className="text-mono">paper_filled</span> or{" "}
-            <span className="text-mono">filled</span> status. Builder codes are derived
-            via HMAC-SHA256 from the agent&apos;s ERC-8004 agentId using{" "}
-            <span className="text-mono">@prism/builder-codes</span>. Once live trades
-            fill on Polymarket, real builder fee data from{" "}
-            <span className="text-mono">getBuilderTrades()</span> will replace these
-            estimates.
+            Paper fills use a <strong>0.1%</strong> fill-notional model{" "}
+            <span className="text-mono">(size x fill_price x 0.001)</span>. Live fills
+            use the same builder-code mapping and reconcile against Polymarket builder
+            trade receipts as they become available. Builder codes are derived via
+            HMAC-SHA256 from the agent&apos;s ERC-8004 agentId using{" "}
+            <span className="text-mono">@prism/builder-codes</span>.
           </p>
         </div>
       </main>
