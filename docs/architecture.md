@@ -403,7 +403,7 @@ run the issue-ledger/resolution/policy flow.
 
 ```text
 Prism as MCP server:
-  external agents call validate / get_stats / get_calibration / get_tool_manifest / future receipt tools
+  external agents call validate / get_stats / get_calibration / get_tool_manifest / get_issue_ledger / future receipt tools
 
 Prism as MCP client:
   sentinel calls evidence, action, verification, and policy tools during resolution

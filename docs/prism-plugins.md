@@ -36,7 +36,7 @@ Prism has two complementary MCP roles.
 
 External agents call Prism to validate traces and query the trust state Prism currently
 exposes. The x402-protected FastMCP endpoint mounted at `/mcp/` already exists;
-receipt inspection and richer issue-ledger queries are future additions.
+read-only receipt inspection now includes redacted connector capabilities and issue ledgers.
 
 Current tools include:
 
@@ -44,11 +44,11 @@ Current tools include:
 - `get_price` — return x402 validation price;
 - `get_stats` — return aggregate validation stats;
 - `get_calibration` — return sentinel calibration state;
-- `get_tool_manifest` — return redacted connector capabilities.
+- `get_tool_manifest` — return redacted connector capabilities;
+- `get_issue_ledger` — return a read-only structured issue ledger for a validation receipt.
 
 Future tools should include:
 
-- `get_issue_ledger`;
 - `submit_issue_response` or `propose_resolution`;
 - `verify_receipt`;
 - `explain_verdict`.
@@ -400,10 +400,14 @@ uv run pytest \
 
 Extend Prism's own MCP server with more agent-readable trust tools:
 
-- `get_issue_ledger`;
 - `submit_issue_response` / `propose_resolution`;
 - `verify_receipt`;
 - `explain_verdict`.
+
+Already implemented in this phase:
+
+- `get_tool_manifest`;
+- `get_issue_ledger`.
 
 ## Decision
 

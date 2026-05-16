@@ -12,6 +12,7 @@ Tools exposed:
   ``get_stats`` — Return aggregate sentinel statistics from Neon.
   ``get_calibration`` — Return the latest sentinel calibration metrics.
   ``get_tool_manifest`` — Return a redacted connector/tool capability manifest.
+  ``get_issue_ledger`` — Return a read-only issue ledger for a validation receipt.
 
 The ``validate`` tool runs the same pipeline as ``POST /validate``:
 
@@ -33,16 +34,21 @@ import asyncio
 import hashlib
 import json
 import os
-from typing import TYPE_CHECKING, Any
+from datetime import datetime
+from typing import Any
 
 import structlog
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
+from prism_schemas.verdict import (
+    AdversarialChallenge,
+    AdversarialResolutionMetadata,
+    ChallengeResolution,
+    ResolutionRound,
+    SentinelVerdict,
+)
 from pydantic import BaseModel, Field
-
-if TYPE_CHECKING:
-    from prism_schemas.verdict import SentinelVerdict
 
 logger = structlog.get_logger("prism.mcp")
 
@@ -208,6 +214,34 @@ class GetToolManifestResult(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class IssueLedgerValidationRef(BaseModel):
+    """Minimal validation receipt reference for issue-ledger lookups."""
+
+    request_hash: str
+    trace_id: str
+    sentinel_agent_id: int
+    verdict_score: int = Field(ge=0, le=100)
+    verdict_label: str
+    response_uri: str
+    tx_hash: str | None = None
+    created_at: str | None = None
+
+
+class GetIssueLedgerResult(BaseModel):
+    """Output schema for the read-only MCP ``get_issue_ledger`` tool."""
+
+    validation: IssueLedgerValidationRef
+    structured_challenges: list[AdversarialChallenge]
+    challenge_resolutions: list[ChallengeResolution]
+    resolution_rounds: list[ResolutionRound]
+    resolution_metadata: AdversarialResolutionMetadata | None = None
+    unresolved_blocking_count: int = Field(ge=0)
+    unresolved_material_count: int = Field(ge=0)
+    verdict_content_hash_hex: str
+    redacted: bool = True
+    notes: list[str] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -299,6 +333,7 @@ def _tool_manifest_from_env() -> GetToolManifestResult:
             "get_stats",
             "get_calibration",
             "get_tool_manifest",
+            "get_issue_ledger",
         ],
         evidence_connectors=[connector],
         notes=notes,
@@ -339,6 +374,202 @@ def _is_known_evidence_input_mapper(mapper_name: str) -> bool:
         "q_count",
         "prism_evidence_request",
     }
+
+
+def _request_hash_bytes(request_hash: str) -> bytes:
+    """Decode a public bytes32 request hash string for DB lookup."""
+    normalized = request_hash.strip().removeprefix("0x")
+    if len(normalized) != 64:
+        raise ToolError("invalid_request_hash: request_hash must be 32-byte hex")
+    try:
+        return bytes.fromhex(normalized)
+    except ValueError as exc:
+        raise ToolError("invalid_request_hash: request_hash must be 32-byte hex") from exc
+
+
+def _isoformat_db_value(value: object) -> str | None:
+    """Return a stable string for DB timestamp values."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _query_issue_ledger_validation(
+    *,
+    trace_id: str | None,
+    request_hash: str | None,
+) -> dict[str, Any] | None:
+    """Query the latest validation receipt row for an issue-ledger lookup."""
+    dsn = os.environ.get("DATABASE_URL", "")
+    if not dsn:
+        raise ToolError("database_unavailable: DATABASE_URL is not configured")
+
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise ToolError("database_unavailable: psycopg is not installed") from exc
+
+    clauses: list[str] = []
+    params: list[object] = []
+    if trace_id:
+        clauses.append("trace_id = %s")
+        params.append(trace_id)
+    if request_hash:
+        clauses.append("request_hash = %s")
+        params.append(_request_hash_bytes(request_hash))
+    if not clauses:
+        raise ToolError("missing_identifier: provide trace_id or request_hash")
+
+    sql = """
+        SELECT
+            encode(request_hash, 'hex') AS request_hash,
+            trace_id,
+            sentinel_agent_id,
+            verdict_score,
+            response_uri,
+            tx_hash,
+            created_at
+        FROM validations
+        WHERE {where_clause}
+        ORDER BY created_at DESC
+        LIMIT 1
+    """.format(where_clause=" AND ".join(clauses))
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            row = cur.fetchone()
+    except Exception as exc:
+        logger.error("get_issue_ledger_db_query_failed", error_type=type(exc).__name__)
+        raise ToolError("database_query_failed: cannot query validation receipt") from exc
+
+    if row is None:
+        return None
+
+    return {
+        "request_hash": str(row[0]),
+        "trace_id": str(row[1]),
+        "sentinel_agent_id": int(row[2]),
+        "verdict_score": int(row[3]),
+        "response_uri": str(row[4] or ""),
+        "tx_hash": str(row[5]) if row[5] is not None else None,
+        "created_at": _isoformat_db_value(row[6]),
+    }
+
+
+async def _fetch_verdict_json_from_response_uri(response_uri: str) -> dict[str, Any]:
+    """Fetch a pinned verdict JSON receipt from its response URI."""
+    if not response_uri or not response_uri.strip():
+        raise ToolError("missing_response_uri: validation receipt has no response_uri")
+
+    from sentinel.ipfs import PinataClient
+
+    cid = _strip_ipfs_scheme(response_uri.strip())
+    pinata = PinataClient()
+    try:
+        verdict_json = await pinata.fetch_json(cid)
+    except Exception as exc:
+        logger.error("get_issue_ledger_verdict_fetch_failed", error_type=type(exc).__name__)
+        raise ToolError("verdict_fetch_failed: cannot resolve validation response_uri") from exc
+    finally:
+        await pinata.close()
+
+    if not isinstance(verdict_json, dict):
+        raise ToolError("invalid_verdict_receipt: pinned verdict must be a JSON object")
+    return verdict_json
+
+
+def _validate_verdict_matches_receipt(
+    *,
+    row: dict[str, Any],
+    verdict: SentinelVerdict,
+) -> None:
+    """Fail closed if the pinned verdict does not match the DB receipt row."""
+    verdict_hash = verdict.request_hash.strip().removeprefix("0x").lower()
+    row_hash = str(row["request_hash"]).strip().removeprefix("0x").lower()
+    if verdict_hash != row_hash:
+        raise ToolError("verdict_receipt_mismatch: pinned verdict request_hash mismatch")
+    if verdict.trace_id != row["trace_id"]:
+        raise ToolError("verdict_receipt_mismatch: pinned verdict trace_id mismatch")
+    if verdict.sentinel_agent_id != row["sentinel_agent_id"]:
+        raise ToolError("verdict_receipt_mismatch: pinned verdict sentinel_agent_id mismatch")
+    if verdict.verdict_score != row["verdict_score"]:
+        raise ToolError("verdict_receipt_mismatch: pinned verdict verdict_score mismatch")
+
+
+def _issue_ledger_from_verdict_row(
+    *,
+    row: dict[str, Any],
+    verdict: SentinelVerdict,
+) -> GetIssueLedgerResult:
+    """Build a redacted issue-ledger response from DB and pinned verdict data."""
+    unresolved_statuses = {"open", "answered", "conceded"}
+    unresolved_blocking_count = sum(
+        1
+        for challenge in verdict.structured_challenges
+        if challenge.blocking_pass and challenge.resolution_status in unresolved_statuses
+    )
+    unresolved_material_count = sum(
+        1
+        for challenge in verdict.structured_challenges
+        if challenge.severity == "material" and challenge.resolution_status in unresolved_statuses
+    )
+
+    return GetIssueLedgerResult(
+        validation=IssueLedgerValidationRef(
+            request_hash=row["request_hash"],
+            trace_id=row["trace_id"],
+            sentinel_agent_id=row["sentinel_agent_id"],
+            verdict_score=row["verdict_score"],
+            verdict_label=verdict.verdict_label,
+            response_uri=row["response_uri"],
+            tx_hash=row["tx_hash"],
+            created_at=row["created_at"],
+        ),
+        structured_challenges=verdict.structured_challenges,
+        challenge_resolutions=verdict.challenge_resolutions,
+        resolution_rounds=verdict.resolution_rounds,
+        resolution_metadata=verdict.resolution_metadata,
+        unresolved_blocking_count=unresolved_blocking_count,
+        unresolved_material_count=unresolved_material_count,
+        verdict_content_hash_hex=verdict.content_hash().hex(),
+        notes=[
+            "Read-only issue ledger; callers cannot mark issues resolved through this tool.",
+            "Requester wallet addresses and connector secrets are not returned.",
+        ],
+    )
+
+
+async def _get_issue_ledger(
+    *,
+    trace_id: str | None,
+    request_hash: str | None,
+) -> GetIssueLedgerResult:
+    """Return the issue ledger for a persisted validation receipt."""
+    cleaned_trace_id = trace_id.strip() if trace_id else None
+    cleaned_request_hash = request_hash.strip() if request_hash else None
+    if not cleaned_trace_id and not cleaned_request_hash:
+        raise ToolError("missing_identifier: provide trace_id or request_hash")
+
+    row = await asyncio.to_thread(
+        _query_issue_ledger_validation,
+        trace_id=cleaned_trace_id,
+        request_hash=cleaned_request_hash,
+    )
+    if row is None:
+        raise ToolError("issue_ledger_not_found: no validation receipt matched the identifier")
+
+    verdict_json = await _fetch_verdict_json_from_response_uri(row["response_uri"])
+    try:
+        verdict = SentinelVerdict.model_validate(verdict_json)
+    except Exception as exc:
+        logger.error("get_issue_ledger_invalid_verdict", error_type=type(exc).__name__)
+        raise ToolError("invalid_verdict_receipt: pinned verdict does not match schema") from exc
+
+    _validate_verdict_matches_receipt(row=row, verdict=verdict)
+    return _issue_ledger_from_verdict_row(row=row, verdict=verdict)
 
 
 def _query_stats_from_db(hours: int = 168) -> dict[str, Any]:
@@ -591,7 +822,8 @@ def build_mcp_server() -> FastMCP:
             "get_stats — view aggregate sentinel statistics; "
             "get_calibration — inspect the latest calibration metrics proving "
             "cross-family adversarial discrimination; "
-            "get_tool_manifest — inspect redacted connector capabilities."
+            "get_tool_manifest — inspect redacted connector capabilities; "
+            "get_issue_ledger — inspect read-only structured issue ledgers."
         ),
     )
 
@@ -714,6 +946,31 @@ def build_mcp_server() -> FastMCP:
     async def get_tool_manifest() -> GetToolManifestResult:
         logger.info("mcp_get_tool_manifest_invoked")
         return _tool_manifest_from_env()
+
+    # ------------------------------------------------------------------
+    # get_issue_ledger — return a read-only structured issue ledger
+    # ------------------------------------------------------------------
+
+    @server.tool(
+        name="get_issue_ledger",
+        description=(
+            "Get the structured issue ledger for a persisted validation receipt. "
+            "Provide either trace_id or request_hash. Returns only read-only "
+            "sentinel-adjudicated challenges, resolution attempts, rounds, and "
+            "metadata from the pinned verdict receipt; callers cannot mark issues "
+            "resolved through this tool."
+        ),
+    )
+    async def get_issue_ledger(
+        trace_id: str | None = None,
+        request_hash: str | None = None,
+    ) -> GetIssueLedgerResult:
+        logger.info(
+            "mcp_get_issue_ledger_invoked",
+            has_trace_id=bool(trace_id),
+            has_request_hash=bool(request_hash),
+        )
+        return await _get_issue_ledger(trace_id=trace_id, request_hash=request_hash)
 
     return server
 

@@ -1,4 +1,4 @@
-"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-014.
+"""FastMCP server tests — VAL-MCP-001 through VAL-MCP-015.
 
 Covers:
   * VAL-MCP-001 — tools/list returns ``validate`` with the expected schema.
@@ -14,7 +14,8 @@ Covers:
   * VAL-MCP-011 — get_stats tool returns aggregate statistics.
   * VAL-MCP-012 — get_calibration tool returns calibration metrics.
   * VAL-MCP-013 — get_tool_manifest returns redacted connector capabilities.
-  * VAL-MCP-014 — All 5 tools discoverable via tools/list.
+  * VAL-MCP-014 — get_issue_ledger returns read-only structured issue ledgers.
+  * VAL-MCP-015 — All 6 tools discoverable via tools/list.
 """
 
 from __future__ import annotations
@@ -31,7 +32,13 @@ import pytest
 from fastapi.testclient import TestClient
 from fastmcp import Client
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
-from prism_schemas.verdict import SentinelVerdict
+from prism_schemas.verdict import (
+    AdversarialChallenge,
+    AdversarialResolutionMetadata,
+    ChallengeResolution,
+    ResolutionRound,
+    SentinelVerdict,
+)
 
 
 def _make_trace() -> TradingR1Trace:
@@ -1134,6 +1141,7 @@ class TestGetToolManifestTool:
 
         data = result.data
         assert data is not None
+        assert "get_issue_ledger" in data.prism_mcp_tools
         connector = data.evidence_connectors[0]
         assert connector.provider == "mcp"
         assert connector.transport == "mcp_http"
@@ -1222,14 +1230,266 @@ class TestGetToolManifestTool:
 
 
 # ---------------------------------------------------------------------------
-# VAL-MCP-014: All 5 tools discoverable via tools/list
+# VAL-MCP-014: get_issue_ledger returns read-only structured issue ledgers
+# ---------------------------------------------------------------------------
+
+
+class TestGetIssueLedgerTool:
+    @pytest.mark.asyncio
+    async def test_tools_list_includes_get_issue_ledger(self) -> None:
+        """get_issue_ledger appears in tools/list."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            tools = await client.list_tools()
+        names = [t.name for t in tools]
+        assert "get_issue_ledger" in names
+
+    @pytest.mark.asyncio
+    async def test_get_issue_ledger_requires_identifier(self) -> None:
+        """get_issue_ledger rejects calls without trace_id or request_hash."""
+        from prism_mcp.server import build_mcp_server
+
+        server = build_mcp_server()
+        async with Client(server) as client:
+            result = await client.call_tool("get_issue_ledger", {}, raise_on_error=False)
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "missing_identifier" in message
+
+    @pytest.mark.asyncio
+    async def test_get_issue_ledger_returns_ledger_from_pinned_verdict(self) -> None:
+        """get_issue_ledger resolves a DB receipt to a redacted pinned verdict ledger."""
+        from prism_mcp.server import build_mcp_server
+
+        request_hash = hashlib.sha256(b"issue-ledger-test").hexdigest()
+        trace_id = str(uuid.uuid4())
+        challenge = AdversarialChallenge(
+            id="sys-temporal-stale-evidence",
+            type="temporal",
+            severity="blocking",
+            question="Evidence predates the market event window.",
+            required_resolution="Retrieve current evidence or revise to HOLD.",
+            blocking_pass=True,
+            claim_ref="evidence[0]",
+            resolution_status="conceded",
+        )
+        resolution = ChallengeResolution(
+            challenge_id=challenge.id,
+            status="conceded",
+            responder="evidence_tool",
+            response="No current source found; blocker remains unresolved.",
+            created_at=datetime.now(UTC),
+        )
+        round_ = ResolutionRound(
+            round_index=0,
+            opened_challenge_ids=[challenge.id],
+            resolved_challenge_ids=[],
+            prompt="Resolve stale evidence.",
+            response=f"{challenge.id}: conceded",
+            created_at=datetime.now(UTC),
+        )
+        verdict = _make_verdict(trace_id=trace_id).model_copy(
+            update={
+                "request_hash": request_hash,
+                "verdict_score": 50,
+                "verdict_label": "WARN",
+                "structured_challenges": [challenge],
+                "challenge_resolutions": [resolution],
+                "resolution_rounds": [round_],
+                "resolution_metadata": AdversarialResolutionMetadata(
+                    confidence=0.42,
+                    stop_reason="unresolved_blockers",
+                    unresolved_blocking_count=1,
+                    unresolved_material_count=0,
+                    max_rounds=1,
+                ),
+                "requester_address": "0xshouldnotbereturned",
+            }
+        )
+        mock_row = (
+            request_hash,
+            trace_id,
+            2,
+            50,
+            "ipfs://QmIssueLedgerVerdict",
+            "0xarcanchor",
+            datetime.now(UTC),
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = mock_row
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "TEST_DSN_PLACEHOLDER"}, clear=False),
+            patch("psycopg.connect", return_value=mock_conn),
+            patch(
+                "prism_mcp.server._fetch_verdict_json_from_response_uri",
+                new=AsyncMock(return_value=verdict.model_dump(mode="json", exclude_defaults=True)),
+            ),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool("get_issue_ledger", {"trace_id": trace_id})
+
+        data = result.data
+        assert data is not None
+        assert data.validation.request_hash == request_hash
+        assert data.validation.trace_id == trace_id
+        assert data.validation.verdict_score == 50
+        assert data.validation.verdict_label == "WARN"
+        assert data.structured_challenges[0].id == challenge.id
+        assert data.challenge_resolutions[0].status == "conceded"
+        assert data.resolution_rounds[0].opened_challenge_ids == [challenge.id]
+        assert data.unresolved_blocking_count == 1
+        assert data.unresolved_material_count == 0
+        assert data.redacted is True
+        serialized = json.dumps(result.structured_content)
+        assert "0xshouldnotbereturned" not in serialized
+        assert "TEST_DSN_PLACEHOLDER" not in serialized
+
+    @pytest.mark.asyncio
+    async def test_get_issue_ledger_fails_when_pinned_verdict_mismatches_receipt(self) -> None:
+        """Mismatched pinned verdicts fail closed instead of mixing ledgers."""
+        from prism_mcp.server import build_mcp_server
+
+        request_hash = hashlib.sha256(b"issue-ledger-db-row").hexdigest()
+        trace_id = str(uuid.uuid4())
+        mismatched_verdict = _make_verdict(trace_id=str(uuid.uuid4())).model_copy(
+            update={
+                "request_hash": hashlib.sha256(b"different-pinned-verdict").hexdigest(),
+                "verdict_score": 50,
+                "verdict_label": "WARN",
+            }
+        )
+        mock_row = (
+            request_hash,
+            trace_id,
+            2,
+            50,
+            "ipfs://QmMismatchedVerdict",
+            None,
+            datetime.now(UTC),
+        )
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = mock_row
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "TEST_DSN_PLACEHOLDER"}, clear=False),
+            patch("psycopg.connect", return_value=mock_conn),
+            patch(
+                "prism_mcp.server._fetch_verdict_json_from_response_uri",
+                new=AsyncMock(
+                    return_value=mismatched_verdict.model_dump(
+                        mode="json",
+                        exclude_defaults=True,
+                    )
+                ),
+            ),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "get_issue_ledger",
+                    {"trace_id": trace_id},
+                    raise_on_error=False,
+                )
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "verdict_receipt_mismatch" in message
+
+    @pytest.mark.asyncio
+    async def test_get_issue_ledger_returns_not_found_for_missing_receipt(self) -> None:
+        """Missing validation receipts return a structured ToolError."""
+        from prism_mcp.server import build_mcp_server
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = None
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+        mock_conn.__exit__ = MagicMock(return_value=False)
+
+        with (
+            patch.dict(os.environ, {"DATABASE_URL": "TEST_DSN_PLACEHOLDER"}, clear=False),
+            patch("psycopg.connect", return_value=mock_conn),
+        ):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "get_issue_ledger",
+                    {"request_hash": hashlib.sha256(b"missing").hexdigest()},
+                    raise_on_error=False,
+                )
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "issue_ledger_not_found" in message
+
+    @pytest.mark.asyncio
+    async def test_get_issue_ledger_rejects_invalid_request_hash(self) -> None:
+        """Invalid request_hash input fails before any DB lookup."""
+        from prism_mcp.server import build_mcp_server
+
+        with patch.dict(os.environ, {"DATABASE_URL": "TEST_DSN_PLACEHOLDER"}, clear=False):
+            server = build_mcp_server()
+            async with Client(server) as client:
+                result = await client.call_tool(
+                    "get_issue_ledger",
+                    {"request_hash": "not-hex"},
+                    raise_on_error=False,
+                )
+
+        assert result.is_error
+        message = "".join(getattr(c, "text", "") for c in (result.content or []))
+        assert "invalid_request_hash" in message
+
+    def test_get_issue_ledger_result_model_validates(self) -> None:
+        """GetIssueLedgerResult Pydantic model validates correctly."""
+        from prism_mcp.server import GetIssueLedgerResult, IssueLedgerValidationRef
+
+        result = GetIssueLedgerResult(
+            validation=IssueLedgerValidationRef(
+                request_hash=hashlib.sha256(b"model").hexdigest(),
+                trace_id=str(uuid.uuid4()),
+                sentinel_agent_id=2,
+                verdict_score=65,
+                verdict_label="PASS",
+                response_uri="ipfs://QmVerdict",
+            ),
+            structured_challenges=[],
+            challenge_resolutions=[],
+            resolution_rounds=[],
+            unresolved_blocking_count=0,
+            unresolved_material_count=0,
+            verdict_content_hash_hex=hashlib.sha256(b"receipt").hexdigest(),
+        )
+        assert result.redacted is True
+        assert result.validation.verdict_label == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# VAL-MCP-015: All 6 tools discoverable via tools/list
 # ---------------------------------------------------------------------------
 
 
 class TestAllToolsDiscoverable:
     @pytest.mark.asyncio
-    async def test_tools_list_returns_all_five_tools(self) -> None:
-        """tools/list returns validate, price, stats, calibration, manifest."""
+    async def test_tools_list_returns_all_six_tools(self) -> None:
+        """tools/list returns validate, price, stats, calibration, manifest, ledger."""
         from prism_mcp.server import build_mcp_server
 
         server = build_mcp_server()
@@ -1241,12 +1501,14 @@ class TestAllToolsDiscoverable:
         assert "get_stats" in names
         assert "get_calibration" in names
         assert "get_tool_manifest" in names
+        assert "get_issue_ledger" in names
         expected_tools = {
             "validate",
             "get_price",
             "get_stats",
             "get_calibration",
             "get_tool_manifest",
+            "get_issue_ledger",
         }
         assert expected_tools.issubset(set(names))
-        assert sum(1 for n in names if n in expected_tools) == 5
+        assert sum(1 for n in names if n in expected_tools) == 6
