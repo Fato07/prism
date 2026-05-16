@@ -12,6 +12,7 @@ from sentinel.evidence_tools import (
     BraveSearchEvidenceProvider,
     CustomWebhookEvidenceProvider,
     EvidenceSearchRequest,
+    ExaSearchEvidenceProvider,
     NoopEvidenceProvider,
     ParallelSearchEvidenceProvider,
     TavilySearchEvidenceProvider,
@@ -40,6 +41,122 @@ def _request() -> EvidenceSearchRequest:
         challenge=challenge,
         query=query_for_challenge(market_question, challenge),
     )
+
+
+@pytest.mark.asyncio
+async def test_exa_search_provider_posts_query_and_parses_highlights() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["api_key"] = request.headers.get("x-api-key")
+        body = request.read().decode()
+        captured["body"] = body
+        return httpx.Response(
+            200,
+            json={
+                "requestId": "exa_test",
+                "results": [
+                    {
+                        "url": "https://example.com/exa-current",
+                        "title": "Exa current evidence",
+                        "publishedDate": "2026-05-16T00:00:00.000Z",
+                        "highlights": ["Current Exa highlight.", "Second Exa highlight."],
+                        "score": 0.82,
+                    }
+                ],
+            },
+        )
+
+    provider = ExaSearchEvidenceProvider(
+        api_key="exa-key",
+        search_type="neural",
+        category="news",
+        user_location="US",
+        text_max_characters=900,
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert captured["api_key"] == "exa-key"
+    request_body = json.loads(str(captured["body"]))
+    assert request_body["query"] == _request().query
+    assert request_body["type"] == "neural"
+    assert request_body["category"] == "news"
+    assert request_body["userLocation"] == "US"
+    assert request_body["numResults"] == 5
+    assert request_body["contents"]["highlights"]["maxCharacters"] == 900
+    assert request_body["contents"]["highlights"]["query"] == _request().query
+    assert len(results) == 1
+    assert results[0].provider == "exa_search"
+    assert results[0].snippet == "Current Exa highlight.\n\nSecond Exa highlight."
+    assert results[0].published_at == "2026-05-16T00:00:00.000Z"
+    assert results[0].confidence == 0.82
+
+
+@pytest.mark.asyncio
+async def test_exa_search_provider_falls_back_for_missing_title_and_score() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "url": "https://example.com/exa-summary",
+                        "summary": "Exa summary should be preferred.",
+                        "score": 2.0,
+                    },
+                    {
+                        "url": "https://example.com/exa-text",
+                        "text": "Text fallback should become snippet.",
+                    },
+                ]
+            },
+        )
+
+    provider = ExaSearchEvidenceProvider(
+        api_key="exa-key",
+        search_type="invalid",
+        category="not-a-category",
+        text_max_characters=-10,
+        transport=httpx.MockTransport(handler),
+    )
+
+    results = await provider.search(_request())
+
+    assert provider.search_type == "auto"
+    assert provider.category is None
+    assert provider.text_max_characters == 1
+    assert results[0].title == "https://example.com/exa-summary"
+    assert results[0].snippet == "Exa summary should be preferred."
+    assert results[0].confidence == 1.0
+    assert results[1].confidence == 0.74
+
+
+@pytest.mark.asyncio
+async def test_exa_search_provider_returns_empty_on_invalid_json() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    provider = ExaSearchEvidenceProvider(
+        api_key="exa-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_exa_search_provider_returns_empty_on_http_failure() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"error": "unauthorized"})
+
+    provider = ExaSearchEvidenceProvider(
+        api_key="exa-key",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
 
 
 @pytest.mark.asyncio
@@ -348,6 +465,54 @@ async def test_custom_webhook_provider_returns_empty_on_http_failure() -> None:
     )
 
     assert await provider.search(_request()) == []
+
+
+def test_evidence_provider_from_env_uses_exa_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "exa_search")
+    monkeypatch.setenv("EXA_API_KEY", "exa-key")
+    monkeypatch.setenv("EXA_SEARCH_TYPE", "fast")
+    monkeypatch.setenv("EXA_SEARCH_CATEGORY", "news")
+    monkeypatch.setenv("EXA_SEARCH_USER_LOCATION", "US")
+    monkeypatch.setenv("EXA_SEARCH_TEXT_MAX_CHARACTERS", "900")
+    monkeypatch.setenv("EXA_SEARCH_TIMEOUT_SECONDS", "bad-value")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, ExaSearchEvidenceProvider)
+    assert provider.api_key == "exa-key"
+    assert provider.search_type == "fast"
+    assert provider.category == "news"
+    assert provider.user_location == "US"
+    assert provider.text_max_characters == 900
+    assert provider.timeout_seconds == 30.0
+
+
+def test_evidence_provider_from_env_falls_back_to_exa_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "exa_search")
+    monkeypatch.setenv("EXA_API_KEY", "exa-key")
+    monkeypatch.setenv("EXA_SEARCH_TYPE", "invalid")
+    monkeypatch.setenv("EXA_SEARCH_CATEGORY", "not-a-category")
+    monkeypatch.setenv("EXA_SEARCH_TEXT_MAX_CHARACTERS", "-1")
+    monkeypatch.setenv("EXA_SEARCH_TIMEOUT_SECONDS", "0")
+
+    provider = evidence_provider_from_env()
+
+    assert isinstance(provider, ExaSearchEvidenceProvider)
+    assert provider.search_type == "auto"
+    assert provider.category is None
+    assert provider.text_max_characters == 1200
+    assert provider.timeout_seconds == 30.0
+
+
+def test_evidence_provider_from_env_falls_back_to_noop_without_exa_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "exa_search")
+    monkeypatch.delenv("EXA_API_KEY", raising=False)
+
+    assert isinstance(evidence_provider_from_env(), NoopEvidenceProvider)
 
 
 def test_evidence_provider_from_env_uses_parallel_search(monkeypatch: pytest.MonkeyPatch) -> None:

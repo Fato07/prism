@@ -72,6 +72,78 @@ class StaticEvidenceProvider:
         return self._results_by_challenge_id.get(request.challenge.id, [])
 
 
+class ExaSearchEvidenceProvider:
+    """Evidence provider backed by Exa's Search API."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint: str = "https://api.exa.ai/search",
+        search_type: str = "auto",
+        category: str | None = None,
+        user_location: str | None = None,
+        text_max_characters: int = 1200,
+        timeout_seconds: float = 30.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        """Create an Exa Search provider with a user-supplied API key."""
+        self.api_key = api_key
+        self.endpoint = endpoint
+        self.search_type = _normalize_exa_search_type(search_type)
+        self.category = _normalize_exa_category(category)
+        self.user_location = user_location
+        self.text_max_characters = max(1, text_max_characters)
+        self.timeout_seconds = timeout_seconds
+        self.transport = transport
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Query Exa Search and normalize highlighted web results."""
+        payload: dict[str, Any] = {
+            "query": request.query,
+            "type": self.search_type,
+            "numResults": request.max_results,
+            "contents": {
+                "highlights": {
+                    "maxCharacters": self.text_max_characters,
+                    "query": request.query,
+                }
+            },
+        }
+        if self.category:
+            payload["category"] = self.category
+        if self.user_location:
+            payload["userLocation"] = self.user_location
+
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": self.api_key,
+        }
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+            ) as client:
+                response = await client.post(self.endpoint, json=payload, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "exa_search_failed",
+                challenge_id=request.challenge.id,
+                error=str(exc),
+            )
+            return []
+
+        body = _response_json_or_none(
+            response,
+            provider="exa_search",
+            challenge_id=request.challenge.id,
+        )
+        if body is None:
+            return []
+        return _parse_exa_results(body)
+
+
 class ParallelSearchEvidenceProvider:
     """Evidence provider backed by Parallel's Search API."""
 
@@ -333,10 +405,28 @@ def evidence_provider_from_env() -> EvidenceProvider:
     - `brave_search`: query Brave's Web Search API with `BRAVE_SEARCH_API_KEY`.
     - `parallel_search`: query Parallel's Search API with `PARALLEL_API_KEY`.
     - `tavily_search`: query Tavily Search with `TAVILY_API_KEY`.
+    - `exa_search`: query Exa Search with `EXA_API_KEY`.
     """
     provider = os.environ.get("PRISM_EVIDENCE_PROVIDER", "noop").strip().lower()
     if provider == "noop":
         return NoopEvidenceProvider()
+    if provider in {"exa", "exa_search"}:
+        api_key = os.environ.get("EXA_API_KEY", "").strip()
+        if not api_key:
+            logger.warning(
+                "exa_search_missing_api_key",
+                fallback="noop",
+            )
+            return NoopEvidenceProvider()
+        timeout_seconds = _float_env("EXA_SEARCH_TIMEOUT_SECONDS", 30.0)
+        return ExaSearchEvidenceProvider(
+            api_key=api_key,
+            search_type=_exa_search_type_from_env(),
+            category=_exa_category_from_env(),
+            user_location=os.environ.get("EXA_SEARCH_USER_LOCATION"),
+            text_max_characters=_int_env_or_none("EXA_SEARCH_TEXT_MAX_CHARACTERS") or 1200,
+            timeout_seconds=timeout_seconds,
+        )
     if provider in {"parallel", "parallel_search"}:
         api_key = os.environ.get("PARALLEL_API_KEY", "").strip()
         if not api_key:
@@ -406,6 +496,56 @@ def evidence_provider_from_env() -> EvidenceProvider:
         fallback="noop",
     )
     return NoopEvidenceProvider()
+
+
+def _exa_search_type_from_env() -> str:
+    """Return a supported Exa search type from environment config."""
+    return _normalize_exa_search_type(os.environ.get("EXA_SEARCH_TYPE", "auto"))
+
+
+def _normalize_exa_search_type(search_type: str) -> str:
+    """Return a supported Exa search type."""
+    normalized = search_type.strip().lower()
+    if normalized in {"neural", "fast", "auto", "deep", "deep-reasoning", "instant"}:
+        return normalized
+    logger.warning(
+        "invalid_exa_search_type",
+        search_type=normalized,
+        fallback="auto",
+    )
+    return "auto"
+
+
+def _exa_category_from_env() -> str | None:
+    """Return a supported Exa category from environment config."""
+    return _normalize_exa_category(os.environ.get("EXA_SEARCH_CATEGORY"))
+
+
+def _normalize_exa_category(category: str | None) -> str | None:
+    """Return a supported Exa category."""
+    if category is None:
+        return None
+    normalized = category.strip().lower()
+    if normalized == "":
+        return None
+    allowed_categories = {
+        "company",
+        "research paper",
+        "news",
+        "pdf",
+        "github",
+        "personal site",
+        "people",
+        "financial report",
+    }
+    if normalized in allowed_categories:
+        return normalized
+    logger.warning(
+        "invalid_exa_category",
+        category=normalized,
+        fallback=None,
+    )
+    return None
 
 
 def _parallel_mode_from_env() -> str:
@@ -577,6 +717,58 @@ def _parse_webhook_results(
             continue
         results.append(parsed)
     return results
+
+
+def _parse_exa_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Exa Search results into evidence results."""
+    if not isinstance(body, dict):
+        return []
+    raw_results = body.get("results")
+    if not isinstance(raw_results, list):
+        return []
+
+    results: list[EvidenceSearchResult] = []
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not isinstance(url, str):
+            continue
+        snippet = _exa_snippet(item)
+        if snippet is None:
+            continue
+        title = item.get("title")
+        published_date = item.get("publishedDate")
+        score = item.get("score")
+        results.append(
+            EvidenceSearchResult(
+                title=title if isinstance(title, str) and title else url,
+                url=url,
+                snippet=snippet,
+                provider="exa_search",
+                published_at=published_date if isinstance(published_date, str) else None,
+                confidence=_confidence_from_score(score, fallback=0.74),
+            )
+        )
+    return results
+
+
+def _exa_snippet(item: dict[str, Any]) -> str | None:
+    """Choose the best Exa content field for a compact evidence snippet."""
+    summary = item.get("summary")
+    if isinstance(summary, str) and summary:
+        return summary
+    highlights = item.get("highlights")
+    if isinstance(highlights, list):
+        cleaned = [
+            highlight for highlight in highlights if isinstance(highlight, str) and highlight
+        ]
+        if cleaned:
+            return "\n\n".join(cleaned[:2])
+    text = item.get("text")
+    if isinstance(text, str) and text:
+        return text[:1200]
+    return None
 
 
 def _parallel_objective(request: EvidenceSearchRequest) -> str:

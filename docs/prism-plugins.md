@@ -37,8 +37,8 @@ Examples:
 - `prism.parallel_search` — Parallel Search API with BYO Parallel API key.
 - `prism.parallel_x402` — future x402-paid search/research via Circle-compatible services.
 - `prism.tavily_search` — agent-oriented web retrieval with BYO Tavily API key.
+- `prism.exa_search` — semantic/neural research search with BYO Exa API key.
 - `prism.brave_search` — web/news search with BYO Brave API key.
-- `prism.exa` — semantic/neural research search.
 - `prism.firecrawl` — scrape/extract specific pages after search.
 - `prism.polymarket_gamma` — market metadata, tags, end dates, resolution status.
 - `custom.webhook` — user-owned HTTP endpoint wrapping MCP tools, internal APIs, or any
@@ -107,6 +107,8 @@ evidence:
       api_key_env: PARALLEL_API_KEY
     - type: tavily_search
       api_key_env: TAVILY_API_KEY
+    - type: exa_search
+      api_key_env: EXA_API_KEY
     - type: brave_search
       api_key_env: BRAVE_SEARCH_API_KEY
 
@@ -186,6 +188,7 @@ The first plugin seam lives in `apps/sentinel/src/sentinel/evidence_tools.py`:
 - `CustomWebhookEvidenceProvider` — BYO HTTP endpoint.
 - `ParallelSearchEvidenceProvider` — native Parallel Search API adapter.
 - `TavilySearchEvidenceProvider` — native Tavily Search API adapter.
+- `ExaSearchEvidenceProvider` — native Exa Search API adapter.
 - `BraveSearchEvidenceProvider` — native Brave Search Web Search API adapter.
 
 Custom webhook environment:
@@ -222,6 +225,19 @@ TAVILY_SEARCH_TIMEOUT_SECONDS=20      # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
+Exa Search environment:
+
+```bash
+PRISM_EVIDENCE_PROVIDER=exa_search
+EXA_API_KEY=your-exa-api-key
+EXA_SEARCH_TYPE=auto                   # optional: auto, neural, fast, instant, deep, deep-reasoning
+EXA_SEARCH_CATEGORY=                   # optional: news, pdf, github, research paper, etc.
+EXA_SEARCH_USER_LOCATION=US            # optional
+EXA_SEARCH_TEXT_MAX_CHARACTERS=1200    # optional
+EXA_SEARCH_TIMEOUT_SECONDS=30          # optional
+ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
+```
+
 Brave Search environment:
 
 ```bash
@@ -234,5 +250,5 @@ BRAVE_SEARCH_TIMEOUT_SECONDS=20      # optional
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
-This is intentionally small and reversible. Native adapters for Parallel x402, Exa,
-Firecrawl, and domain APIs can be added behind the same contract.
+This is intentionally small and reversible. Native adapters for Parallel x402, Firecrawl,
+and domain APIs can be added behind the same contract.
