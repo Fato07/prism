@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import socket
 
 import httpx
 import pytest
+import uvicorn
 from fastmcp import FastMCP
 from prism_schemas.verdict import AdversarialChallenge
 
@@ -155,6 +158,64 @@ async def test_mcp_evidence_provider_calls_tool_and_maps_generic_results() -> No
     assert results[0].provider == "generic_search"
     assert results[0].url == "https://example.com/mcp-current"
     assert results[0].confidence == 0.88
+
+
+@pytest.mark.asyncio
+async def test_mcp_evidence_provider_calls_real_http_fastmcp_server() -> None:
+    server = FastMCP("evidence-http-smoke")
+
+    @server.tool
+    def search(query: str, limit: int) -> dict[str, object]:
+        return {
+            "results": [
+                {
+                    "title": f"HTTP MCP source for {query}",
+                    "url": "https://example.com/http-mcp-current",
+                    "snippet": f"HTTP transport returned {limit} requested results.",
+                    "confidence": 0.91,
+                }
+            ]
+        }
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
+    app = server.http_app(path="/mcp")
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        lifespan="on",
+    )
+    uvicorn_server = uvicorn.Server(config)
+    server_task = asyncio.create_task(uvicorn_server.serve())
+
+    try:
+        for _ in range(50):
+            if uvicorn_server.started:
+                break
+            await asyncio.sleep(0.05)
+        assert uvicorn_server.started is True
+
+        provider = McpEvidenceProvider(
+            server_url=f"http://127.0.0.1:{port}/mcp",
+            tool_name="search",
+            result_mapper="generic_search",
+            input_mapper="query_limit",
+            timeout_seconds=5.0,
+        )
+
+        results = await provider.search(_request())
+    finally:
+        uvicorn_server.should_exit = True
+        await asyncio.wait_for(server_task, timeout=5.0)
+
+    assert len(results) == 1
+    assert results[0].provider == "generic_search"
+    assert results[0].url == "https://example.com/http-mcp-current"
+    assert results[0].confidence == 0.91
 
 
 @pytest.mark.asyncio

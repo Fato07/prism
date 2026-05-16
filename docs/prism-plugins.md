@@ -344,6 +344,15 @@ PRISM_EVIDENCE_MCP_TIMEOUT_SECONDS=20
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
+Local HTTP smoke coverage starts a real FastMCP HTTP server and connects through
+`McpEvidenceProvider(server_url=...)`, not the in-process test transport:
+
+```bash
+uv run pytest \
+  apps/sentinel/src/tests/test_evidence_tools.py::test_mcp_evidence_provider_calls_real_http_fastmcp_server \
+  -q
+```
+
 ## Ralph implementation roadmap
 
 ### Phase 1 — Docs and strategy
@@ -366,7 +375,7 @@ ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
   - explicit tool allowlist;
   - no secrets in logs, receipts, or pinned artifacts;
   - fail-closed behavior.
-- Test against a fake in-process FastMCP server.
+- Test against a fake in-process FastMCP server and a local HTTP FastMCP server.
 
 ### Phase 3 — Result mappers
 
