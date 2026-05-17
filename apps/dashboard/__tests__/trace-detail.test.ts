@@ -14,6 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 import { deriveCapitalGate } from "@/lib/capital-gate";
+import { buildTraceExplainer } from "@/lib/trace-explainer";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
 /* ─────────────── Test fixtures ─────────────── */
@@ -257,6 +258,60 @@ describe("VAL-TRACE-005: Agent attribution chips show correct labels", () => {
 
   it("GPT substring match works", () => {
     expect(modelFamilyLabel("gpt-4o").label).toBe("GPT");
+  });
+});
+
+/* ─────────────── Plain-English trace explainer ─────────────── */
+
+describe("VAL-TRACE-022: Trace explainer summarizes issue-ledger gates", () => {
+  it("explains why unresolved blockers keep capital blocked", () => {
+    const explainer = buildTraceExplainer({
+      action: "BUY",
+      verdictLabel: "WARN",
+      capitalGateStatus: "BLOCK",
+      cleanPassAllowed: false,
+      unresolvedBlockingCount: 1,
+      unresolvedMaterialCount: 0,
+      totalIssues: 4,
+    });
+
+    expect(explainer.headline).toContain("capital should not move");
+    expect(explainer.summary).toContain("Clean PASS stayed gated");
+    expect(explainer.steps[2].body).toContain("1 blocking issue");
+    expect(explainer.steps[3].body).toContain("capital gate remains BLOCK");
+  });
+
+  it("explains paper-mode allowance when blockers are clear", () => {
+    const explainer = buildTraceExplainer({
+      action: "HOLD",
+      verdictLabel: "PASS",
+      capitalGateStatus: "ALLOW_PAPER",
+      cleanPassAllowed: true,
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 3,
+    });
+
+    expect(explainer.summary).toContain("paper-mode continuation");
+    expect(explainer.steps[0].body).toContain("recorded evidence fields");
+    expect(explainer.steps[2].body).toContain("No material or blocking issue-ledger gates remain");
+    expect(explainer.steps[3].body).toContain("allows paper mode");
+  });
+
+  it("keeps pending traces out of capital flow", () => {
+    const explainer = buildTraceExplainer({
+      action: null,
+      verdictLabel: null,
+      capitalGateStatus: "PENDING_VALIDATION",
+      cleanPassAllowed: null,
+      unresolvedBlockingCount: null,
+      unresolvedMaterialCount: null,
+      totalIssues: null,
+    });
+
+    expect(explainer.headline).toContain("waiting for adversarial validation");
+    expect(explainer.summary).toContain("No Sentinel verdict");
+    expect(explainer.steps[1].body).toContain("has not returned a verdict");
   });
 });
 

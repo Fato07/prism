@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { deriveCapitalGate } from "@/lib/capital-gate";
 import { getIssueLedgerSummary } from "@/lib/issue-ledger";
+import { buildTraceExplainer, type TraceExplainerTone } from "@/lib/trace-explainer";
 import { computeTraceMetrics, readinessFromMetrics } from "@/lib/public-api";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
@@ -208,6 +209,15 @@ export default async function TraceDetailPage({ params }: PageProps) {
     unresolvedMaterialCount: issueLedgerSummary?.unresolvedMaterialCount ?? null,
     totalIssues: issueLedgerSummary?.totalIssues ?? null,
   });
+  const traceExplainer = buildTraceExplainer({
+    action: side,
+    verdictLabel,
+    capitalGateStatus: capitalGate.status,
+    cleanPassAllowed: capitalGate.checks.clean_pass_allowed,
+    unresolvedBlockingCount: issueLedgerSummary?.unresolvedBlockingCount ?? null,
+    unresolvedMaterialCount: issueLedgerSummary?.unresolvedMaterialCount ?? null,
+    totalIssues: issueLedgerSummary?.totalIssues ?? null,
+  });
 
   const traderModel = modelFamilyLabel(traceContent?.model_family);
   const sentinelModel = modelFamilyLabel(verdictContent?.model_family);
@@ -278,6 +288,41 @@ export default async function TraceDetailPage({ params }: PageProps) {
       </div>
 
       <main className="mx-auto max-w-7xl px-6 pb-16 pt-8">
+        {/* ── Plain-English demo explainer ── */}
+        <section aria-label="Trace explanation" className="mb-8">
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-canvas-raised)]/70 p-5 backdrop-blur-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="max-w-3xl">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <Pill tone="sentinel" emphasis="outline" size="xs">
+                    What happened here?
+                  </Pill>
+                  <Pill tone={capitalGate.tone === "neutral" ? "neutral" : capitalGate.tone} emphasis="soft" size="xs">
+                    {capitalGate.label}
+                  </Pill>
+                </div>
+                <h2 className="text-balance text-xl font-semibold tracking-[var(--tracking-tight)] text-fg sm:text-2xl">
+                  {traceExplainer.headline}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-fg-muted">
+                  {traceExplainer.summary}
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/55 px-4 py-3 text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                <div>{traderModel.label} trader</div>
+                <div>{sentinelModel.label} sentinel</div>
+                <div>gate · {capitalGate.status}</div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+              {traceExplainer.steps.map((step, index) => (
+                <TraceExplainerStepCard key={step.title} step={step} index={index + 1} />
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── Workspace: Trader + Sentinel columns ── */}
         <section aria-label="Trace workspace">
           <div className="mb-5 flex items-center gap-3">
@@ -622,6 +667,50 @@ export default async function TraceDetailPage({ params }: PageProps) {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+/* ─────────────── Trace explainer helpers ─────────────── */
+
+const TRACE_EXPLAINER_TONE_CLASS: Record<TraceExplainerTone, string> = {
+  trader: "text-[var(--color-trader)]",
+  sentinel: "text-[var(--color-sentinel)]",
+  good: "text-[var(--color-verdict-good)]",
+  warn: "text-[var(--color-warning)]",
+  bad: "text-[var(--color-danger)]",
+  neutral: "text-fg-muted",
+};
+
+const TRACE_EXPLAINER_DOT_CLASS: Record<TraceExplainerTone, string> = {
+  trader: "bg-[var(--color-trader)]",
+  sentinel: "bg-[var(--color-sentinel)]",
+  good: "bg-[var(--color-verdict-good)]",
+  warn: "bg-[var(--color-warning)]",
+  bad: "bg-[var(--color-danger)]",
+  neutral: "bg-[var(--color-fg-muted)]",
+};
+
+function TraceExplainerStepCard({
+  step,
+  index,
+}: {
+  step: { title: string; body: string; tone: TraceExplainerTone };
+  index: number;
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/45 p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-mono text-[10px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+          Step {index}
+        </span>
+        <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full border border-[var(--color-border)] ${TRACE_EXPLAINER_TONE_CLASS[step.tone]}`}>
+          <Hexagon className="h-3.5 w-3.5" strokeWidth={2} />
+        </span>
+      </div>
+      <h3 className="text-sm font-semibold text-fg">{step.title}</h3>
+      <p className="mt-2 text-xs leading-5 text-fg-muted">{step.body}</p>
+      <span className={`mt-3 block h-px w-10 ${TRACE_EXPLAINER_DOT_CLASS[step.tone]}`} aria-hidden="true" />
     </div>
   );
 }
