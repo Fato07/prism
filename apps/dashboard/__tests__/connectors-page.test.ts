@@ -42,6 +42,9 @@ describe("VAL-CONNECTORS-001: connectors are workspace settings, not a marketpla
     expect(clientSource).toContain("web_search_exa");
     expect(clientSource).toContain("exa_mcp_text");
     expect(clientSource).toContain("choose → smoke → arm");
+    expect(clientSource).toContain("Access details");
+    expect(clientSource).toContain("Advanced tool contract");
+    expect(clientSource).toContain("Presets fill this automatically");
   });
 
   it("moves technical setup to docs instead of product UI env templates", async () => {

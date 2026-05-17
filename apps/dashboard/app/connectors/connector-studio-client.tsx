@@ -81,6 +81,13 @@ const EVIDENCE_SOURCE_PRESETS = [
   },
 ] as const;
 
+const CONNECTOR_FLOW_STEPS = [
+  "Choose evidence source",
+  "Save connector passport",
+  "Run smoke test",
+  "Arm Sentinel route",
+] as const;
+
 type StudioAction = "save" | "smoke" | "arm" | "refresh";
 
 export function ConnectorStudioClient({ initialManifest }: { initialManifest: ConnectorManifest }) {
@@ -210,64 +217,98 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
           <Pill tone="sentinel" emphasis="outline" size="xs">choose → smoke → arm</Pill>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            {EVIDENCE_SOURCE_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/45 p-3 text-left transition-colors hover:border-[var(--color-sentinel)]/60 hover:bg-[var(--color-canvas-raised)] disabled:opacity-50"
-                disabled={busyAction !== null}
-                onClick={() => setForm({ ...preset.form })}
-                type="button"
-              >
-                <span className="block text-sm font-semibold text-fg">{preset.name}</span>
-                <span className="mt-1 block text-xs leading-5 text-fg-muted">{preset.description}</span>
-              </button>
+          <ol className="grid grid-cols-1 gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/35 p-3 md:grid-cols-4">
+            {CONNECTOR_FLOW_STEPS.map((step, index) => (
+              <li key={step} className="flex items-center gap-2 text-xs text-fg-muted">
+                <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-canvas-raised)] text-mono text-[10px] text-fg-faint">
+                  {index + 1}
+                </span>
+                <span>{step}</span>
+              </li>
             ))}
+          </ol>
+
+          <div>
+            <p className="mb-2 text-mono text-[10px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+              Choose evidence source
+            </p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {EVIDENCE_SOURCE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/45 p-3 text-left transition-colors hover:border-[var(--color-sentinel)]/60 hover:bg-[var(--color-canvas-raised)] disabled:opacity-50"
+                  disabled={busyAction !== null}
+                  onClick={() => setForm({ ...preset.form })}
+                  type="button"
+                >
+                  <span className="block text-sm font-semibold text-fg">{preset.name}</span>
+                  <span className="mt-1 block text-xs leading-5 text-fg-muted">{preset.description}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <form className="grid grid-cols-1 gap-3 md:grid-cols-2" onSubmit={handleSave}>
+            <div className="md:col-span-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/25 p-3">
+              <p className="text-mono text-[10px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                Access details
+              </p>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">
+                Most hosted MCP sources only need an endpoint. Tokens are encrypted and never echoed.
+              </p>
+            </div>
             <Field label="Admin token">
               <input className={INPUT_CLASS} type="password" placeholder="required for connector control plane" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} />
             </Field>
             <Field label="Name">
               <input className={INPUT_CLASS} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </Field>
-            <Field label="Transport">
-              <select className={INPUT_CLASS} value={form.transport} onChange={(event) => setForm({ ...form, transport: event.target.value })}>
-                {TRANSPORTS.map((transport) => <option key={transport}>{transport}</option>)}
-              </select>
-            </Field>
             <Field label="Endpoint URL">
               <input className={INPUT_CLASS} placeholder={form.transport === "mcp_http" ? "https://server.example/mcp" : "https://hooks.example/evidence"} value={form.server_url} onChange={(event) => setForm({ ...form, server_url: event.target.value })} />
             </Field>
-            <Field label="Tool name">
-              <input className={INPUT_CLASS} value={form.tool_name} onChange={(event) => setForm({ ...form, tool_name: event.target.value })} />
-            </Field>
-            <Field label="Allowed tools">
-              <input className={INPUT_CLASS} value={form.allowed_tools} onChange={(event) => setForm({ ...form, allowed_tools: event.target.value })} />
-            </Field>
-            <Field label="Input mapper">
-              <select className={INPUT_CLASS} value={form.input_mapper} onChange={(event) => setForm({ ...form, input_mapper: event.target.value })}>
-                {INPUT_MAPPERS.map((mapper) => <option key={mapper}>{mapper}</option>)}
-              </select>
-            </Field>
-            <Field label="Result mapper">
-              <select className={INPUT_CLASS} value={form.result_mapper} onChange={(event) => setForm({ ...form, result_mapper: event.target.value })}>
-                {RESULT_MAPPERS.map((mapper) => <option key={mapper}>{mapper}</option>)}
-              </select>
-            </Field>
-            <Field label="Timeout seconds">
-              <input className={INPUT_CLASS} type="number" min="1" max="120" value={form.timeout_seconds} onChange={(event) => setForm({ ...form, timeout_seconds: event.target.value })} />
-            </Field>
-            <Field label="Max results">
-              <input className={INPUT_CLASS} type="number" min="1" max="20" value={form.max_results} onChange={(event) => setForm({ ...form, max_results: event.target.value })} />
-            </Field>
-            <Field label="USDC cost cap">
-              <input className={INPUT_CLASS} value={form.max_usdc} onChange={(event) => setForm({ ...form, max_usdc: event.target.value })} />
-            </Field>
             <Field label="Bearer token">
-              <input className={INPUT_CLASS} type="password" placeholder="stored encrypted; never echoed" value={form.bearer_token} onChange={(event) => setForm({ ...form, bearer_token: event.target.value })} />
+              <input className={INPUT_CLASS} type="password" placeholder="optional; stored encrypted" value={form.bearer_token} onChange={(event) => setForm({ ...form, bearer_token: event.target.value })} />
             </Field>
+
+            <details className="md:col-span-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/25 p-3">
+              <summary className="cursor-pointer text-sm font-medium text-fg">Advanced tool contract</summary>
+              <p className="mt-1 text-xs leading-5 text-fg-muted">
+                Presets fill this automatically. Change these only when the MCP/tool schema differs.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Field label="Transport">
+                  <select className={INPUT_CLASS} value={form.transport} onChange={(event) => setForm({ ...form, transport: event.target.value })}>
+                    {TRANSPORTS.map((transport) => <option key={transport}>{transport}</option>)}
+                  </select>
+                </Field>
+                <Field label="Tool name">
+                  <input className={INPUT_CLASS} value={form.tool_name} onChange={(event) => setForm({ ...form, tool_name: event.target.value })} />
+                </Field>
+                <Field label="Allowed tools">
+                  <input className={INPUT_CLASS} value={form.allowed_tools} onChange={(event) => setForm({ ...form, allowed_tools: event.target.value })} />
+                </Field>
+                <Field label="Input mapper">
+                  <select className={INPUT_CLASS} value={form.input_mapper} onChange={(event) => setForm({ ...form, input_mapper: event.target.value })}>
+                    {INPUT_MAPPERS.map((mapper) => <option key={mapper}>{mapper}</option>)}
+                  </select>
+                </Field>
+                <Field label="Result mapper">
+                  <select className={INPUT_CLASS} value={form.result_mapper} onChange={(event) => setForm({ ...form, result_mapper: event.target.value })}>
+                    {RESULT_MAPPERS.map((mapper) => <option key={mapper}>{mapper}</option>)}
+                  </select>
+                </Field>
+                <Field label="Timeout seconds">
+                  <input className={INPUT_CLASS} type="number" min="1" max="120" value={form.timeout_seconds} onChange={(event) => setForm({ ...form, timeout_seconds: event.target.value })} />
+                </Field>
+                <Field label="Max results">
+                  <input className={INPUT_CLASS} type="number" min="1" max="20" value={form.max_results} onChange={(event) => setForm({ ...form, max_results: event.target.value })} />
+                </Field>
+                <Field label="USDC cost cap">
+                  <input className={INPUT_CLASS} value={form.max_usdc} onChange={(event) => setForm({ ...form, max_usdc: event.target.value })} />
+                </Field>
+              </div>
+            </details>
+
             <label className="md:col-span-2 flex items-center gap-2 text-xs text-fg-muted">
               <input type="checkbox" checked={form.fail_closed} onChange={(event) => setForm({ ...form, fail_closed: event.target.checked })} />
               Fail closed: failed tools return no evidence and leave issues unresolved.
