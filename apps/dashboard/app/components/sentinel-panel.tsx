@@ -22,7 +22,9 @@ import { ExpandButton } from "@/components/ui/expandable";
 import { formatRelativeTime } from "@/lib/utils";
 import {
   getIssueLedgerSummary,
+  getToolResolutionSummary,
   latestResolutionForChallenge,
+  toolResolutionStatusForChallenge,
 } from "@/lib/issue-ledger";
 import { useState } from "react";
 import {
@@ -144,6 +146,7 @@ export function SentinelPanel({
   const structuredChallenges = verdict.structured_challenges ?? [];
   const resolutionMetadata = verdict.resolution_metadata ?? null;
   const issueLedgerSummary = getIssueLedgerSummary(verdict);
+  const toolResolutionSummary = getToolResolutionSummary(verdict);
 
   return (
     <>
@@ -232,22 +235,40 @@ export function SentinelPanel({
               Issue ledger · {structuredChallenges.length}
             </Eyebrow>
             {resolutionMetadata && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 px-3 py-2 text-mono text-[10px] text-fg-faint">
-                <span>
-                  confidence · <span className="text-fg-muted">{Math.round(resolutionMetadata.confidence * 100)}%</span>
-                </span>
-                <Separator orientation="vertical" className="h-3" />
-                <span>
-                  blockers · <span className="text-fg-muted">{resolutionMetadata.unresolved_blocking_count}</span>
-                </span>
-                <Separator orientation="vertical" className="h-3" />
-                <span>
-                  material · <span className="text-fg-muted">{resolutionMetadata.unresolved_material_count}</span>
-                </span>
-                <Separator orientation="vertical" className="h-3" />
-                <span>
-                  stop · <span className="text-fg-muted">{resolutionMetadata.stop_reason}</span>
-                </span>
+              <div className="mb-3 space-y-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2 text-mono text-[10px] text-fg-faint">
+                  <span>
+                    confidence · <span className="text-fg-muted">{Math.round(resolutionMetadata.confidence * 100)}%</span>
+                  </span>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>
+                    blockers · <span className="text-fg-muted">{resolutionMetadata.unresolved_blocking_count}</span>
+                  </span>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>
+                    material · <span className="text-fg-muted">{resolutionMetadata.unresolved_material_count}</span>
+                  </span>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>
+                    stop · <span className="text-fg-muted">{resolutionMetadata.stop_reason}</span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-mono text-[10px] text-fg-faint">
+                  <span>
+                    tool resolved · <span className="text-fg-muted">{toolResolutionSummary.resolvedCount}</span>
+                  </span>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>
+                    fail-closed · <span className="text-fg-muted">{toolResolutionSummary.noEvidenceCount}</span>
+                  </span>
+                  <Separator orientation="vertical" className="h-3" />
+                  <span>
+                    not recorded · <span className="text-fg-muted">{toolResolutionSummary.notRecordedCount}</span>
+                  </span>
+                  <span className="basis-full text-[11px] normal-case tracking-normal text-fg-faint sm:basis-auto">
+                    {toolResolutionSummary.label}
+                  </span>
+                </div>
               </div>
             )}
             <ol className="space-y-2.5">
@@ -256,6 +277,7 @@ export function SentinelPanel({
                   key={challenge.id}
                   challenge={challenge}
                   latestResolution={latestResolutionForChallenge(verdict, challenge.id)}
+                  toolStatus={toolResolutionStatusForChallenge(verdict, challenge.id)}
                 />
               ))}
             </ol>
@@ -383,9 +405,11 @@ type StructuredChallenge = NonNullable<SentinelVerdict["structured_challenges"]>
 function StructuredChallengeItem({
   challenge,
   latestResolution,
+  toolStatus,
 }: {
   challenge: StructuredChallenge;
   latestResolution: ChallengeResolution | null;
+  toolStatus: ReturnType<typeof toolResolutionStatusForChallenge>;
 }) {
   const accent =
     challenge.severity === "blocking"
@@ -438,6 +462,9 @@ function StructuredChallengeItem({
                 {challenge.claim_ref}
               </span>
             )}
+            <span className={`rounded px-1.5 py-0.5 ${toolStatusClassName(toolStatus)}`}>
+              tool: {toolStatusLabel(toolStatus)}
+            </span>
           </div>
           <p className="text-sm leading-relaxed text-fg">{challenge.question}</p>
           <p className="mt-1.5 text-xs leading-relaxed text-fg-faint">
@@ -463,6 +490,22 @@ function StructuredChallengeItem({
       </div>
     </li>
   );
+}
+
+function toolStatusLabel(status: ReturnType<typeof toolResolutionStatusForChallenge>): string {
+  if (status === "resolved") return "resolved";
+  if (status === "no_evidence") return "fail-closed";
+  return "not attempted";
+}
+
+function toolStatusClassName(status: ReturnType<typeof toolResolutionStatusForChallenge>): string {
+  if (status === "resolved") {
+    return "bg-[var(--color-success)]/15 text-[var(--color-success)]";
+  }
+  if (status === "no_evidence") {
+    return "bg-[var(--color-warning)]/15 text-[var(--color-warning)]";
+  }
+  return "bg-[var(--color-canvas-raised)] text-fg-faint";
 }
 
 function ChallengeItem({
