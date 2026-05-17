@@ -60,7 +60,7 @@ Use this to show the mature path:
 2. Sentinel raises temporal/calibration issues in the current public trace; source-quality coverage is tested separately.
 3. Connector Passport routes targeted evidence requests to Exa hosted MCP.
 4. Sentinel accepts only issue-matched, recent/source-adequate evidence.
-5. The issue ledger records `resolved` tool outcomes and the capital gate reaches `ALLOW_PAPER`.
+5. The issue ledger records `resolved` tool outcomes from `exa_mcp`; the clean-PASS blocker gate clears, while the final capital gate may still require review if the score/label remains WARN.
 
 ### Fail-closed guardrail — optional reset mode
 
@@ -86,13 +86,13 @@ Show the broad-evidence trace page:
 https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1
 ```
 
-Narrative checkpoint: this trace now demonstrates the full MCP evidence loop. Sentinel raised issues, Exa hosted MCP returned source-linked evidence, adequacy gates accepted only issue-matched results, and the capital gate moved to paper-mode allowed.
+Narrative checkpoint: this trace now demonstrates the full MCP evidence loop. Sentinel raised issues, Exa hosted MCP returned source-linked evidence, and adequacy gates accepted only issue-matched results. In the latest receipt, blocking evidence gates are resolved by `exa_mcp`; the final capital gate remains REVIEW when the live verdict score/label stays in the warning band.
 
 ### 0:40–1:00 — Capital gate
 
 > Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path. If a connector fails, returns malformed data, or returns evidence that does not match the issue, Prism stays fail-closed.
 
-Show the trace page `What happened here?` panel, capital-gate card, Sentinel issue-ledger summary, and execution-attribution page if time permits. The current broad-evidence trace should show `PASS`, `ALLOW_PAPER`, and per-issue `resolved` tool outcomes from `exa_mcp`.
+Show the trace page `What happened here?` panel, capital-gate card, Sentinel issue-ledger summary, and execution-attribution page if time permits. The current broad-evidence trace should show per-issue `resolved` tool outcomes from `exa_mcp`; the verdict/capital gate may show `WARN`/`REVIEW` if the score remains in the warning band after blockers are cleared.
 
 ### 1:00–1:20 — Human self-serve path
 

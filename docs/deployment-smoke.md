@@ -104,7 +104,7 @@ is explicitly enabled.
 7. Arm the connector.
 8. Return to `/dashboard` and confirm the active route shows as armed.
 9. Run one validation with `ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2`.
-10. For Exa hosted MCP, confirm supported issue types move to `resolved` only when public report tool outcomes show provider `exa_mcp` and the capital gate permits paper mode.
+10. For Exa hosted MCP, confirm supported issue types move to `resolved` only when public report tool outcomes show provider `exa_mcp`. If the verdict remains WARN, the capital gate may still require review even after blocking evidence gates clear.
 11. For fail-closed mode, re-arm the market-only connector or a malformed connector and confirm unsupported blockers remain unresolved if the connector fails or returns non-matching output.
 
 ## Public API smoke
