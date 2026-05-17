@@ -99,7 +99,10 @@ export function TraderPanel({ trace, ipfsCid, contentHash, noExpand }: TraderPan
 
   return (
     <>
-    <Card tone="trader" className="flex h-full flex-col">
+    <Card
+      tone="trader"
+      className={["flex flex-col", noExpand ? "max-h-none" : "max-h-[600px]"].join(" ")}
+    >
       {/* Header */}
       <CardHeader>
         <CardTitle className="flex items-center gap-2">

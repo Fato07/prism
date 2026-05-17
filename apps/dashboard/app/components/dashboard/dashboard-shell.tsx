@@ -4,7 +4,7 @@
  * DashboardShell — client wrapper that owns the page-level layout state.
  *
  * The Adversarial dialogue can be in one of three positions:
- *   - `none`  : inline inside the workspace zone (default)
+ *   - `none`  : inline after core workspace/proof (default)
  *   - `left`  : sticky full-height column on the left
  *   - `right` : sticky full-height column on the right
  *
@@ -14,10 +14,11 @@
  * localStorage.
  *
  * Layout strategy:
- *   When `side === "none"`, render content as a normal single-column main.
- *   When docked, the page becomes a 2-column flex with a sticky aside.
- *   The dialogue content is rendered EITHER inline (workspace child) OR in
- *   the aside, never both — driven by the same context.
+ *   When `side === "none"`, render content as a normal single-column main with
+ *   proof before the longer dialogue deep-dive so receipt cards do not get
+ *   pushed beneath the chat transcript. When docked, the page becomes a
+ *   2-column flex with a sticky aside. The dialogue content is rendered EITHER
+ *   inline OR in the aside, never both — driven by the same context.
  */
 
 import {
@@ -56,7 +57,7 @@ function isDockSide(value: unknown): value is DockSide {
 interface DashboardShellProps {
   workspace: ReactNode;
   proof: ReactNode;
-  /** The dialogue node. Rendered inline inside `workspace` when undocked;
+  /** The dialogue node. Rendered inline after workspace/proof when undocked;
    *  rendered in the side aside when docked. */
   dialogue: ReactNode;
   /** Optional aside title — defaults to "Adversarial dialogue". */
@@ -112,9 +113,9 @@ export function DashboardShell({
       ) : (
         <main className="mx-auto max-w-7xl px-6 pb-16 pt-8">
           {workspace}
-          {/* Centered inline dialogue when undocked */}
-          <div className="mx-auto mt-4 w-full max-w-4xl">{dialogue}</div>
           <div className="mt-14">{proof}</div>
+          {/* Centered inline dialogue when undocked, after core workspace/proof */}
+          <div className="mx-auto mt-14 w-full max-w-4xl">{dialogue}</div>
         </main>
       )}
     </DockContext.Provider>

@@ -150,7 +150,10 @@ export function SentinelPanel({
 
   return (
     <>
-    <Card tone="sentinel" className="flex h-full flex-col">
+    <Card
+      tone="sentinel"
+      className={["flex flex-col", noExpand ? "max-h-none" : "max-h-[600px]"].join(" ")}
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldAlert
@@ -419,6 +422,9 @@ function StructuredChallengeItem({
         : "var(--color-fg-muted)";
   const isResolved = challenge.resolution_status === "resolved" ||
     challenge.resolution_status === "superseded";
+  const displayedResolution = latestResolution
+    ? summarizeResolutionResponse(latestResolution.response)
+    : null;
 
   return (
     <li
@@ -481,8 +487,13 @@ function StructuredChallengeItem({
                 <span>·</span>
                 <span>{formatRelativeTime(latestResolution.created_at)}</span>
               </div>
-              <p className="text-xs leading-relaxed text-fg-muted">
-                {latestResolution.response}
+              <p className="text-xs leading-relaxed text-fg-muted break-words [overflow-wrap:anywhere]">
+                {displayedResolution?.text}
+                {displayedResolution?.truncated && (
+                  <span className="mt-2 block text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                    Full evidence is preserved in the verdict receipt.
+                  </span>
+                )}
               </p>
             </div>
           )}
@@ -490,6 +501,24 @@ function StructuredChallengeItem({
       </div>
     </li>
   );
+}
+
+function summarizeResolutionResponse(response: string): { text: string; truncated: boolean } {
+  const cleaned = response
+    .replace(/\uFFFD/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
+    .trim();
+
+  const evidenceDetailStart = cleaned.indexOf(" — ");
+  if (cleaned.includes("Retrieved issue-matched evidence") && evidenceDetailStart !== -1) {
+    return { text: cleaned.slice(0, evidenceDetailStart), truncated: true };
+  }
+
+  if (cleaned.length > 520) {
+    return { text: `${cleaned.slice(0, 520)}…`, truncated: true };
+  }
+
+  return { text: cleaned, truncated: false };
 }
 
 function toolStatusLabel(status: ReturnType<typeof toolResolutionStatusForChallenge>): string {
