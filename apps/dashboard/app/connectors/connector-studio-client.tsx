@@ -16,6 +16,7 @@ const RESULT_MAPPERS = [
   "custom_webhook",
   "firecrawl_search",
   "exa_search",
+  "exa_mcp_text",
   "parallel_search",
   "tavily_search",
   "brave_search",
@@ -35,6 +36,50 @@ const EMPTY_FORM = {
   bearer_token: "",
   fail_closed: true,
 };
+
+const EVIDENCE_SOURCE_PRESETS = [
+  {
+    id: "exa-hosted-mcp",
+    name: "Exa hosted MCP",
+    description: "Broad web search over a hosted MCP endpoint. Good first research connector preset.",
+    form: {
+      transport: "mcp_http",
+      name: "Exa hosted MCP evidence",
+      server_url: "https://mcp.exa.ai/mcp",
+      tool_name: "web_search_exa",
+      input_mapper: "query_max_results",
+      result_mapper: "exa_mcp_text",
+      allowed_tools: "web_search_exa",
+      timeout_seconds: "20",
+      max_results: "5",
+      max_usdc: "",
+      bearer_token: "",
+      fail_closed: true,
+    },
+  },
+  {
+    id: "custom-mcp",
+    name: "Custom MCP server",
+    description: "Use when your provider or internal tool already exposes a trusted MCP endpoint.",
+    form: EMPTY_FORM,
+  },
+  {
+    id: "custom-webhook",
+    name: "Webhook bridge",
+    description: "Fallback for an operator-controlled wrapper around internal tools or paid services.",
+    form: {
+      ...EMPTY_FORM,
+      transport: "custom_webhook",
+      name: "Research webhook evidence",
+      server_url: "",
+      tool_name: "search",
+      input_mapper: "prism_evidence_request",
+      result_mapper: "custom_webhook",
+      allowed_tools: "search",
+      max_usdc: "",
+    },
+  },
+] as const;
 
 type StudioAction = "save" | "smoke" | "arm" | "refresh";
 
@@ -160,11 +205,26 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
           <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-[var(--color-verdict-good)]" strokeWidth={2} />
-            Create connector passport
+            Evidence source setup
           </CardTitle>
-          <Pill tone="sentinel" emphasis="outline" size="xs">MCP-first · encrypted token capture</Pill>
+          <Pill tone="sentinel" emphasis="outline" size="xs">choose → smoke → arm</Pill>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {EVIDENCE_SOURCE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/45 p-3 text-left transition-colors hover:border-[var(--color-sentinel)]/60 hover:bg-[var(--color-canvas-raised)] disabled:opacity-50"
+                disabled={busyAction !== null}
+                onClick={() => setForm({ ...preset.form })}
+                type="button"
+              >
+                <span className="block text-sm font-semibold text-fg">{preset.name}</span>
+                <span className="mt-1 block text-xs leading-5 text-fg-muted">{preset.description}</span>
+              </button>
+            ))}
+          </div>
+
           <form className="grid grid-cols-1 gap-3 md:grid-cols-2" onSubmit={handleSave}>
             <Field label="Admin token">
               <input className={INPUT_CLASS} type="password" placeholder="required for connector control plane" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} />

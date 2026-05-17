@@ -234,6 +234,23 @@ Direct `x402_http` paid execution is intentionally not armed in hosted Connector
 until a Circle-wallet-compatible payment client and per-call USDC cap are approved. Use a
 custom webhook bridge when an operator already controls a paid x402 wrapper.
 
+Recommended broad research preset after the demo connector is Exa's hosted MCP server:
+
+```text
+transport: mcp_http
+server_url: https://mcp.exa.ai/mcp
+tool_name: web_search_exa
+input_mapper: query_max_results
+result_mapper: exa_mcp_text
+allowed_tools: web_search_exa
+max_results: 5
+max_usdc: null
+```
+
+`exa_mcp_text` normalizes Exa hosted MCP text blocks (`Title:`, `URL:`, `Published:`,
+`Highlights:`) into Prism evidence artifacts. Smoke must pass before arming, and Sentinel
+still applies issue adequacy gates before resolving anything.
+
 For live demo evidence without a third-party research provider, sentinel mounts
 `/market-evidence-mcp/`, a free read-only FastMCP server with tool `search`. Configure it
 with input mapper `prism_evidence_request` and result mapper `generic_search`. It calls the
@@ -406,7 +423,7 @@ Current pieces:
 - `McpEvidenceProvider` — preferred MCP client connector for external tools.
 - `EvidenceConnectorConfig` / `ToolConnectorManifest` — small Pydantic manifest models.
 - explicit result mapper registry — `generic_search`, `firecrawl_search`, `exa_search`,
-  `tavily_search`, `parallel_search`, `brave_search`, `custom_webhook`.
+  `exa_mcp_text`, `tavily_search`, `parallel_search`, `brave_search`, `custom_webhook`.
 - `CustomWebhookEvidenceProvider` — BYO bridge; useful for wrapping MCP/internal tools
   and now loadable from an armed Connector Passport row.
 - `ParallelSearchEvidenceProvider` — direct adapter fallback/reference mapper.

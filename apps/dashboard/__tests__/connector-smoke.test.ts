@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildSmokeToolArguments,
   countEvidenceItems,
+  countMappedEvidenceItems,
   extractMcpResultBody,
   runMcpConnectorSmoke,
 } from "@/lib/connector-smoke";
@@ -44,6 +45,19 @@ const webhookConnector = {
   max_usdc: null,
 } satisfies ToolConnectorRow;
 
+const exaMcpConnector = {
+  ...baseConnector,
+  name: "Exa hosted MCP",
+  server_url: "https://mcp.exa.ai/mcp",
+  tool_name: "web_search_exa",
+  input_mapper: "query_max_results",
+  result_mapper: "exa_mcp_text",
+  allowed_tools: ["web_search_exa"],
+  auth_secret_ciphertext: null,
+  auth_secret_hint: null,
+  max_usdc: null,
+} satisfies ToolConnectorRow;
+
 function jsonResponse(payload: unknown, ok = true, headers = new Headers({ "content-type": "application/json" })): Response {
   return {
     ok,
@@ -64,6 +78,28 @@ describe("connector smoke helpers", () => {
   it("extracts MCP structuredContent and counts evidence results", () => {
     const body = extractMcpResultBody({ structuredContent: { results: [{ title: "A" }] } });
     expect(countEvidenceItems(body)).toBe(1);
+  });
+
+  it("counts Exa hosted MCP text results only for the Exa text mapper", () => {
+    const body = "Title: Circle Arc update\nURL: https://www.circle.com/arc\nPublished: 2026-03-12T07:01:09.000Z\nHighlights:\nArc Testnet supports USDC-native settlement.\n";
+
+    expect(countMappedEvidenceItems("exa_mcp_text", body)).toBe(1);
+    expect(countMappedEvidenceItems("generic_search", body)).toBe(0);
+  });
+
+  it("counts multiple Exa hosted MCP text result blocks", () => {
+    const body = [
+      "Title: First Source",
+      "URL: https://example.com/first",
+      "Highlights:",
+      "First source highlight.",
+      "Title: Second Source",
+      "URL: https://example.com/second",
+      "Highlights:",
+      "Second source highlight.",
+    ].join("\n");
+
+    expect(countMappedEvidenceItems("exa_mcp_text", body)).toBe(2);
   });
 
   it("passes when tools/list includes the tool and tools/call returns mapped results", async () => {
@@ -109,6 +145,34 @@ describe("connector smoke helpers", () => {
       })
     );
     expect(JSON.stringify(receipt)).not.toContain("token");
+  });
+
+  it("passes Exa hosted MCP smoke when tools/call returns text blocks", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: "init", result: {} }))
+      .mockResolvedValueOnce(
+        jsonResponse({ jsonrpc: "2.0", id: "list", result: { tools: [{ name: "web_search_exa" }] } })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          jsonrpc: "2.0",
+          id: "call",
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "Title: Circle Arc update\nURL: https://www.circle.com/arc\nPublished: 2026-03-12T07:01:09.000Z\nHighlights:\nArc Testnet supports USDC-native settlement.\n",
+              },
+            ],
+          },
+        })
+      );
+
+    const receipt = await runMcpConnectorSmoke({ row: exaMcpConnector, fetchImpl });
+
+    expect(receipt.status).toBe("passed");
+    expect(receipt.evidence_count).toBe(1);
   });
 
   it("fails closed when MCP output cannot be mapped to evidence", async () => {

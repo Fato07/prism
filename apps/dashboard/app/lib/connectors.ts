@@ -23,6 +23,7 @@ export const EvidenceResultMapperSchema = z.enum([
   "custom_webhook",
   "firecrawl_search",
   "exa_search",
+  "exa_mcp_text",
   "parallel_search",
   "tavily_search",
   "brave_search",

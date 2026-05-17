@@ -89,6 +89,7 @@ def test_tool_connector_manifest_accepts_mcp_evidence_config() -> None:
 def test_evidence_result_mapper_registry_maps_generic_and_provider_shapes() -> None:
     assert "generic_search" in available_evidence_result_mappers()
     assert "firecrawl_search" in available_evidence_result_mappers()
+    assert "exa_mcp_text" in available_evidence_result_mappers()
     assert "query" in available_evidence_input_mappers()
     assert "query_limit" in available_evidence_input_mappers()
 
@@ -120,9 +121,56 @@ def test_evidence_result_mapper_registry_maps_generic_and_provider_shapes() -> N
         },
     )
 
+    exa_mcp_text = "\n".join(
+        [
+            "Title: Circle launches Arc Testnet",
+            "URL: https://www.circle.com/arc",
+            "Published: 2026-03-12T07:01:09.000Z",
+            "Author: N/A",
+            "Highlights:",
+            "Current Arc Testnet context for USDC-native settlement.",
+            "[...]",
+            "Sub-second finality and predictable fees.",
+        ]
+    )
+    exa_mcp_results = map_evidence_results("exa_mcp_text", exa_mcp_text)
+
     assert generic_results[0].provider == "generic_search"
     assert firecrawl_results[0].provider == "firecrawl_search"
+    assert exa_mcp_results[0].provider == "exa_mcp"
+    assert exa_mcp_results[0].url == "https://www.circle.com/arc"
+    assert exa_mcp_results[0].published_at == "2026-03-12T07:01:09.000Z"
+    assert "[...]" not in exa_mcp_results[0].snippet
     assert map_evidence_results("missing_mapper", {"results": []}) == []
+
+
+def test_exa_mcp_text_mapper_preserves_result_provenance() -> None:
+    body = "\n".join(
+        [
+            "Title: First Source",
+            "URL: https://example.com/first",
+            "Published: 2026-03-12T07:01:09.000Z",
+            "Highlights:",
+            "First source highlight.",
+            "Title: Second Source",
+            "URL: https://example.com/second",
+            "Published: N/A",
+            "Highlights:",
+            "Second source highlight.",
+        ]
+    )
+
+    results = map_evidence_results("exa_mcp_text", body)
+
+    assert len(results) == 2
+    assert results[0].title == "First Source"
+    assert results[0].url == "https://example.com/first"
+    assert results[0].snippet == "First source highlight."
+    assert results[1].title == "Second Source"
+    assert results[1].url == "https://example.com/second"
+    assert results[1].published_at is None
+    assert "URL:" not in results[0].snippet
+    assert "Second Source" not in results[0].snippet
 
 
 @pytest.mark.asyncio
