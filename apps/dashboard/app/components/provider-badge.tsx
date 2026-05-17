@@ -10,7 +10,7 @@ export type ProviderBrandId =
   | "webhook"
   | "custom_mcp";
 
-interface ProviderBrand {
+export interface ProviderBrand {
   id: ProviderBrandId;
   name: string;
   shortName: string;

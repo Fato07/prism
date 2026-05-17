@@ -6,7 +6,7 @@
  *   DashboardShell (client wrapper) renders one of two layouts based on
  *     the dialogue dock side (none / left / right):
  *
- *     side === "none"   : single column main, dialogue inline mid-workspace
+ *     side === "none"   : single column main, dialogue inline after proof
  *     side === "left"   : dialogue full-height sticky column on the left
  *     side === "right"  : dialogue full-height sticky column on the right
  *
@@ -33,7 +33,6 @@ import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
 import { ReceiptLinks } from "@/components/receipt-links";
 import { TradeAttribution } from "@/components/trade-attribution";
-import { ConnectorTrustStatus } from "@/components/connector-trust-status";
 import { Pill } from "@/components/ui/pill";
 import { LiveDot } from "@/components/ui/live-dot";
 import { Separator } from "@/components/ui/separator";
@@ -112,6 +111,9 @@ export default async function DashboardPage() {
   const registrationTxHash = traderAgent?.registration_tx_hash ?? null;
   const validationRequestTxHash = traceRow?.tx_hash ?? null;
   const validationResponseTxHash = validationRow?.tx_hash ?? null;
+  const activeEvidenceConnector = connectorManifest.connectors.find(
+    (connector) => connector.id === connectorManifest.active_connector_id,
+  ) ?? null;
 
   const workspace = (
     <>
@@ -136,6 +138,7 @@ export default async function DashboardPage() {
           <SentinelPanel
             verdict={verdictData}
             responseUri={validationRow?.response_uri ?? null}
+            evidenceConnector={activeEvidenceConnector}
             pendingMessage={
               pendingValidation
                 ? "Trace submitted — awaiting sentinel validation"
@@ -143,7 +146,6 @@ export default async function DashboardPage() {
             }
           />
         </div>
-        <ConnectorTrustStatus manifest={connectorManifest} verdict={verdictData} />
       </div>
     </>
   );
@@ -155,6 +157,7 @@ export default async function DashboardPage() {
       verdictLabel={verdictData?.verdict_label ?? null}
       traderModel={traceData?.model_name ?? null}
       sentinelModel={verdictData?.model_name ?? null}
+      evidenceConnector={activeEvidenceConnector}
     />
   );
 

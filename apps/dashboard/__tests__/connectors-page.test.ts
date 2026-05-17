@@ -77,32 +77,34 @@ describe("VAL-CONNECTORS-001: connectors are workspace settings, not a marketpla
   });
 });
 
-describe("VAL-CONNECTORS-002: dashboard owns live connector trust state", () => {
-  it("adds connector trust status to dashboard near Sentinel reasoning", async () => {
+describe("VAL-CONNECTORS-002: dashboard surfaces tool identity inline", () => {
+  it("removes the standalone evidence route card from dashboard flow", async () => {
     const source = await readSource("../app/dashboard/page.tsx");
 
-    expect(source).toContain("ConnectorTrustStatus");
     expect(source).toContain("getConnectorManifestForDashboard");
-    expect(source).toContain("<ConnectorTrustStatus manifest={connectorManifest} verdict={verdictData} />");
+    expect(source).toContain("activeEvidenceConnector");
+    expect(source).toContain("evidenceConnector={activeEvidenceConnector}");
+    expect(source).not.toContain("ConnectorTrustStatus");
+    expect(source).not.toContain("Evidence harness");
   });
 
-  it("connector status component summarizes fail-closed armed tool state without secrets", async () => {
-    const source = await readSource("../app/components/connector-trust-status.tsx");
+  it("renders provider logos inline with Sentinel issue/tool reasoning without secrets", async () => {
+    const sentinelSource = await readSource("../app/components/sentinel-panel.tsx");
+    const dialogueSource = await readSource("../app/components/dashboard/adversarial-dialogue.tsx");
     const brandSource = await readSource("../app/components/provider-badge.tsx");
 
-    expect(source).toContain("Evidence tool route");
-    expect(source).toContain("Evidence harness");
-    expect(source).toContain("Sentinel can call this smoke-tested tool only when an issue needs proof.");
-    expect(source).toContain("Manage tools");
-    expect(source).not.toContain("input_mapper} →");
+    expect(sentinelSource).toContain("ToolProviderChip");
+    expect(sentinelSource).toContain("evidenceConnector");
+    expect(dialogueSource).toContain("evidenceBrand");
+    expect(dialogueSource).toContain("isToolMessage && evidenceBrand");
     expect(brandSource).toContain("/provider-logos/exa.svg");
     expect(brandSource).toContain("/provider-logos/firecrawl.svg");
     expect(brandSource).toContain("/provider-logos/tavily.svg");
     expect(brandSource).toContain("/provider-logos/brave.svg");
-    expect(brandSource).not.toContain("auth_secret_ciphertext");
-    expect(source).not.toContain("auth_secret_ciphertext");
-    expect(source).not.toContain("CONNECTOR_SECRETS_KEY");
-    expect(source).not.toContain("bearer_token");
+    expect(sentinelSource).not.toContain("auth_secret_ciphertext");
+    expect(dialogueSource).not.toContain("auth_secret_ciphertext");
+    expect(sentinelSource).not.toContain("CONNECTOR_SECRETS_KEY");
+    expect(dialogueSource).not.toContain("bearer_token");
   });
 });
 
