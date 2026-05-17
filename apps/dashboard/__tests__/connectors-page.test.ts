@@ -4,6 +4,9 @@
 
 import { describe, expect, it } from "vitest";
 
+import { connectorProviderBrand } from "@/components/provider-badge";
+import type { ConnectorPassport } from "@/lib/connectors";
+
 async function readSource(pathFromDashboard: string): Promise<string> {
   const fs = await import("node:fs/promises");
   const path = await import("node:path");
@@ -80,22 +83,78 @@ describe("VAL-CONNECTORS-002: dashboard owns live connector trust state", () => 
 
     expect(source).toContain("ConnectorTrustStatus");
     expect(source).toContain("getConnectorManifestForDashboard");
-    expect(source).toContain("<ConnectorTrustStatus manifest={connectorManifest} />");
+    expect(source).toContain("<ConnectorTrustStatus manifest={connectorManifest} verdict={verdictData} />");
   });
 
   it("connector status component summarizes fail-closed armed tool state without secrets", async () => {
     const source = await readSource("../app/components/connector-trust-status.tsx");
+    const brandSource = await readSource("../app/components/provider-badge.tsx");
 
     expect(source).toContain("Evidence tool route");
-    expect(source).toContain("Sentinel can call an armed, smoke-tested evidence tool only when an issue needs proof.");
+    expect(source).toContain("Evidence harness");
+    expect(source).toContain("Sentinel can call this smoke-tested tool only when an issue needs proof.");
     expect(source).toContain("Manage tools");
+    expect(source).not.toContain("input_mapper} →");
+    expect(brandSource).toContain("/provider-logos/exa.svg");
+    expect(brandSource).toContain("/provider-logos/firecrawl.svg");
+    expect(brandSource).toContain("/provider-logos/tavily.svg");
+    expect(brandSource).toContain("/provider-logos/brave.svg");
+    expect(brandSource).not.toContain("auth_secret_ciphertext");
     expect(source).not.toContain("auth_secret_ciphertext");
     expect(source).not.toContain("CONNECTOR_SECRETS_KEY");
     expect(source).not.toContain("bearer_token");
   });
 });
 
-describe("VAL-CONNECTORS-003: global nav de-emphasizes admin surface", () => {
+describe("VAL-CONNECTORS-003: provider badges make tool routes human-readable", () => {
+  const baseConnector: ConnectorPassport = {
+    id: "connector-1",
+    name: "Custom MCP evidence",
+    connector_kind: "evidence",
+    transport: "mcp_http",
+    provider: "mcp",
+    server_url: null,
+    tool_name: "search",
+    input_mapper: "query_limit",
+    result_mapper: "generic_search",
+    allowed_tools: ["search"],
+    timeout_seconds: 20,
+    max_results: 5,
+    max_usdc: null,
+    auth_configured: false,
+    auth_secret_hint: null,
+    smoke_status: "passed",
+    smoke_receipt: null,
+    armed: true,
+    armable: true,
+    fail_closed: true,
+    status_label: "armed",
+    created_at: "2026-05-17T00:00:00Z",
+    updated_at: "2026-05-17T00:00:00Z",
+  };
+
+  it("maps known evidence providers to local logo assets", () => {
+    expect(connectorProviderBrand({ ...baseConnector, name: "Exa hosted MCP evidence", tool_name: "web_search_exa", result_mapper: "exa_mcp_text" }).logoSrc).toBe("/provider-logos/exa.svg");
+    expect(connectorProviderBrand({ ...baseConnector, name: "Firecrawl search", result_mapper: "firecrawl_search" }).logoSrc).toBe("/provider-logos/firecrawl.svg");
+    expect(connectorProviderBrand({ ...baseConnector, name: "Tavily search", result_mapper: "tavily_search" }).logoSrc).toBe("/provider-logos/tavily.svg");
+    expect(connectorProviderBrand({ ...baseConnector, name: "Brave search", result_mapper: "brave_search" }).logoSrc).toBe("/provider-logos/brave.svg");
+    expect(connectorProviderBrand({ ...baseConnector, name: "Parallel search", result_mapper: "parallel_search" }).logoSrc).toBe("/provider-logos/parallel.svg");
+    expect(connectorProviderBrand({ ...baseConnector, name: "Webhook bridge", transport: "custom_webhook", result_mapper: "custom_webhook" }).logoSrc).toBe("/provider-logos/webhook.svg");
+  });
+
+  it("keeps provider logo assets local", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const logoDir = path.resolve(__dirname, "../public/provider-logos");
+    const logos = ["exa.svg", "firecrawl.svg", "tavily.svg", "brave.svg", "parallel.svg", "custom-mcp.svg", "webhook.svg"];
+
+    for (const logo of logos) {
+      await expect(fs.stat(path.join(logoDir, logo))).resolves.toBeTruthy();
+    }
+  });
+});
+
+describe("VAL-CONNECTORS-004: global nav de-emphasizes admin surface", () => {
   it("labels /connectors as Tools, not a marketplace-like Connectors page", async () => {
     const source = await readSource("../app/components/global-nav.tsx");
 
