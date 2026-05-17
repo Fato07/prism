@@ -156,10 +156,7 @@ export function SentinelPanel({
 
   return (
     <>
-    <Card
-      tone="sentinel"
-      className={["flex flex-col", noExpand ? "max-h-none" : "max-h-[600px]"].join(" ")}
-    >
+    <Card tone="sentinel" className="flex flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldAlert
