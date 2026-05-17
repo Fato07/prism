@@ -33,6 +33,17 @@ describe("VAL-CONNECTORS-001: connectors are workspace settings, not a marketpla
     expect(clientSource).toContain("Admin token");
   });
 
+  it("offers provider presets before exposing advanced mapper fields", async () => {
+    const clientSource = await readSource("../app/connectors/connector-studio-client.tsx");
+
+    expect(clientSource).toContain("Evidence source setup");
+    expect(clientSource).toContain("Exa hosted MCP");
+    expect(clientSource).toContain("https://mcp.exa.ai/mcp");
+    expect(clientSource).toContain("web_search_exa");
+    expect(clientSource).toContain("exa_mcp_text");
+    expect(clientSource).toContain("choose → smoke → arm");
+  });
+
   it("moves technical setup to docs instead of product UI env templates", async () => {
     const source = await readSource("../app/connectors/page.tsx");
 

@@ -12,6 +12,7 @@ import base64
 import binascii
 import json
 import os
+import re
 from collections.abc import Callable, Mapping
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
@@ -1338,7 +1339,7 @@ def _mcp_result_body(result: Any) -> Any | None:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        return None
+        return text
 
 
 def _parse_webhook_results(
@@ -1621,6 +1622,64 @@ def _parse_generic_search_results(body: Any) -> list[EvidenceSearchResult]:
     return _parse_webhook_results(body, fallback_provider="generic_search")
 
 
+def _parse_exa_mcp_text_results(body: Any) -> list[EvidenceSearchResult]:
+    """Normalize Exa hosted MCP text blocks into evidence results."""
+    text = body.get("text") if isinstance(body, dict) else body
+    if not isinstance(text, str) or not text.strip():
+        return []
+
+    results: list[EvidenceSearchResult] = []
+    for block in re.split(r"(?m)^Title:\s*", text):
+        block = block.strip()
+        if not block:
+            continue
+        lines = block.splitlines()
+        title = lines[0].strip() if lines else ""
+        url = _exa_mcp_line_value(block, "URL")
+        if not title or url is None:
+            continue
+        published_at = _exa_mcp_line_value(block, "Published")
+        if published_at == "N/A":
+            published_at = None
+        snippet = _exa_mcp_highlights(block) or title
+        results.append(
+            EvidenceSearchResult(
+                title=title,
+                url=url,
+                snippet=snippet[:1600],
+                provider="exa_mcp",
+                published_at=published_at,
+                confidence=0.76,
+            )
+        )
+    return results
+
+
+def _exa_mcp_line_value(block: str, label: str) -> str | None:
+    """Extract a single `Label: value` line from Exa MCP text output."""
+    prefix = f"{label}:"
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            value = stripped.removeprefix(prefix).strip()
+            return value or None
+    return None
+
+
+def _exa_mcp_highlights(block: str) -> str | None:
+    """Extract compact highlight text from one Exa MCP result block."""
+    marker = "Highlights:"
+    if marker not in block:
+        return None
+    raw = block.split(marker, 1)[1]
+    lines = [
+        line.strip()
+        for line in raw.splitlines()
+        if line.strip() and line.strip() != "[...]"
+    ]
+    return "\n".join(lines) or None
+
+
 _EVIDENCE_RESULT_MAPPERS: dict[str, EvidenceResultMapper] = {
     "generic_search": _parse_generic_search_results,
     "custom_webhook": lambda body: _parse_webhook_results(
@@ -1629,6 +1688,7 @@ _EVIDENCE_RESULT_MAPPERS: dict[str, EvidenceResultMapper] = {
     ),
     "firecrawl_search": _parse_firecrawl_results,
     "exa_search": _parse_exa_results,
+    "exa_mcp_text": _parse_exa_mcp_text_results,
     "parallel_search": _parse_parallel_results,
     "tavily_search": _parse_tavily_results,
     "brave_search": _parse_brave_results,

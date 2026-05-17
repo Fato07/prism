@@ -158,7 +158,7 @@ export async function runMcpConnectorSmoke({
       sessionId
     );
     const body = extractMcpResultBody(callResponse.payload.result);
-    const evidenceCount = countEvidenceItems(body);
+    const evidenceCount = countMappedEvidenceItems(row.result_mapper, body);
     mapperOk = evidenceCount > 0;
 
     if (!mapperOk) {
@@ -271,7 +271,7 @@ async function runCustomWebhookConnectorSmoke({
 
     const body = (await response.json()) as unknown;
     schemaOk = true;
-    const evidenceCount = countEvidenceItems(body);
+    const evidenceCount = countMappedEvidenceItems(row.result_mapper, body);
     mapperOk = evidenceCount > 0;
     if (!mapperOk) {
       return failedConnectorSmokeReceipt({
@@ -402,6 +402,13 @@ export function extractMcpResultBody(result: unknown): unknown {
   return result;
 }
 
+export function countMappedEvidenceItems(resultMapper: string, body: unknown): number {
+  if (resultMapper.trim().toLowerCase() === "exa_mcp_text") {
+    return countExaMcpTextItems(body);
+  }
+  return countEvidenceItems(body);
+}
+
 export function countEvidenceItems(body: unknown): number {
   if (Array.isArray(body)) return body.length;
   if (!isRecord(body)) return 0;
@@ -412,6 +419,15 @@ export function countEvidenceItems(body: unknown): number {
   }
 
   return hasEvidenceLikeFields(body) ? 1 : 0;
+}
+
+function countExaMcpTextItems(body: unknown): number {
+  const text = typeof body === "string" ? body : isRecord(body) && typeof body.text === "string" ? body.text : "";
+  if (!text.trim()) return 0;
+  return text
+    .split(/^[\t ]*Title:[\t ]*/m)
+    .map((block) => block.trim())
+    .filter((block) => /^URL:\s*https?:\/\//m.test(block) && /^Highlights:\s*[\s\S]+/m.test(block)).length;
 }
 
 function hasEvidenceLikeFields(value: Record<string, unknown>): boolean {
