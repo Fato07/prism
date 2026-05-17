@@ -426,6 +426,24 @@ Connector Passport v1 makes this live:
 - The sentinel prefers the armed DB connector and falls back to env providers only when no
   DB connector is armed.
 
+### Future product note — Evidence Sandbox
+
+Keep the current product surface issue-triggered: Sentinel raises a structured issue, calls
+evidence tools, verifies source URLs, and records receipts. Do **not** expose a free-roaming
+research workspace before the receipt flow is demo-stable.
+
+The longer-term product opportunity is a trace-scoped **Evidence Sandbox**: bounded evidence
+agents gather, extract, and cite sources for a specific Sentinel issue while Sentinel remains
+the only actor that can mark the issue resolved. Build this later on top of the primitives now
+in place: `EvidenceExtractorProvider`, URL safety gates, content hashes, source excerpts, and
+issue-ledger receipts.
+
+Before shipping an Evidence Sandbox UI, add evidence jobs with trace/request/challenge IDs,
+budgets for max tool calls/runtime/cost, replayable tool timelines, source/domain policies,
+and optional multi-source confirmation for high-impact issues. Non-goals remain: no generic
+plugin marketplace, no hidden long-term memory, and no paid provider calls without explicit
+operator approval plus a max USDC/call.
+
 ---
 
 ## Dashboard API routes
