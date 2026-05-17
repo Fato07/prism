@@ -122,7 +122,7 @@ components:
           type: [string, 'null']
     PublicTraceReport:
       type: object
-      required: [generated_at, trace, validation, reasoning_metrics, readiness, warnings, capital_gate, receipts]
+      required: [generated_at, trace, validation, reasoning_metrics, readiness, warnings, capital_gate, issue_ledger, receipt_verification, receipts]
       properties:
         generated_at:
           type: string
@@ -145,8 +145,71 @@ components:
             type: string
         capital_gate:
           $ref: '#/components/schemas/CapitalGate'
+        issue_ledger:
+          anyOf:
+            - $ref: '#/components/schemas/PublicIssueLedgerReport'
+            - type: 'null'
+        receipt_verification:
+          type: [object, 'null']
+          additionalProperties: true
         receipts:
           type: object
+          additionalProperties: true
+    PublicIssueLedgerReport:
+      type: object
+      required: [summary, resolution_metadata, issues]
+      properties:
+        summary:
+          type: object
+          additionalProperties: true
+        resolution_metadata:
+          type: [object, 'null']
+          additionalProperties: true
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicIssueLedgerIssue'
+    PublicIssueLedgerIssue:
+      type: object
+      required:
+        - id
+        - type
+        - severity
+        - blocking_pass
+        - resolution_status
+        - question
+        - required_resolution
+        - claim_ref
+        - tool_status
+        - tool_provider
+        - resolved_by_evidence_tool
+        - latest_resolution
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+        blocking_pass:
+          type: boolean
+        resolution_status:
+          type: string
+        question:
+          type: string
+        required_resolution:
+          type: string
+        claim_ref:
+          type: [string, 'null']
+        tool_status:
+          type: string
+          enum: [resolved, fail_closed, not_recorded]
+        tool_provider:
+          type: [string, 'null']
+        resolved_by_evidence_tool:
+          type: boolean
+        latest_resolution:
+          type: [object, 'null']
           additionalProperties: true
     CapitalGate:
       type: object
