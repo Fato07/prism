@@ -228,6 +228,13 @@ Hosted deployments should keep `CONNECTOR_ALLOW_PRIVATE_URLS=0` and
 
 Self-hosted/env-only mode remains available with `PRISM_EVIDENCE_DB_CONNECTORS=0`.
 
+For demo and deployment smoke only, sentinel also mounts `/demo-evidence-mcp/`, a free
+FastMCP evidence server with tool `search`. It returns one `generic_search`-compatible
+artifact for Connector Passport smoke queries and otherwise returns no evidence unless
+`PRISM_DEMO_EVIDENCE_ALLOW_RESOLUTION=1` is explicitly enabled. Replace it with a
+production MCP research provider before relying on evidence-tool resolution for capital
+movement.
+
 ## Connector priority
 
 Use this priority order when integrating a new capability:
@@ -370,6 +377,8 @@ Current pieces:
   evidence connector per workspace.
 - `/api/connectors` plus `/api/connectors/[id]/smoke` and `/arm` — redacted
   dashboard control plane for save → smoke → arm.
+- `/demo-evidence-mcp/` — smoke-only demo MCP evidence server mounted on sentinel for
+  proving Connector Passport wiring before a production provider is available.
 - Dashboard `Evidence tool route` card — shows active connector state beside Sentinel
   reasoning without exposing secrets.
 - `/connectors` workspace tools/settings route — operator control plane for current
