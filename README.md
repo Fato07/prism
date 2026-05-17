@@ -27,6 +27,8 @@ First real self-serve run on 2026-05-15 settled at [`0x63bf7094…`](https://sep
 
 First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1) on Base Sepolia. Receipt: [`docs/demos/cli-paid-validation-20260516T214837Z.md`](docs/demos/cli-paid-validation-20260516T214837Z.md).
 
+Latest URL-verified MCP validation on 2026-05-17 settled at <https://sepolia.basescan.org/tx/0x8d5d7a46bd88b2ffba5b6e6c6d70221598ee041d4206377ca5991e90f5c12421> and produced a public report with Exa `web_search_exa` + `web_fetch_exa` evidence receipts: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea/report>. Receipt: [`docs/demos/external-call-20260517T203104+0000.md`](docs/demos/external-call-20260517T203104+0000.md).
+
 ---
 
 ## Architecture
@@ -84,6 +86,7 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
 | `/history` | Paginated history of all traces and verdicts |
 | `/me` | Wallet-connected verdict history (wagmi v2 + Reown AppKit) |
 | `/submit` | Self-serve x402 validation — sign EIP-3009 transfers from the browser; shows Circle App Kit Bridge widget when USDC balance < 0.01 |
+| `/connectors` | Connector Passport / Workspace Tools — MCP-first evidence source setup, smoke checks, and arming flow |
 | `/builder-fees` | Execution attribution — Prism trade receipts with Polymarket-compatible builder codes; fee totals appear only when fill-price data is present |
 | `/stats` | Receipt-linked activity stats — validations, Arc anchors, x402 calls, builder attribution, latency, calibration |
 | `/calibration` | Sentinel calibration evidence — startup discrimination gate plus private corpus summary |
@@ -93,6 +96,7 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
 - **Web3 wallet connection** — Reown AppKit + wagmi v2 across all pages; connected address available in `/me` and `/submit`
 - **Circle App Kit Bridge** — conditional bridge widget on `/submit` when wallet USDC < 0.01 (bridge USDC from other chains to Base Sepolia for x402 payments)
 - **Execution attribution** — Prism paper receipts and live Polymarket trades carry HMAC-derived builder codes so verdicts can be linked to eventual market action; fee totals are shown only when fill-price receipts exist.
+- **MCP-first evidence receipts** — Connector Passport arms Exa hosted MCP for targeted evidence search; Sentinel verifies selected source URLs through Exa `web_fetch_exa` before marking issues resolved, and public reports expose provider/tool/extractor identity, source hashes, and excerpts.
 - **Dual x402 facilitator scaffold** — public x402 payments settle on Base Sepolia today; Arc Testnet Circle-facilitator mode is implemented behind `X402_FACILITATOR_MODE` and remains off until Circle publishes a stable Arc facilitator endpoint.
 - **@prism/builder-codes** — shared workspace package for HMAC-based builder code extraction from ERC-8004 agent IDs
 - **Remotion pitch video** — 90s parameterized composition at `apps/pitch-video/`, served on port 3001
@@ -259,7 +263,7 @@ Prism — external x402 + MCP demo client
   ✓ Receipt: docs/demos/external-call-<timestamp>.md
 
   Verdict: PASS (score 65/100)
-  Settlement: https://sepolia.basescan.org/tx/0xc8d5ed99…
+  Settlement: https://sepolia.basescan.org/tx/0x8d5d7a46bd88b2ffba5b6e6c6d70221598ee041d4206377ca5991e90f5c12421
 ```
 
 ### What's verifiable when you run it
@@ -288,7 +292,7 @@ diagram. The short version:
    USDC transfer on Base, then runs the DSPy adversarial verdict and
   returns the result (as MCP `tools/call` SSE/JSON response)
 
-Latest receipt: [`docs/demos/external-call-20260513T230443+0000.md`](./docs/demos/external-call-20260513T230443+0000.md)
+Latest receipt: [`docs/demos/external-call-20260517T203104+0000.md`](./docs/demos/external-call-20260517T203104+0000.md). Its paired public report includes URL-verified Exa MCP evidence receipts: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea/report>.
 
 ### Why this is the integration template for other teams
 

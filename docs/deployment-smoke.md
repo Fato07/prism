@@ -62,9 +62,23 @@ max_usdc: null
 fail_closed: true
 ```
 
+Recommended URL-extraction env for production Sentinel:
+
+```bash
+PRISM_EVIDENCE_EXTRACTOR=mcp
+PRISM_EVIDENCE_EXTRACTOR_MCP_URL=https://mcp.exa.ai/mcp
+PRISM_EVIDENCE_EXTRACTOR_MCP_TOOL=web_fetch_exa
+PRISM_EVIDENCE_EXTRACTOR_INPUT_MAPPER=exa_web_fetch
+PRISM_EVIDENCE_EXTRACTOR_RESULT_MAPPER=exa_extract
+PRISM_EVIDENCE_EXTRACTOR_TIMEOUT_SECONDS=30
+PRISM_EVIDENCE_EXTRACTION_REQUIRED=1
+```
+
 Smoke should pass with non-zero evidence count before arming. Sentinel still applies issue
 adequacy gates, so Exa output only resolves an issue when it is recent enough, topic-matched,
-and satisfies the challenge type.
+and satisfies the challenge type. When extraction is required, the selected source URL must
+also fetch successfully and produce issue-supporting readable content; otherwise the issue
+stays fail-closed.
 
 Set `PRISM_EVIDENCE_DB_CONNECTORS=0` only when intentionally bypassing the DB connector registry.
 
@@ -95,17 +109,16 @@ is explicitly enabled.
 
 ## Runtime smoke
 
-1. Open `/dashboard` and confirm the `Evidence tool route` card is visible near Sentinel reasoning.
-2. Open `/connectors`.
-3. Enter the connector admin token.
-4. Save an MCP HTTP connector passport.
-5. Run smoke.
-6. Confirm the smoke receipt shows transport/schema/mapper/fail-closed checks.
-7. Arm the connector.
-8. Return to `/dashboard` and confirm the active route shows as armed.
-9. Run one validation with `ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2`.
-10. For Exa hosted MCP, confirm supported issue types move to `resolved` only when public report tool outcomes show provider `exa_mcp`. If the verdict remains WARN, the capital gate may still require review even after blocking evidence gates clear.
-11. For fail-closed mode, re-arm the market-only connector or a malformed connector and confirm unsupported blockers remain unresolved if the connector fails or returns non-matching output.
+1. Open `/connectors`.
+2. Enter the connector admin token.
+3. Save or inspect the Exa MCP HTTP connector passport.
+4. Run smoke.
+5. Confirm the smoke receipt shows transport/schema/mapper/fail-closed checks.
+6. Arm the connector.
+7. Return to `/dashboard` and confirm provider badges appear inline in Sentinel/tool reasoning rather than as a standalone Evidence Route card.
+8. Run one validation with `ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2` and `PRISM_EVIDENCE_EXTRACTION_REQUIRED=1`.
+9. For Exa hosted MCP, confirm supported issue types move to `resolved` only when public report tool outcomes show provider `exa_mcp`, search tool `web_search_exa`, extractor provider `exa_contents`, extractor tool `web_fetch_exa`, non-null `source_content_hash`, and a redacted `source_excerpt`. If the verdict remains WARN, the capital gate may still require review even after blocking evidence gates clear.
+10. For fail-closed mode, use the canonical guardrail trace or re-arm the market-only connector/malformed connector and confirm unsupported blockers remain unresolved if the connector fails or returns non-matching output.
 
 ## Public API smoke
 
