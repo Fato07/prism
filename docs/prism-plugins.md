@@ -228,12 +228,18 @@ Hosted deployments should keep `CONNECTOR_ALLOW_PRIVATE_URLS=0` and
 
 Self-hosted/env-only mode remains available with `PRISM_EVIDENCE_DB_CONNECTORS=0`.
 
-For demo and deployment smoke only, sentinel also mounts `/demo-evidence-mcp/`, a free
-FastMCP evidence server with tool `search`. It returns one `generic_search`-compatible
-artifact for Connector Passport smoke queries and otherwise returns no evidence unless
-`PRISM_DEMO_EVIDENCE_ALLOW_RESOLUTION=1` is explicitly enabled. Replace it with a
-production MCP research provider before relying on evidence-tool resolution for capital
-movement.
+For live demo evidence without a third-party research provider, sentinel mounts
+`/market-evidence-mcp/`, a free read-only FastMCP server with tool `search`. Configure it
+with input mapper `prism_evidence_request` and result mapper `generic_search`. It calls the
+Prism Polymarket gateway and only returns evidence for market-structure or explicit
+market-status temporal challenges; source-quality, logic, generic stale-evidence, and other
+unsupported issue types return no evidence and stay fail-closed.
+
+For transport smoke only, sentinel also mounts `/demo-evidence-mcp/`. It returns one
+`generic_search`-compatible artifact for Connector Passport smoke queries and otherwise
+returns no evidence unless `PRISM_DEMO_EVIDENCE_ALLOW_RESOLUTION=1` is explicitly enabled.
+Replace these hosted demo connectors with a production MCP research provider before relying
+on broad evidence-tool resolution for capital movement.
 
 ## Connector priority
 
@@ -377,6 +383,8 @@ Current pieces:
   evidence connector per workspace.
 - `/api/connectors` plus `/api/connectors/[id]/smoke` and `/arm` — redacted
   dashboard control plane for save → smoke → arm.
+- `/market-evidence-mcp/` — read-only Polymarket gateway evidence MCP server for resolving
+  market-structure/status issues without pretending to answer broader research questions.
 - `/demo-evidence-mcp/` — smoke-only demo MCP evidence server mounted on sentinel for
   proving Connector Passport wiring before a production provider is available.
 - Dashboard `Evidence tool route` card — shows active connector state beside Sentinel
