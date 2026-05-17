@@ -22,6 +22,7 @@ import {
   ValidationRowSchema,
   TradeRowSchema,
   AgentRowSchema,
+  ToolConnectorRowSchema,
 } from "@prism/schemas/db";
 
 // --- TradingR1Trace ---
@@ -192,6 +193,47 @@ describe("TraceRowSchema", () => {
     };
     const result = TraceRowSchema.safeParse(row);
     expect(result.success).toBe(true);
+  });
+});
+
+describe("ToolConnectorRowSchema", () => {
+  it("accepts a redacted connector passport row", () => {
+    const row = {
+      id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      owner_scope: "workspace",
+      connector_kind: "evidence",
+      name: "Demo MCP evidence",
+      transport: "mcp_http",
+      provider: "mcp",
+      server_url: "https://mcp.example.com",
+      tool_name: "search",
+      input_mapper: "query_limit",
+      result_mapper: "generic_search",
+      allowed_tools: ["search"],
+      timeout_seconds: "20.000",
+      max_results: 5,
+      max_usdc: "0.050000",
+      auth_secret_ciphertext: "v1:encrypted-token",
+      auth_secret_hint: "…1234",
+      smoke_status: "passed",
+      smoke_receipt: {
+        status: "passed",
+        checked_at: "2026-05-17T00:00:00Z",
+        transport_ok: true,
+        tool_reachable: true,
+        schema_ok: true,
+        mapper_ok: true,
+        fail_closed_ok: true,
+        cost_cap_ok: true,
+        evidence_count: 2,
+      },
+      armed: true,
+      fail_closed: true,
+      created_at: "2026-05-17T00:00:00Z",
+      updated_at: "2026-05-17T00:00:00Z",
+    };
+
+    expect(ToolConnectorRowSchema.safeParse(row).success).toBe(true);
   });
 });
 

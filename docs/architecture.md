@@ -414,17 +414,32 @@ building bespoke wrappers for every provider. Native provider adapters remain
 useful as demo fallbacks and reference normalizers, but the long-term connector
 surface is MCP-first. See [`docs/prism-plugins.md`](./prism-plugins.md).
 
+Connector Passport v1 makes this live:
+
+- `tool_connectors` stores a redacted MCP-first evidence connector passport.
+- `/connectors` lets the operator save connector config, run a smoke proof, and arm the
+  connector for the sentinel.
+- `/api/connectors`, `/api/connectors/[id]/smoke`, and `/api/connectors/[id]/arm` are the
+  dashboard control-plane routes, protected by `CONNECTOR_ADMIN_TOKEN`.
+- `CONNECTOR_SECRETS_KEY` encrypts stored bearer tokens; raw tokens are never returned in
+  dashboard JSON, MCP trust tools, receipts, or pinned artifacts.
+- The sentinel prefers the armed DB connector and falls back to env providers only when no
+  DB connector is armed.
+
 ---
 
 ## Dashboard API routes
 
-All 6 Next.js API routes live under `apps/dashboard/app/api/`.
+Dashboard API routes live under `apps/dashboard/app/api/`.
 
 | Route | Method | Purpose | Key details |
 |---|---|---|---|
 | `/api/rpc/arc` | POST | Server-side CORS proxy for Arc Testnet RPC | Arc RPC returns no CORS headers; this same-origin proxy lets wagmi's browser-side HTTP transport bypass CORS. Forwards JSON-RPC body verbatim. Reads `ARC_RPC_URL` or `NEXT_PUBLIC_ARC_RPC_URL`. |
 | `/api/validate/initiate` | POST | Start MCP + x402 validation flow | Performs 3-step MCP handshake (initialize → notifications/initialized → unpaid tools/call). Sentinel's x402 middleware returns 402 with payment requirements. Route extracts and returns those requirements + MCP session ID. |
 | `/api/validate/confirm` | POST | Complete paid MCP validation | Receives signed x402 payment payload (EIP-3009 transferWithAuthorization) from client, forwards to sentinel via X-PAYMENT header. Sentinel settles payment via facilitator, then runs DSPy validation. Returns traceId, verdictScore, verdictLabel, ipfsCid, paymentTxHash. Remaps client's `transferAuth` to x402's canonical `authorization` key. 3-min timeout for slow DSPy runs. |
+| `/api/connectors` | GET/POST | Connector Passport v1 control plane | Requires `CONNECTOR_ADMIN_TOKEN`. GET returns redacted connector passports. POST saves MCP HTTP connector config, encrypts bearer tokens with `CONNECTOR_SECRETS_KEY`, blocks private-network URLs by default, and clears smoke/armed state until a new smoke proof passes. |
+| `/api/connectors/[id]/smoke` | POST | Run connector smoke proof | Calls the configured MCP tool, checks tool listing, mapper output, fail-closed behavior, and stores a redacted smoke receipt. |
+| `/api/connectors/[id]/arm` | POST | Arm connector for sentinel resolution | Succeeds only after smoke passes. Disarms other evidence connectors before arming the selected connector. |
 | `/api/verdicts/by-address` | GET | Look up verdicts by requester address | Query param `address=0x...` (case-insensitive). Returns `HistoryEntry[]` shape matching the dashboard's history cards. Validates address format with regex. |
 | `/api/waitlist` | POST | Email waitlist signup | Validates with zod, upserts into `waitlist` table (ON CONFLICT DO NOTHING). Returns friendly "You're on the list!" or "Already on the list!". |
 | `/api/waitlist/count` | GET | Waitlist signup count | Returns `{ count: number }`. |

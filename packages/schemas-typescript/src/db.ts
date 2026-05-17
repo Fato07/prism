@@ -88,3 +88,60 @@ export const TreasuryEventRowSchema = z.object({
 });
 
 export type TreasuryEventRow = z.infer<typeof TreasuryEventRowSchema>;
+
+/** tool_connectors table row */
+export const ToolConnectorTransportSchema = z.enum([
+  "mcp_http",
+  "x402_http",
+  "custom_webhook",
+  "direct_adapter",
+]);
+
+export const ToolConnectorSmokeStatusSchema = z.enum([
+  "not_run",
+  "passed",
+  "failed",
+]);
+
+export const ToolConnectorSmokeReceiptSchema = z.object({
+  status: ToolConnectorSmokeStatusSchema,
+  checked_at: z.string(),
+  transport_ok: z.boolean(),
+  tool_reachable: z.boolean(),
+  schema_ok: z.boolean(),
+  mapper_ok: z.boolean(),
+  fail_closed_ok: z.boolean(),
+  cost_cap_ok: z.boolean(),
+  evidence_count: z.number().int().min(0).optional(),
+  error_code: z.string().optional(),
+  error_message: z.string().optional(),
+});
+
+export type ToolConnectorSmokeReceipt = z.infer<typeof ToolConnectorSmokeReceiptSchema>;
+
+export const ToolConnectorRowSchema = z.object({
+  id: z.string(),
+  owner_scope: z.literal("workspace"),
+  connector_kind: z.literal("evidence"),
+  name: z.string(),
+  transport: ToolConnectorTransportSchema,
+  provider: z.string(),
+  server_url: z.string().nullable(),
+  tool_name: z.string().nullable(),
+  input_mapper: z.string(),
+  result_mapper: z.string(),
+  allowed_tools: z.array(z.string()),
+  timeout_seconds: z.string(),
+  max_results: z.number().int().min(1).max(20),
+  max_usdc: z.string().nullable(),
+  auth_secret_ciphertext: z.string().nullable(),
+  auth_secret_hint: z.string().nullable(),
+  smoke_status: ToolConnectorSmokeStatusSchema,
+  smoke_receipt: ToolConnectorSmokeReceiptSchema.nullable(),
+  armed: z.boolean(),
+  fail_closed: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export type ToolConnectorRow = z.infer<typeof ToolConnectorRowSchema>;

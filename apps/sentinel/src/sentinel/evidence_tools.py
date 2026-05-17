@@ -8,13 +8,18 @@ provider-neutral result shape.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Literal, Protocol
 
 import httpx
+import psycopg
 import structlog
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastmcp import Client
 from fastmcp.client.auth import BearerAuth
 from prism_schemas.verdict import AdversarialChallenge
@@ -748,6 +753,231 @@ def evidence_provider_from_env() -> EvidenceProvider:
         fallback="noop",
     )
     return NoopEvidenceProvider()
+
+
+def evidence_provider_from_runtime(dsn: str | None = None) -> EvidenceProvider:
+    """Return active DB connector when armed, otherwise fall back to env config."""
+    provider = evidence_provider_from_active_connector(dsn=dsn)
+    if provider is not None:
+        return provider
+    return evidence_provider_from_env()
+
+
+def evidence_provider_from_active_connector(dsn: str | None = None) -> EvidenceProvider | None:
+    """Load the one armed evidence connector from Neon and return a provider."""
+    if os.environ.get("PRISM_EVIDENCE_DB_CONNECTORS", "1").strip().lower() in {"0", "false", "no"}:
+        return None
+
+    database_url = dsn or os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        return None
+
+    try:
+        row = _active_connector_row(database_url)
+    except (psycopg.Error, OSError) as exc:
+        logger.warning(
+            "active_evidence_connector_lookup_failed",
+            error=type(exc).__name__,
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+    if row is None:
+        return None
+    return evidence_provider_from_connector_row(row)
+
+
+def evidence_provider_from_connector_row(row: Mapping[str, Any]) -> EvidenceProvider:
+    """Convert a DB connector passport row into a fail-closed evidence provider."""
+    connector_id = str(row.get("id", ""))
+    transport = str(row.get("transport", "")).strip().lower()
+    smoke_status = str(row.get("smoke_status", "")).strip().lower()
+    fail_closed = bool(row.get("fail_closed", True))
+    if transport != "mcp_http" or smoke_status != "passed" or not fail_closed:
+        logger.warning(
+            "active_evidence_connector_not_usable",
+            connector_id=connector_id,
+            transport=transport,
+            smoke_status=smoke_status,
+            fail_closed=fail_closed,
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+
+    server_url = _optional_string(_row_string(row, "server_url"))
+    tool_name = _optional_string(_row_string(row, "tool_name"))
+    result_mapper = _row_string(row, "result_mapper") or "generic_search"
+    input_mapper = _row_string(row, "input_mapper") or "query"
+    if server_url is None or tool_name is None:
+        logger.warning(
+            "active_evidence_connector_missing_required_config",
+            connector_id=connector_id,
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+    if not _is_known_evidence_result_mapper(result_mapper):
+        logger.warning(
+            "active_evidence_connector_unknown_result_mapper",
+            connector_id=connector_id,
+            mapper=result_mapper.strip().lower(),
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+    if not _is_known_evidence_input_mapper(input_mapper):
+        logger.warning(
+            "active_evidence_connector_unknown_input_mapper",
+            connector_id=connector_id,
+            input_mapper=input_mapper.strip().lower(),
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+
+    auth_token_value = _decrypt_connector_token_from_row(row)
+    if auth_token_value is _TOKEN_UNAVAILABLE:
+        logger.warning(
+            "active_evidence_connector_token_unavailable",
+            connector_id=connector_id,
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+
+    auth_token = auth_token_value if isinstance(auth_token_value, str) else None
+    allowed_tools = _row_string_list(row.get("allowed_tools")) or [tool_name]
+    timeout_seconds = _row_float(row.get("timeout_seconds"), fallback=20.0)
+    return McpEvidenceProvider(
+        server_url=server_url,
+        tool_name=tool_name,
+        result_mapper=result_mapper,
+        input_mapper=input_mapper,
+        auth_token=auth_token,
+        timeout_seconds=timeout_seconds,
+        allowed_tools=allowed_tools,
+    )
+
+
+def _active_connector_row(dsn: str) -> Mapping[str, Any] | None:
+    """Fetch the one armed evidence connector row from Postgres."""
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id::text AS id,
+                   transport,
+                   server_url,
+                   tool_name,
+                   input_mapper,
+                   result_mapper,
+                   allowed_tools,
+                   timeout_seconds::text AS timeout_seconds,
+                   auth_secret_ciphertext,
+                   smoke_status,
+                   fail_closed
+            FROM tool_connectors
+            WHERE connector_kind = 'evidence' AND armed = TRUE
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        columns = [desc.name for desc in cur.description or []]
+        return dict(zip(columns, row, strict=True))
+
+
+_TOKEN_UNAVAILABLE = object()
+
+
+def _decrypt_connector_token_from_row(row: Mapping[str, Any]) -> str | None | object:
+    """Decrypt an encrypted connector bearer token, returning a sentinel on failure."""
+    ciphertext = _optional_string(_row_string(row, "auth_secret_ciphertext"))
+    if ciphertext is None:
+        return None
+    key = os.environ.get("CONNECTOR_SECRETS_KEY")
+    if not key:
+        return _TOKEN_UNAVAILABLE
+    try:
+        return decrypt_connector_token(ciphertext, key)
+    except ConnectorTokenError:
+        return _TOKEN_UNAVAILABLE
+
+
+class ConnectorTokenError(ValueError):
+    """Raised when a connector token envelope cannot be decrypted."""
+
+
+def decrypt_connector_token(envelope: str, raw_key: str) -> str:
+    """Decrypt the v1 AES-GCM connector token envelope produced by the dashboard."""
+    parts = envelope.split(":")
+    if len(parts) != 4 or parts[0] != "v1":
+        raise ConnectorTokenError("invalid connector token envelope")
+    key = _decode_connector_key(raw_key)
+    try:
+        iv = _b64url_decode(parts[1])
+        tag = _b64url_decode(parts[2])
+        ciphertext = _b64url_decode(parts[3])
+        return AESGCM(key).decrypt(iv, ciphertext + tag, None).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, InvalidTag, ValueError) as exc:
+        raise ConnectorTokenError("invalid connector token envelope") from exc
+
+
+def _decode_connector_key(raw_key: str) -> bytes:
+    """Decode CONNECTOR_SECRETS_KEY using the dashboard-compatible formats."""
+    key = raw_key.strip()
+    if not key:
+        raise ConnectorTokenError("missing connector token key")
+    if len(key) == 64:
+        try:
+            decoded = bytes.fromhex(key)
+        except ValueError:
+            decoded = b""
+        if len(decoded) == 32:
+            return decoded
+    for decoder in (_b64decode, _b64url_decode):
+        try:
+            decoded = decoder(key)
+        except binascii.Error:
+            continue
+        if len(decoded) == 32:
+            return decoded
+    raw = key.encode("utf-8")
+    if len(raw) == 32:
+        return raw
+    raise ConnectorTokenError("connector token key must decode to 32 bytes")
+
+
+def _b64decode(value: str) -> bytes:
+    return base64.b64decode(_pad_base64(value), validate=True)
+
+
+def _b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(_pad_base64(value))
+
+
+def _pad_base64(value: str) -> str:
+    return value + "=" * (-len(value) % 4)
+
+
+def _row_string(row: Mapping[str, Any], key: str) -> str | None:
+    value = row.get(key)
+    if value is None:
+        return None
+    return str(value)
+
+
+def _row_float(value: Any, *, fallback: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _row_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
 
 
 def _env_optional_string(name: str) -> str | None:
