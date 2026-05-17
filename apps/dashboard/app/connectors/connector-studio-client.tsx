@@ -96,6 +96,7 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
   const [adminToken, setAdminToken] = useState("");
   const [busyAction, setBusyAction] = useState<StudioAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [manifestLoaded, setManifestLoaded] = useState(initialManifest.connectors.length > 0);
 
   const activeConnector = useMemo(
     () => manifest.connectors.find((connector) => connector.id === manifest.active_connector_id) ?? null,
@@ -106,6 +107,7 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
     const response = await fetch("/api/connectors", { method: "GET", headers: adminHeaders(adminToken) });
     if (!response.ok) throw new Error("Unable to refresh connectors");
     setManifest((await response.json()) as ConnectorManifest);
+    setManifestLoaded(true);
   }
 
   async function handleRefresh(): Promise<void> {
@@ -180,7 +182,7 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
             Live connector passports
           </CardTitle>
           <Pill tone={activeConnector ? "good" : "neutral"} emphasis="soft" size="xs">
-            {activeConnector ? "armed" : "fail-closed idle"}
+            {activeConnector ? "armed" : manifestLoaded ? "fail-closed idle" : "admin refresh required"}
           </Pill>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -189,7 +191,9 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
           </button>
           {manifest.connectors.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 p-4 text-sm leading-6 text-fg-muted">
-              No connector passport is stored yet. Save an MCP or webhook connector, run smoke, then arm it for sentinel issue resolution.
+              {manifestLoaded
+                ? "No connector passport is stored yet. Save an MCP or webhook connector, run smoke, then arm it for sentinel issue resolution."
+                : "Stored connector passports are hidden until an admin token refreshes this panel. Enter the connector admin token, then refresh to inspect smoke receipts and the armed route."}
             </div>
           ) : (
             manifest.connectors.map((connector) => (
