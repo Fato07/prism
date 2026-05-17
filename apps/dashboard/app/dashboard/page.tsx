@@ -143,7 +143,7 @@ export default async function DashboardPage() {
             }
           />
         </div>
-        <ConnectorTrustStatus manifest={connectorManifest} />
+        <ConnectorTrustStatus manifest={connectorManifest} verdict={verdictData} />
       </div>
     </>
   );
