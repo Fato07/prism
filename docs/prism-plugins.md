@@ -51,6 +51,15 @@ Current MCP trust surface:
 | `verify_receipt` | `response_uri`/`cid` or `trace_id`/`request_hash`, optional `content_hash_hex` | receipt verification checks against schema, content hash, and/or DB identity | Read-only |
 | `explain_verdict` | `trace_id` or `request_hash` | deterministic verdict summary, active issue-ledger policy gates, latest resolution attempt per issue | Read-only |
 
+Pricing policy for Prism's own MCP surface:
+
+- free discovery/trust tools: `initialize`, `tools/list`, `get_price`, `get_stats`,
+  `get_calibration`, `get_tool_manifest`, `get_issue_ledger`, `verify_receipt`, and
+  `explain_verdict`;
+- paid mutating tool: `validate`;
+- future expensive read tools may become rate-limited or x402-priced, but receipt
+  verification should stay free enough for other agents to trust Prism outputs.
+
 HTTP smoke coverage for Prism's own MCP server starts a real local FastMCP HTTP
 server and calls read-only trust tools over the network transport:
 
@@ -180,6 +189,41 @@ Trader trace
 ```
 
 The core loop is always Prism-owned. Tool execution is pluggable.
+
+## Connector Passport v1
+
+Hosted Connector Passport v1 is now the concrete product shape behind the Tool
+Connection Studio. It is not a broad marketplace; it is a controlled registry for
+trust-relevant evidence connectors.
+
+Current behavior:
+
+1. Dashboard stores connector passports in `tool_connectors`.
+2. Bearer tokens are encrypted server-side with `CONNECTOR_SECRETS_KEY` and are never
+   returned through UI/API JSON, MCP tools, receipts, logs, or pinned artifacts.
+3. `/connectors` lets an operator save an MCP HTTP connector, choose explicit input and
+   result mappers, run a smoke test, and arm the connector.
+4. Smoke receipts record redacted checks: transport, tool reachability, schema, mapper,
+   fail-closed behavior, cost cap, and parsed evidence count.
+5. A connector can be armed only after smoke passes. A partial unique index enforces one
+   armed evidence connector at a time.
+6. During resolution, the sentinel reads the armed DB connector first. If none is armed,
+   it falls back to `PRISM_EVIDENCE_PROVIDER`. If an armed connector is broken or its
+   token cannot be decrypted, Prism fails closed instead of silently using a different
+   evidence path.
+
+Deployment env for hosted connector passports:
+
+```bash
+PRISM_EVIDENCE_DB_CONNECTORS=1
+CONNECTOR_SECRETS_KEY=$(openssl rand -base64 32)
+CONNECTOR_ADMIN_TOKEN=<operator-only connector admin token>
+```
+
+Hosted deployments should keep `CONNECTOR_ALLOW_PRIVATE_URLS=0` and
+`CONNECTOR_ALLOW_HTTP_CONNECTORS=0` so smoke tests cannot SSRF private infrastructure.
+
+Self-hosted/env-only mode remains available with `PRISM_EVIDENCE_DB_CONNECTORS=0`.
 
 ## Connector priority
 
@@ -319,6 +363,14 @@ fallback/reference implementations.
 
 Current pieces:
 
+- `tool_connectors` migration — Connector Passport v1 registry with one armed
+  evidence connector per workspace.
+- `/api/connectors` plus `/api/connectors/[id]/smoke` and `/arm` — redacted
+  dashboard control plane for save → smoke → arm.
+- `/connectors` live Tool Connection Studio — shows current passports, smoke receipts,
+  auth configured state, and fail-closed armability.
+- `evidence_provider_from_runtime()` — sentinel loader that prefers the armed DB
+  connector and falls back to env-only providers when no DB connector is armed.
 - `NoopEvidenceProvider` — safe default, no network calls.
 - `StaticEvidenceProvider` — deterministic tests.
 - `McpEvidenceProvider` — preferred MCP client connector for external tools.

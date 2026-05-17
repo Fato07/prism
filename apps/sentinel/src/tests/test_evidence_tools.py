@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import socket
 
 import httpx
 import pytest
 import uvicorn
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastmcp import FastMCP
 from prism_schemas.verdict import AdversarialChallenge
 
+import sentinel.evidence_tools as evidence_tools
 from sentinel.evidence_tools import (
     BraveSearchEvidenceProvider,
     CustomWebhookEvidenceProvider,
@@ -26,7 +29,10 @@ from sentinel.evidence_tools import (
     ToolConnectorManifest,
     available_evidence_input_mappers,
     available_evidence_result_mappers,
+    decrypt_connector_token,
+    evidence_provider_from_connector_row,
     evidence_provider_from_env,
+    evidence_provider_from_runtime,
     map_evidence_results,
     query_for_challenge,
 )
@@ -918,7 +924,7 @@ def test_evidence_provider_from_env_uses_mcp_provider(monkeypatch: pytest.Monkey
     monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
     monkeypatch.setenv("PRISM_EVIDENCE_RESULT_MAPPER", "firecrawl_search")
     monkeypatch.setenv("PRISM_EVIDENCE_MCP_INPUT_MAPPER", "query_limit")
-    monkeypatch.setenv("PRISM_EVIDENCE_MCP_AUTH_TOKEN", "secret-token")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_AUTH_TOKEN", "demo-token")
     monkeypatch.setenv("PRISM_EVIDENCE_MCP_ALLOWED_TOOLS", "search,extract")
     monkeypatch.setenv("PRISM_EVIDENCE_MCP_TIMEOUT_SECONDS", "bad-value")
 
@@ -929,9 +935,101 @@ def test_evidence_provider_from_env_uses_mcp_provider(monkeypatch: pytest.Monkey
     assert provider.tool_name == "search"
     assert provider.result_mapper == "firecrawl_search"
     assert provider.input_mapper == "query_limit"
-    assert provider.auth_token == "secret-token"
+    assert provider.auth_token == "demo-token"
     assert provider.allowed_tools == ["search", "extract"]
     assert provider.timeout_seconds == 20.0
+
+
+def test_evidence_provider_from_connector_row_uses_armed_mcp_passport() -> None:
+    provider = evidence_provider_from_connector_row(
+        {
+            "id": "connector-1",
+            "transport": "mcp_http",
+            "server_url": "https://tools.example.com/mcp/",
+            "tool_name": "search",
+            "input_mapper": "query_limit",
+            "result_mapper": "generic_search",
+            "allowed_tools": ["search"],
+            "timeout_seconds": "20.000",
+            "smoke_status": "passed",
+            "fail_closed": True,
+            "auth_secret_ciphertext": None,
+        }
+    )
+
+    assert isinstance(provider, McpEvidenceProvider)
+    assert provider.server_url == "https://tools.example.com/mcp/"
+    assert provider.tool_name == "search"
+    assert provider.input_mapper == "query_limit"
+    assert provider.result_mapper == "generic_search"
+    assert provider.allowed_tools == ["search"]
+
+
+def test_evidence_provider_from_connector_row_fails_closed_when_token_key_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CONNECTOR_SECRETS_KEY", raising=False)
+
+    provider = evidence_provider_from_connector_row(
+        {
+            "id": "connector-1",
+            "transport": "mcp_http",
+            "server_url": "https://tools.example.com/mcp/",
+            "tool_name": "search",
+            "input_mapper": "query_limit",
+            "result_mapper": "generic_search",
+            "allowed_tools": ["search"],
+            "timeout_seconds": "20.000",
+            "smoke_status": "passed",
+            "fail_closed": True,
+            "auth_secret_ciphertext": "v1:encrypted-token",
+        }
+    )
+
+    assert isinstance(provider, NoopEvidenceProvider)
+
+
+def test_evidence_provider_from_runtime_fails_closed_on_db_lookup_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user@example/db")
+    monkeypatch.setenv("PRISM_EVIDENCE_DB_CONNECTORS", "1")
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_URL", "https://tools.example.com/mcp/")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
+
+    def raise_db_error(_dsn: str) -> None:
+        raise OSError("db down")
+
+    monkeypatch.setattr(evidence_tools, "_active_connector_row", raise_db_error)
+
+    assert isinstance(evidence_provider_from_runtime(), NoopEvidenceProvider)
+
+
+def test_evidence_provider_from_runtime_falls_back_to_env_when_db_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PRISM_EVIDENCE_DB_CONNECTORS", "0")
+    monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_URL", "https://tools.example.com/mcp/")
+    monkeypatch.setenv("PRISM_EVIDENCE_MCP_TOOL", "search")
+
+    assert isinstance(evidence_provider_from_runtime(), McpEvidenceProvider)
+
+
+def test_decrypt_connector_token_matches_dashboard_envelope() -> None:
+    key = b"0123456789abcdef0123456789abcdef"
+    iv = b"123456789012"
+    token = "demo-token-1234"
+    encrypted = AESGCM(key).encrypt(iv, token.encode(), None)
+    ciphertext, tag = encrypted[:-16], encrypted[-16:]
+    envelope = "v1:{iv}:{tag}:{ciphertext}".format(
+        iv=base64.urlsafe_b64encode(iv).decode().rstrip("="),
+        tag=base64.urlsafe_b64encode(tag).decode().rstrip("="),
+        ciphertext=base64.urlsafe_b64encode(ciphertext).decode().rstrip("="),
+    )
+
+    assert decrypt_connector_token(envelope, key.decode()) == token
 
 
 def test_evidence_provider_from_env_falls_back_to_noop_for_unknown_mcp_mapper(

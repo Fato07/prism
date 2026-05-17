@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { GlobalNav } from "@/components/global-nav";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pill } from "@/components/ui/pill";
 import {
   ArrowRight,
   Bot,
@@ -14,6 +11,14 @@ import {
   ShieldCheck,
   Workflow,
 } from "lucide-react";
+
+import { GlobalNav } from "@/components/global-nav";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Pill } from "@/components/ui/pill";
+import { ConnectorStudioClient } from "@/connectors/connector-studio-client";
+import type { ConnectorManifest } from "@/lib/connectors";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Tool Connectors — Prism",
@@ -101,7 +106,16 @@ const MCP_ENV_LINES = [
   "ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2",
 ] as const;
 
+const EMPTY_CONNECTOR_MANIFEST: ConnectorManifest = {
+  connectors: [],
+  active_connector_id: null,
+  active_transport: null,
+  mcp_first: true,
+  fail_closed_default: true,
+};
+
 export default function ConnectorsPage() {
+  const connectorManifest = EMPTY_CONNECTOR_MANIFEST;
   return (
     <div className="min-h-screen bg-canvas text-fg">
       <GlobalNav currentPage="connectors" />
@@ -206,6 +220,8 @@ export default function ConnectorsPage() {
             </CardContent>
           </Card>
         </section>
+
+        <ConnectorStudioClient initialManifest={connectorManifest} />
 
         <section id="connect-mcp" className="mb-10 grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <Card tone="sentinel">

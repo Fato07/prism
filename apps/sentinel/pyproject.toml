@@ -18,6 +18,7 @@ dependencies = [
     "uvicorn[standard]",
     "x402[fastapi]>=2.9",
     "fastmcp>=2.9",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]

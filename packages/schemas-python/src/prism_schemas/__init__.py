@@ -1,6 +1,7 @@
 """Prism shared Pydantic schemas and startup validation."""
 
 from prism_schemas.agent_card import AgentCard, AgentCardService, X402Support
+from prism_schemas.connector import ToolConnector, ToolConnectorSmokeReceipt
 from prism_schemas.startup import (
     POLYMARKET_RESTRICTED_COUNTRIES,
     REQUIRED_COMMON,
@@ -20,6 +21,9 @@ __all__ = [
     "AgentCard",
     "AgentCardService",
     "X402Support",
+    # Connector passports
+    "ToolConnector",
+    "ToolConnectorSmokeReceipt",
     # Startup validation
     "POLYMARKET_RESTRICTED_COUNTRIES",
     "REQUIRED_COMMON",

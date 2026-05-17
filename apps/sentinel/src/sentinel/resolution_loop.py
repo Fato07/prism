@@ -30,7 +30,7 @@ from sentinel.adversarial import generate_verdict
 from sentinel.evidence_tools import (
     EvidenceProvider,
     EvidenceSearchRequest,
-    evidence_provider_from_env,
+    evidence_provider_from_runtime,
     query_for_challenge,
 )
 from sentinel.issues import apply_unresolved_issue_caps
@@ -62,7 +62,7 @@ async def generate_verdict_with_resolution(
         return verdict
 
     trace = _parse_trace(trace_json)
-    provider = evidence_provider or evidence_provider_from_env()
+    provider = evidence_provider or evidence_provider_from_runtime()
     challenge_resolutions = list(verdict.challenge_resolutions)
     resolution_rounds = list(verdict.resolution_rounds)
     challenges = list(verdict.structured_challenges)

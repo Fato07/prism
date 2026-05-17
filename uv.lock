@@ -2138,6 +2138,7 @@ version = "0.1.0"
 source = { editable = "apps/sentinel" }
 dependencies = [
     { name = "circle-developer-controlled-wallets" },
+    { name = "cryptography" },
     { name = "dspy" },
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -2164,6 +2165,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "circle-developer-controlled-wallets" },
+    { name = "cryptography", specifier = ">=42" },
     { name = "dspy" },
     { name = "fastapi" },
     { name = "fastmcp", specifier = ">=2.9" },

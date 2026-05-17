@@ -4,6 +4,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from prism_schemas.connector import ToolConnector, ToolConnectorSmokeReceipt
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
 from prism_schemas.verdict import SentinelVerdict
 
@@ -63,6 +64,46 @@ def test_sentinel_verdict_validates():
     )
     assert verdict.content_hash() is not None
     assert verdict.verdict_label == "PASS"
+
+
+def test_tool_connector_schema_validates_redacted_passport_row():
+    receipt = ToolConnectorSmokeReceipt(
+        status="passed",
+        checked_at=datetime.now(timezone.utc),
+        transport_ok=True,
+        tool_reachable=True,
+        schema_ok=True,
+        mapper_ok=True,
+        fail_closed_ok=True,
+        cost_cap_ok=True,
+        evidence_count=2,
+    )
+    connector = ToolConnector(
+        id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        name="Demo MCP evidence",
+        transport="mcp_http",
+        provider="mcp",
+        server_url="https://mcp.example.com",
+        tool_name="search",
+        input_mapper="query_limit",
+        result_mapper="generic_search",
+        allowed_tools=["search"],
+        timeout_seconds="20.0",
+        max_results=5,
+        max_usdc="0.05",
+        auth_secret_ciphertext="v1:encrypted-token",
+        auth_secret_hint="demo…1234",
+        smoke_status="passed",
+        smoke_receipt=receipt,
+        armed=True,
+        fail_closed=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    assert connector.connector_kind == "evidence"
+    assert connector.smoke_receipt is not None
+    assert connector.smoke_receipt.status == "passed"
 
 
 def test_old_sentinel_verdict_hash_omits_new_default_fields():

@@ -39,6 +39,17 @@ describe("VAL-CONNECTORS-001: connectors page describes the tool connection flow
     }
   });
 
+  it("includes the live connector passport client and API flow", async () => {
+    const pageSource = await readSource("../app/connectors/page.tsx");
+    const clientSource = await readSource("../app/connectors/connector-studio-client.tsx");
+
+    expect(pageSource).toContain("ConnectorStudioClient");
+    expect(clientSource).toContain("/api/connectors");
+    expect(clientSource).toContain("Save connector passport");
+    expect(clientSource).toContain("Run smoke");
+    expect(clientSource).toContain("Arm connector");
+  });
+
   it("uses MCP-first server-side env config without real secrets", async () => {
     const source = await readSource("../app/connectors/page.tsx");
 
