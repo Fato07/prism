@@ -49,6 +49,18 @@ PRISM_EVIDENCE_MCP_ALLOWED_TOOLS=search
 
 Set `PRISM_EVIDENCE_DB_CONNECTORS=0` only when intentionally bypassing the DB connector registry.
 
+If no production MCP research provider is ready yet, the sentinel service exposes a free
+smoke-only demo MCP server at:
+
+```text
+$SENTINEL_PUBLIC_URL/demo-evidence-mcp/
+```
+
+Use tool `search`, input mapper `query_limit`, and result mapper `generic_search`. The demo
+server returns one evidence-shaped result for Connector Passport smoke tests and returns no
+evidence for ordinary issue-resolution queries unless `PRISM_DEMO_EVIDENCE_ALLOW_RESOLUTION=1`
+is explicitly enabled.
+
 ## Runtime smoke
 
 1. Open `/dashboard` and confirm the `Evidence tool route` card is visible near Sentinel reasoning.
