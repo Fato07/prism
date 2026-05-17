@@ -10,7 +10,7 @@
  * Clicking expand opens the same panel in a Dialog with `noExpand` set.
  */
 
-import { connectorProviderBrand, type ProviderBrand } from "@/components/provider-badge";
+import { providerBrandFromText, type ProviderBrand } from "@/components/provider-badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -37,13 +37,11 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import type { ConnectorPassport } from "@/lib/connectors";
 import type { ChallengeResolution, SentinelVerdict } from "@/lib/schemas";
 
 interface SentinelPanelProps {
   verdict: SentinelVerdict | null;
   responseUri: string | null;
-  evidenceConnector?: ConnectorPassport | null;
   pendingMessage?: string;
   /** Hides the expand button — set when rendered inside the expanded modal. */
   noExpand?: boolean;
@@ -69,7 +67,6 @@ function cidFromUri(uri: string): string | null {
 export function SentinelPanel({
   verdict,
   responseUri,
-  evidenceConnector,
   pendingMessage,
   noExpand,
 }: SentinelPanelProps) {
@@ -132,7 +129,6 @@ export function SentinelPanel({
             <SentinelPanel
               verdict={verdict}
               responseUri={responseUri}
-              evidenceConnector={evidenceConnector}
               pendingMessage={pendingMessage}
               noExpand
             />
@@ -152,7 +148,7 @@ export function SentinelPanel({
   const resolutionMetadata = verdict.resolution_metadata ?? null;
   const issueLedgerSummary = getIssueLedgerSummary(verdict);
   const toolResolutionSummary = getToolResolutionSummary(verdict);
-  const evidenceBrand = evidenceConnector ? connectorProviderBrand(evidenceConnector) : null;
+  const recordedToolBrand = firstRecordedToolBrand(verdict);
 
   return (
     <>
@@ -260,8 +256,8 @@ export function SentinelPanel({
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-mono text-[10px] text-fg-faint">
-                  {evidenceBrand && (toolResolutionSummary.resolvedCount > 0 || toolResolutionSummary.noEvidenceCount > 0) && (
-                    <ToolProviderChip brand={evidenceBrand} />
+                  {recordedToolBrand && (toolResolutionSummary.resolvedCount > 0 || toolResolutionSummary.noEvidenceCount > 0) && (
+                    <ToolProviderChip brand={recordedToolBrand} />
                   )}
                   <span>
                     tool resolved · <span className="text-fg-muted">{toolResolutionSummary.resolvedCount}</span>
@@ -287,7 +283,6 @@ export function SentinelPanel({
                   challenge={challenge}
                   latestResolution={latestResolutionForChallenge(verdict, challenge.id)}
                   toolStatus={toolResolutionStatusForChallenge(verdict, challenge.id)}
-                  evidenceBrand={evidenceBrand}
                 />
               ))}
             </ol>
@@ -384,7 +379,6 @@ export function SentinelPanel({
         <SentinelPanel
           verdict={verdict}
           responseUri={responseUri}
-          evidenceConnector={evidenceConnector}
           pendingMessage={pendingMessage}
           noExpand
         />
@@ -417,12 +411,10 @@ function StructuredChallengeItem({
   challenge,
   latestResolution,
   toolStatus,
-  evidenceBrand,
 }: {
   challenge: StructuredChallenge;
   latestResolution: ChallengeResolution | null;
   toolStatus: ReturnType<typeof toolResolutionStatusForChallenge>;
-  evidenceBrand: ProviderBrand | null;
 }) {
   const accent =
     challenge.severity === "blocking"
@@ -435,6 +427,7 @@ function StructuredChallengeItem({
   const displayedResolution = latestResolution
     ? summarizeResolutionResponse(latestResolution.response)
     : null;
+  const resolutionBrand = brandForResolution(latestResolution);
 
   return (
     <li
@@ -481,8 +474,8 @@ function StructuredChallengeItem({
             <span className={`rounded px-1.5 py-0.5 ${toolStatusClassName(toolStatus)}`}>
               tool: {toolStatusLabel(toolStatus)}
             </span>
-            {evidenceBrand && toolStatus !== "not_attempted" && (
-              <ToolProviderChip brand={evidenceBrand} />
+            {resolutionBrand && toolStatus !== "not_attempted" && (
+              <ToolProviderChip brand={resolutionBrand} />
             )}
           </div>
           <p className="text-sm leading-relaxed text-fg">{challenge.question}</p>
@@ -496,8 +489,8 @@ function StructuredChallengeItem({
                 <span>·</span>
                 <span>{latestResolution.status}</span>
                 <span>·</span>
-                {evidenceBrand && latestResolution.responder === "evidence_tool" ? (
-                  <ToolProviderChip brand={evidenceBrand} />
+                {resolutionBrand && latestResolution.responder === "evidence_tool" ? (
+                  <ToolProviderChip brand={resolutionBrand} />
                 ) : (
                   <span>{latestResolution.responder}</span>
                 )}
@@ -518,6 +511,26 @@ function StructuredChallengeItem({
       </div>
     </li>
   );
+}
+
+function firstRecordedToolBrand(verdict: SentinelVerdict): ProviderBrand | null {
+  for (const resolution of verdict.challenge_resolutions ?? []) {
+    const brand = brandForResolution(resolution);
+    if (brand) return brand;
+  }
+  return null;
+}
+
+function brandForResolution(
+  resolution: ChallengeResolution | null,
+): ProviderBrand | null {
+  if (!resolution) return null;
+  const receipt = resolution.tool_receipt;
+  if (receipt) {
+    return providerBrandFromText([receipt.provider, receipt.tool_name].filter(Boolean).join(" "));
+  }
+  const providerToken = resolution.response.match(/evidence from ([a-zA-Z0-9_.-]+):/)?.[1] ?? null;
+  return providerBrandFromText(providerToken);
 }
 
 function ToolProviderChip({ brand }: { brand: ProviderBrand }) {

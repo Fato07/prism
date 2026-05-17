@@ -27,7 +27,6 @@ import {
   getAgents,
   getRecentVerdicts,
 } from "@/lib/db";
-import { getConnectorManifestForDashboard } from "@/lib/connector-store";
 import { getActivityStats } from "@/lib/stats";
 import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
@@ -52,12 +51,11 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const [tradeRow, agents, stats, recentVerdicts, connectorManifest] = await Promise.all([
+  const [tradeRow, agents, stats, recentVerdicts] = await Promise.all([
     getLatestTrade(),
     getAgents(),
     getActivityStats(),
     getRecentVerdicts(30),
-    getConnectorManifestForDashboard(),
   ]);
 
   // Prefer the latest trace that has a validation (so we can always show both
@@ -111,9 +109,6 @@ export default async function DashboardPage() {
   const registrationTxHash = traderAgent?.registration_tx_hash ?? null;
   const validationRequestTxHash = traceRow?.tx_hash ?? null;
   const validationResponseTxHash = validationRow?.tx_hash ?? null;
-  const activeEvidenceConnector = connectorManifest.connectors.find(
-    (connector) => connector.id === connectorManifest.active_connector_id,
-  ) ?? null;
 
   const workspace = (
     <>
@@ -138,7 +133,6 @@ export default async function DashboardPage() {
           <SentinelPanel
             verdict={verdictData}
             responseUri={validationRow?.response_uri ?? null}
-            evidenceConnector={activeEvidenceConnector}
             pendingMessage={
               pendingValidation
                 ? "Trace submitted — awaiting sentinel validation"
@@ -157,7 +151,6 @@ export default async function DashboardPage() {
       verdictLabel={verdictData?.verdict_label ?? null}
       traderModel={traceData?.model_name ?? null}
       sentinelModel={verdictData?.model_name ?? null}
-      evidenceConnector={activeEvidenceConnector}
     />
   );
 

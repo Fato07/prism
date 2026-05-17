@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from prism_schemas.connector import ToolConnector, ToolConnectorSmokeReceipt
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
-from prism_schemas.verdict import SentinelVerdict
+from prism_schemas.verdict import ChallengeResolution, EvidenceToolReceipt, SentinelVerdict
 
 
 def test_trading_r1_trace_validates():
@@ -64,6 +64,29 @@ def test_sentinel_verdict_validates():
     )
     assert verdict.content_hash() is not None
     assert verdict.verdict_label == "PASS"
+
+
+def test_evidence_tool_receipt_validates_on_resolution():
+    resolution = ChallengeResolution(
+        challenge_id="ev-1",
+        status="resolved",
+        responder="evidence_tool",
+        response="Retrieved issue-matched evidence from exa_mcp.",
+        created_at=datetime.now(timezone.utc),
+        tool_receipt=EvidenceToolReceipt(
+            provider="exa_mcp",
+            tool_name="web_search_exa",
+            source_title="Current market evidence",
+            source_url="https://example.com/evidence",
+            source_published_at="2026-05-16T00:00:00Z",
+            confidence=0.91,
+            adequacy_checks=["topic_overlap", "temporal_recency"],
+        ),
+    )
+
+    assert resolution.tool_receipt is not None
+    assert resolution.tool_receipt.provider == "exa_mcp"
+    assert resolution.tool_receipt.adequacy_checks == ["topic_overlap", "temporal_recency"]
 
 
 def test_tool_connector_schema_validates_redacted_passport_row():

@@ -14,7 +14,7 @@ from prism_schemas.startup import (
 )
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
 from prism_schemas.treasury import TreasuryEvent, TreasuryEventCreate, TreasuryEventResult
-from prism_schemas.verdict import SentinelVerdict
+from prism_schemas.verdict import EvidenceToolReceipt, SentinelVerdict
 
 __all__ = [
     # Agent card
@@ -42,5 +42,6 @@ __all__ = [
     "TreasuryEventCreate",
     "TreasuryEventResult",
     # Verdict
+    "EvidenceToolReceipt",
     "SentinelVerdict",
 ]

@@ -182,6 +182,7 @@ components:
         - claim_ref
         - tool_status
         - tool_provider
+        - tool_receipt
         - resolved_by_evidence_tool
         - latest_resolution
       properties:
@@ -206,11 +207,39 @@ components:
           enum: [resolved, fail_closed, not_recorded]
         tool_provider:
           type: [string, 'null']
+        tool_receipt:
+          oneOf:
+            - $ref: '#/components/schemas/EvidenceToolReceipt'
+            - type: 'null'
         resolved_by_evidence_tool:
           type: boolean
         latest_resolution:
           type: [object, 'null']
           additionalProperties: true
+    EvidenceToolReceipt:
+      type: object
+      required: [provider, source_title, source_url, confidence, adequacy_checks]
+      properties:
+        provider:
+          type: string
+        tool_name:
+          type: [string, 'null']
+        source_title:
+          type: string
+        source_url:
+          type: string
+        source_published_at:
+          type: [string, 'null']
+        retrieved_at:
+          type: [string, 'null']
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        adequacy_checks:
+          type: array
+          items:
+            type: string
     CapitalGate:
       type: object
       required: [status, label, tone, recommended_action, reason, policy_constraints, checks]

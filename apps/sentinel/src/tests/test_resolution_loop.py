@@ -277,7 +277,7 @@ async def test_resolution_loop_accepts_exa_mcp_current_temporal_evidence(
     provider = _exa_mcp_provider(
         _exa_mcp_text_result(
             title="Current Fed rates report",
-            url="https://example.com/current-fed-rates",
+            url="https://api:secret@example.com/current-fed-rates?api_key=secret#frag",
             highlights="Current Fed rates data supports the July 2026 market evidence check.",
         )
     )
@@ -295,6 +295,99 @@ async def test_resolution_loop_accepts_exa_mcp_current_temporal_evidence(
     assert verdict.structured_challenges[0].resolution_status == "resolved"
     assert verdict.challenge_resolutions[0].responder == "evidence_tool"
     assert "exa_mcp" in verdict.challenge_resolutions[0].response
+    assert verdict.challenge_resolutions[0].tool_receipt is not None
+    assert verdict.challenge_resolutions[0].tool_receipt.provider == "exa_mcp"
+    assert verdict.challenge_resolutions[0].tool_receipt.tool_name == "web_search_exa"
+    assert verdict.challenge_resolutions[0].tool_receipt.source_url == "https://example.com/current-fed-rates"
+    assert "secret" not in verdict.challenge_resolutions[0].response
+    assert "api_key" not in verdict.challenge_resolutions[0].response
+    assert "source_metadata" in verdict.challenge_resolutions[0].tool_receipt.adequacy_checks
+    assert "temporal_recency" in verdict.challenge_resolutions[0].tool_receipt.adequacy_checks
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_rejects_garbled_evidence_tool_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Binary-ish/mojibake snippets cannot clear issue-ledger gates."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = StaticEvidenceProvider(
+        {
+            "sys-temporal-stale-evidence": [
+                EvidenceSearchResult(
+                    title="Current Fed rates report",
+                    url="https://example.com/current-fed-rates",
+                    snippet=(
+                        "Current Fed rates data "
+                        + "\ufffd\x00\x01\\ M5-CƨF!^MiY nZ ԙ|t nt7E8ky '>93)ĞS&; " * 8
+                    ),
+                    provider="exa_mcp",
+                    tool_name="web_search_exa",
+                    published_at="2026-05-15T00:00:00Z",
+                    confidence=0.9,
+                )
+            ]
+        }
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+    )
+
+    assert verdict.verdict_label == "WARN"
+    assert verdict.structured_challenges[0].resolution_status == "conceded"
+    assert verdict.challenge_resolutions[0].tool_receipt is None
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_rejects_unusable_source_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing or malformed source fields cannot clear issue-ledger gates."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = StaticEvidenceProvider(
+        {
+            "sys-temporal-stale-evidence": [
+                EvidenceSearchResult(
+                    title="Fed",
+                    url="not-a-url",
+                    snippet="Current Fed rates data supports the July 2026 market evidence check.",
+                    provider="exa_mcp",
+                    tool_name="web_search_exa",
+                    published_at="2026-05-15T00:00:00Z",
+                    confidence=0.9,
+                )
+            ]
+        }
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+    )
+
+    assert verdict.verdict_label == "WARN"
+    assert verdict.structured_challenges[0].resolution_status == "conceded"
+    assert verdict.challenge_resolutions[0].tool_receipt is None
 
 
 @pytest.mark.asyncio

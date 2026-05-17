@@ -23,12 +23,11 @@ import {
   PanelRightOpen,
   Layers,
 } from "lucide-react";
-import { connectorProviderBrand, type ProviderBrand } from "@/components/provider-badge";
+import { providerBrandFromText } from "@/components/provider-badge";
 import { Pill } from "@/components/ui/pill";
 import { Dialog } from "@/components/ui/dialog";
 import { useDock, type DockSide } from "@/components/dashboard/dashboard-shell";
 import { cn } from "@/lib/utils";
-import type { ConnectorPassport } from "@/lib/connectors";
 import type { DialogueMessage } from "@/lib/schemas";
 
 interface AdversarialDialogueProps {
@@ -37,7 +36,6 @@ interface AdversarialDialogueProps {
   verdictLabel?: string | null;
   traderModel?: string | null;
   sentinelModel?: string | null;
-  evidenceConnector?: ConnectorPassport | null;
 }
 
 const FADE_EASE = [0.16, 1, 0.3, 1] as const;
@@ -71,7 +69,6 @@ export function AdversarialDialogue({
   verdictLabel,
   traderModel,
   sentinelModel,
-  evidenceConnector,
 }: AdversarialDialogueProps) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-60px" });
@@ -79,7 +76,6 @@ export function AdversarialDialogue({
 
   const { side: dockSide, setSide } = useDock();
   const [modalOpen, setModalOpen] = useState(false);
-  const evidenceBrand = evidenceConnector ? connectorProviderBrand(evidenceConnector) : null;
 
   const headerControls = (
     <DockControls dockSide={dockSide} setSide={setSide} onExpand={() => setModalOpen(true)} />
@@ -92,7 +88,6 @@ export function AdversarialDialogue({
       verdictLabel={verdictLabel}
       inView={inView}
       reduced={!!reduced}
-      evidenceBrand={evidenceBrand}
     />
   );
 
@@ -265,14 +260,12 @@ function DialogueBody({
   verdictLabel,
   inView,
   reduced,
-  evidenceBrand,
 }: {
   messages: DialogueMessage[];
   verdictScore?: number | null;
   verdictLabel?: string | null;
   inView: boolean;
   reduced: boolean;
-  evidenceBrand: ProviderBrand | null;
 }) {
   return (
     <ol className="relative flex flex-col gap-3 p-5">
@@ -298,7 +291,7 @@ function DialogueBody({
                     : "center",
             }}
           >
-            <Bubble side={side} sequence={i + 1} role={msg.role} evidenceBrand={evidenceBrand}>
+            <Bubble side={side} sequence={i + 1} role={msg.role}>
               {msg.content}
             </Bubble>
           </motion.li>
@@ -513,11 +506,10 @@ interface BubbleProps {
   side: Side;
   sequence: number;
   role: string;
-  evidenceBrand: ProviderBrand | null;
   children: React.ReactNode;
 }
 
-function Bubble({ side, sequence, role, evidenceBrand, children }: BubbleProps) {
+function Bubble({ side, sequence, role, children }: BubbleProps) {
   const isTrader = side === "trader";
   const isSentinel = side === "sentinel";
   const isNeutral = side === "neutral";
@@ -525,6 +517,10 @@ function Bubble({ side, sequence, role, evidenceBrand, children }: BubbleProps) 
   const isToolMessage = role.toLowerCase().includes("evidence_tool");
   const toolSummary = isToolMessage && textContent
     ? textContent.split(" — ")[0].slice(0, TOOL_MESSAGE_PREVIEW_CHARS)
+    : null;
+  const providerToken = textContent?.match(/evidence from ([a-zA-Z0-9_.-]+):/)?.[1] ?? null;
+  const messageEvidenceBrand = isToolMessage
+    ? providerBrandFromText(providerToken)
     : null;
 
   const accentVar = isTrader
@@ -564,10 +560,10 @@ function Bubble({ side, sequence, role, evidenceBrand, children }: BubbleProps) 
       >
         <span className="inline-flex flex-wrap items-center gap-1.5 text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
           <span>{role} · #{sequence}</span>
-          {isToolMessage && evidenceBrand && (
+          {isToolMessage && messageEvidenceBrand && (
             <span className="inline-flex items-center gap-1 rounded bg-[var(--color-canvas-raised)] px-1.5 py-0.5 normal-case tracking-normal text-fg-muted">
-              <img src={evidenceBrand.logoSrc} alt="" aria-hidden="true" className="h-3.5 w-3.5 object-contain" />
-              <span>{evidenceBrand.shortName}</span>
+              <img src={messageEvidenceBrand.logoSrc} alt="" aria-hidden="true" className="h-3.5 w-3.5 object-contain" />
+              <span>{messageEvidenceBrand.shortName}</span>
             </span>
           )}
         </span>

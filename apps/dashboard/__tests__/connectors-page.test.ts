@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { connectorProviderBrand } from "@/components/provider-badge";
+import { connectorProviderBrand, providerBrandFromText } from "@/components/provider-badge";
 import type { ConnectorPassport } from "@/lib/connectors";
 
 async function readSource(pathFromDashboard: string): Promise<string> {
@@ -81,9 +81,10 @@ describe("VAL-CONNECTORS-002: dashboard surfaces tool identity inline", () => {
   it("removes the standalone evidence route card from dashboard flow", async () => {
     const source = await readSource("../app/dashboard/page.tsx");
 
-    expect(source).toContain("getConnectorManifestForDashboard");
-    expect(source).toContain("activeEvidenceConnector");
-    expect(source).toContain("evidenceConnector={activeEvidenceConnector}");
+    expect(source).toContain("AdversarialDialogue");
+    expect(source).not.toContain("getConnectorManifestForDashboard");
+    expect(source).not.toContain("activeEvidenceConnector");
+    expect(source).not.toContain("evidenceConnector={activeEvidenceConnector}");
     expect(source).not.toContain("ConnectorTrustStatus");
     expect(source).not.toContain("Evidence harness");
   });
@@ -94,9 +95,10 @@ describe("VAL-CONNECTORS-002: dashboard surfaces tool identity inline", () => {
     const brandSource = await readSource("../app/components/provider-badge.tsx");
 
     expect(sentinelSource).toContain("ToolProviderChip");
-    expect(sentinelSource).toContain("evidenceConnector");
-    expect(dialogueSource).toContain("evidenceBrand");
-    expect(dialogueSource).toContain("isToolMessage && evidenceBrand");
+    expect(sentinelSource).toContain("tool_receipt");
+    expect(sentinelSource).not.toContain("evidenceConnector");
+    expect(dialogueSource).toContain("providerBrandFromText(providerToken)");
+    expect(dialogueSource).not.toContain("evidenceBrand");
     expect(brandSource).toContain("/provider-logos/exa.svg");
     expect(brandSource).toContain("/provider-logos/firecrawl.svg");
     expect(brandSource).toContain("/provider-logos/tavily.svg");
@@ -142,6 +144,8 @@ describe("VAL-CONNECTORS-003: provider badges make tool routes human-readable", 
     expect(connectorProviderBrand({ ...baseConnector, name: "Brave search", result_mapper: "brave_search" }).logoSrc).toBe("/provider-logos/brave.svg");
     expect(connectorProviderBrand({ ...baseConnector, name: "Parallel search", result_mapper: "parallel_search" }).logoSrc).toBe("/provider-logos/parallel.svg");
     expect(connectorProviderBrand({ ...baseConnector, name: "Webhook bridge", transport: "custom_webhook", result_mapper: "custom_webhook" }).logoSrc).toBe("/provider-logos/webhook.svg");
+    expect(connectorProviderBrand({ ...baseConnector, name: "Brave result from example.com", provider: "brave_search" }).logoSrc).toBe("/provider-logos/brave.svg");
+    expect(providerBrandFromText("https://example.com/evidence")).toBeNull();
   });
 
   it("keeps provider logo assets local", async () => {

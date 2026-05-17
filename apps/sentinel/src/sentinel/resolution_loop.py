@@ -17,12 +17,14 @@ import json
 import os
 import re
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 from prism_schemas.trace import TradingR1Trace
 from prism_schemas.verdict import (
     AdversarialChallenge,
     ChallengeResolution,
+    EvidenceToolReceipt,
     ResolutionRound,
     SentinelVerdict,
 )
@@ -235,15 +237,17 @@ async def _attempt_resolution(
         challenge=challenge,
     )
     if best is not None:
+        public_url = _public_source_url(best.url)
         return ChallengeResolution(
             challenge_id=challenge.id,
             status="resolved",
             responder="evidence_tool",
             response=(
                 f"Retrieved issue-matched evidence from {best.provider}: {best.title} "
-                f"({best.url}) — {best.snippet}"
+                f"({public_url}) — {best.snippet}"
             ),
             created_at=datetime.now(UTC),
+            tool_receipt=_tool_receipt_for_result(best, trace, challenge),
         )
 
     if results:
@@ -306,6 +310,10 @@ def _evidence_result_is_adequate(
     content_text = _evidence_content_text(result)
     if not text or not content_text:
         return False
+    if not _evidence_source_is_usable(result):
+        return False
+    if not _evidence_content_is_readable(result):
+        return False
 
     if result.provider == _MARKET_EVIDENCE_PROVIDER:
         return (
@@ -338,6 +346,55 @@ def _evidence_result_is_adequate(
         return _contains_any(text, _CALIBRATION_TERMS) or bool(re.search(r"\d+(?:\.\d+)?%", text))
 
     return _has_issue_keyword_overlap(result=result, trace=trace, challenge=challenge)
+
+
+def _tool_receipt_for_result(
+    result: EvidenceSearchResult,
+    trace: TradingR1Trace | None,
+    challenge: AdversarialChallenge,
+) -> EvidenceToolReceipt:
+    """Build a structured, queryable receipt for the evidence result used."""
+    retrieved_at = result.retrieved_at or datetime.now(UTC).isoformat()
+    return EvidenceToolReceipt(
+        provider=result.provider,
+        tool_name=result.tool_name,
+        source_title=result.title.strip(),
+        source_url=_public_source_url(result.url),
+        source_published_at=result.published_at,
+        retrieved_at=retrieved_at,
+        confidence=result.confidence,
+        adequacy_checks=_adequacy_check_labels(result=result, trace=trace, challenge=challenge),
+    )
+
+
+def _adequacy_check_labels(
+    *,
+    result: EvidenceSearchResult,
+    trace: TradingR1Trace | None,
+    challenge: AdversarialChallenge,
+) -> list[str]:
+    """Return labels for adequacy gates satisfied by an accepted result."""
+    content_text = _evidence_content_text(result)
+    labels = ["source_metadata", "readable_content"]
+    if _has_market_question_overlap(result=result, trace=trace):
+        labels.append("market_topic_overlap")
+    if _has_topic_overlap(result=result, trace=trace, challenge=challenge):
+        labels.append("issue_topic_overlap")
+    if challenge.type == "temporal" and _published_at_is_recent(result, trace):
+        labels.append("temporal_recency")
+    if challenge.type == "source_quality":
+        if _contains_any(content_text, _SOURCE_QUALITY_TERMS):
+            labels.append("source_quality_terms")
+        if not _contains_source_quality_negation(content_text):
+            labels.append("no_source_quality_negation")
+    if challenge.type == "market_structure" and _contains_any(content_text, _MARKET_STATUS_TERMS):
+        labels.append("market_structure_terms")
+    if challenge.type == "calibration" and (
+        _contains_any(_evidence_text(result), _CALIBRATION_TERMS)
+        or bool(re.search(r"\d+(?:\.\d+)?%", _evidence_text(result)))
+    ):
+        labels.append("calibration_terms")
+    return labels
 
 
 def _challenge_allows_market_status_evidence(challenge: AdversarialChallenge) -> bool:
@@ -433,6 +490,52 @@ def _has_market_question_overlap(
     result_words = _keywords(_evidence_content_text(result))
     market_words = _keywords(trace.market_question)
     return len(result_words & market_words) >= 2
+
+
+def _evidence_source_is_usable(result: EvidenceSearchResult) -> bool:
+    """Require minimally useful source metadata before evidence can resolve an issue."""
+    if len(result.title.strip()) < 4:
+        return False
+    if len(result.snippet.strip()) < 20:
+        return False
+    try:
+        parsed = urlsplit(result.url.strip())
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _public_source_url(url: str) -> str:
+    """Return a receipt-safe source URL with credentials, query, and fragment removed."""
+    raw = url.strip()
+    if not raw:
+        return "redacted-url"
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError:
+        return "redacted-url"
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return "redacted-url"
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    netloc = f"{host}:{port}" if port is not None else host
+    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+
+
+def _evidence_content_is_readable(result: EvidenceSearchResult) -> bool:
+    """Reject binary-ish or mojibake-heavy provider output before adequacy checks."""
+    snippet = result.snippet.strip()
+    if not snippet:
+        return False
+    if "\ufffd" in snippet:
+        return False
+    if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", snippet):
+        return False
+    if len(snippet) < 120:
+        return True
+
+    ascii_word_chars = sum(len(token) for token in re.findall(r"[a-z0-9]{2,}", snippet.lower()))
+    return (ascii_word_chars / max(len(snippet), 1)) >= 0.35
 
 
 def _evidence_text(result: EvidenceSearchResult) -> str:

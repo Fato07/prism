@@ -195,8 +195,16 @@ describe("VAL-PUBLIC-004: public issue-ledger report", () => {
           challenge_id: "resolved-issue",
           status: "resolved",
           responder: "evidence_tool",
-          response: "Retrieved issue-matched evidence from brave_search: Official report.",
+          response: "Retrieved issue-matched evidence from exa_mcp: Official report.",
           created_at: "2026-05-12T12:00:00Z",
+          tool_receipt: {
+            provider: "brave_search",
+            tool_name: "brave_search",
+            source_title: "Official report",
+            source_url: "https://example.com/report",
+            confidence: 0.81,
+            adequacy_checks: ["source_metadata", "readable_content"],
+          },
         },
         {
           challenge_id: "fail-closed-issue",
@@ -216,6 +224,7 @@ describe("VAL-PUBLIC-004: public issue-ledger report", () => {
       "not_recorded",
     ]);
     expect(report?.issues[0].tool_provider).toBe("brave_search");
+    expect(report?.issues[0].tool_receipt?.source_url).toBe("https://example.com/report");
     expect(report?.issues[0].resolved_by_evidence_tool).toBe(true);
     expect(report?.issues[1].tool_provider).toBeNull();
     expect(JSON.stringify(report)).not.toContain("auth_secret_ciphertext");

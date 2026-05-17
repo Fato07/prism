@@ -75,6 +75,7 @@ export interface PublicIssueLedgerReport {
     claim_ref: string | null;
     tool_status: PublicToolStatus;
     tool_provider: string | null;
+    tool_receipt: SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null;
     resolved_by_evidence_tool: boolean;
     latest_resolution: SentinelVerdict["challenge_resolutions"][number] | null;
   }>;
@@ -227,6 +228,7 @@ export function buildPublicIssueLedgerReport(
     resolution_metadata: verdict.resolution_metadata ?? null,
     issues: (verdict.structured_challenges ?? []).map((challenge) => {
       const toolStatus = publicToolStatusForChallenge(verdict, challenge.id);
+      const toolReceipt = evidenceToolReceiptForChallenge(verdict, challenge.id);
       return {
         id: challenge.id,
         type: challenge.type,
@@ -237,7 +239,8 @@ export function buildPublicIssueLedgerReport(
         required_resolution: challenge.required_resolution,
         claim_ref: challenge.claim_ref ?? null,
         tool_status: toolStatus,
-        tool_provider: evidenceToolProviderForChallenge(verdict, challenge.id),
+        tool_provider: toolReceipt?.provider ?? evidenceToolProviderForChallenge(verdict, challenge.id),
+        tool_receipt: toolReceipt,
         resolved_by_evidence_tool: toolStatus === "resolved",
         latest_resolution: latestResolutionForChallenge(verdict, challenge.id),
       };
@@ -255,6 +258,18 @@ function publicToolStatusForChallenge(
   return "not_recorded";
 }
 
+function evidenceToolReceiptForChallenge(
+  verdict: SentinelVerdict,
+  challengeId: string,
+): SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null {
+  const evidenceToolResolutions = (verdict.challenge_resolutions ?? []).filter(
+    (resolution) => resolution.challenge_id === challengeId && resolution.responder === "evidence_tool",
+  );
+  const resolved = evidenceToolResolutions.find((resolution) => resolution.status === "resolved");
+  const resolution = resolved ?? evidenceToolResolutions[0];
+  return resolution?.tool_receipt ?? null;
+}
+
 function evidenceToolProviderForChallenge(
   verdict: SentinelVerdict,
   challengeId: string,
@@ -265,7 +280,7 @@ function evidenceToolProviderForChallenge(
   const resolved = evidenceToolResolutions.find((resolution) => resolution.status === "resolved");
   const resolution = resolved ?? evidenceToolResolutions[0];
   if (!resolution) return null;
-  return extractEvidenceProvider(resolution.response);
+  return resolution.tool_receipt?.provider ?? extractEvidenceProvider(resolution.response);
 }
 
 function extractEvidenceProvider(response: string): string | null {

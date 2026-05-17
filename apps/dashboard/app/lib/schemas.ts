@@ -96,12 +96,26 @@ export const AdversarialChallengeSchema = z.object({
 
 export type AdversarialChallenge = z.infer<typeof AdversarialChallengeSchema>;
 
+export const EvidenceToolReceiptSchema = z.object({
+  provider: z.string(),
+  tool_name: z.string().nullable().optional(),
+  source_title: z.string(),
+  source_url: z.string(),
+  source_published_at: z.string().nullable().optional(),
+  retrieved_at: z.string().nullable().optional(),
+  confidence: z.number().min(0).max(1).default(0),
+  adequacy_checks: z.array(z.string()).default([]),
+});
+
+export type EvidenceToolReceipt = z.infer<typeof EvidenceToolReceiptSchema>;
+
 export const ChallengeResolutionSchema = z.object({
   challenge_id: z.string(),
   status: ChallengeResolutionStatusSchema,
   responder: z.enum(["trader", "sentinel", "evidence_tool", "system"]),
   response: z.string(),
   created_at: z.string(),
+  tool_receipt: EvidenceToolReceiptSchema.nullable().optional(),
 });
 
 export type ChallengeResolution = z.infer<typeof ChallengeResolutionSchema>;
