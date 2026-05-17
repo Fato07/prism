@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { getPool } from "@/lib/db";
 import {
   CreateMcpConnectorRequestSchema,
+  EMPTY_CONNECTOR_MANIFEST,
   buildConnectorManifest,
   canArmConnector,
   toConnectorPassport,
@@ -66,6 +67,14 @@ export async function listConnectorRows(): Promise<ToolConnectorRow[]> {
 
 export async function getConnectorManifest(): Promise<ConnectorManifest> {
   return buildConnectorManifest(await listConnectorRows());
+}
+
+export async function getConnectorManifestForDashboard(): Promise<ConnectorManifest> {
+  try {
+    return await getConnectorManifest();
+  } catch {
+    return EMPTY_CONNECTOR_MANIFEST;
+  }
 }
 
 export async function getConnectorRow(id: string): Promise<ToolConnectorRow | null> {

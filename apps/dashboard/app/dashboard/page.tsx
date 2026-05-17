@@ -27,11 +27,13 @@ import {
   getAgents,
   getRecentVerdicts,
 } from "@/lib/db";
+import { getConnectorManifestForDashboard } from "@/lib/connector-store";
 import { getActivityStats } from "@/lib/stats";
 import { TraderPanel } from "@/components/trader-panel";
 import { SentinelPanel } from "@/components/sentinel-panel";
 import { ReceiptLinks } from "@/components/receipt-links";
 import { TradeAttribution } from "@/components/trade-attribution";
+import { ConnectorTrustStatus } from "@/components/connector-trust-status";
 import { Pill } from "@/components/ui/pill";
 import { LiveDot } from "@/components/ui/live-dot";
 import { Separator } from "@/components/ui/separator";
@@ -51,11 +53,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const [tradeRow, agents, stats, recentVerdicts] = await Promise.all([
+  const [tradeRow, agents, stats, recentVerdicts, connectorManifest] = await Promise.all([
     getLatestTrade(),
     getAgents(),
     getActivityStats(),
     getRecentVerdicts(30),
+    getConnectorManifestForDashboard(),
   ]);
 
   // Prefer the latest trace that has a validation (so we can always show both
@@ -130,15 +133,18 @@ export default async function DashboardPage() {
             ipfsCid={traceRow?.ipfs_cid ?? null}
             contentHash={traceRow?.content_hash ?? null}
           />
-          <SentinelPanel
-            verdict={verdictData}
-            responseUri={validationRow?.response_uri ?? null}
-            pendingMessage={
-              pendingValidation
-                ? "Trace submitted — awaiting sentinel validation"
-                : undefined
-            }
-          />
+          <div className="space-y-4">
+            <SentinelPanel
+              verdict={verdictData}
+              responseUri={validationRow?.response_uri ?? null}
+              pendingMessage={
+                pendingValidation
+                  ? "Trace submitted — awaiting sentinel validation"
+                  : undefined
+              }
+            />
+            <ConnectorTrustStatus manifest={connectorManifest} />
+          </div>
         </div>
       </div>
     </>

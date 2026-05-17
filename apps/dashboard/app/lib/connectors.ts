@@ -83,6 +83,14 @@ export const ConnectorManifestSchema = z.object({
 
 export type ConnectorManifest = z.infer<typeof ConnectorManifestSchema>;
 
+export const EMPTY_CONNECTOR_MANIFEST: ConnectorManifest = ConnectorManifestSchema.parse({
+  connectors: [],
+  active_connector_id: null,
+  active_transport: null,
+  mcp_first: true,
+  fail_closed_default: true,
+});
+
 export function smokeReceiptPassed(receipt: ToolConnectorSmokeReceipt | null): boolean {
   return Boolean(
     receipt &&

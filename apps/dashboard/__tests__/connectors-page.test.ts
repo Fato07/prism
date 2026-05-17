@@ -1,5 +1,5 @@
 /**
- * Tool Connectors page tests — /connectors
+ * Workspace tool settings tests — /connectors and dashboard connector IA.
  */
 
 import { describe, expect, it } from "vitest";
@@ -10,36 +10,18 @@ async function readSource(pathFromDashboard: string): Promise<string> {
   return fs.readFile(path.resolve(__dirname, pathFromDashboard), "utf-8");
 }
 
-describe("VAL-CONNECTORS-001: connectors page describes the tool connection flow", () => {
-  it("lists the four connector paths", async () => {
+describe("VAL-CONNECTORS-001: connectors are workspace settings, not a marketplace page", () => {
+  it("frames Connector Passport as Sentinel's evidence route", async () => {
     const source = await readSource("../app/connectors/page.tsx");
 
-    expect(source).toContain("MCP evidence server");
-    expect(source).toContain("x402 paid tool");
-    expect(source).toContain("Custom webhook bridge");
-    expect(source).toContain("Direct adapter reference");
+    expect(source).toContain("Workspace tools");
+    expect(source).toContain("Configure the evidence route Sentinel may use");
+    expect(source).toContain("not a tool marketplace");
+    expect(source).toContain("save, smoke");
+    expect(source).toContain("arm the workspace evidence route");
   });
 
-  it("documents click-to-connect phases", async () => {
-    const source = await readSource("../app/connectors/page.tsx");
-
-    expect(source).toContain("Discover");
-    expect(source).toContain("Normalize");
-    expect(source).toContain("Prove");
-    expect(source).toContain("Arm");
-    expect(source).toContain("click connector → map schemas → smoke test → arm runtime");
-  });
-
-  it("keeps every connector CTA anchor backed by a page section", async () => {
-    const source = await readSource("../app/connectors/page.tsx");
-
-    for (const anchor of ["connect-mcp", "connect-x402", "connect-webhook", "connect-direct"]) {
-      expect(source).toContain(`href: "#${anchor}"`);
-      expect(source).toContain(`id=\"${anchor}\"`);
-    }
-  });
-
-  it("includes the live connector passport client and API flow", async () => {
+  it("keeps the admin connector passport client and API flow", async () => {
     const pageSource = await readSource("../app/connectors/page.tsx");
     const clientSource = await readSource("../app/connectors/connector-studio-client.tsx");
 
@@ -48,14 +30,18 @@ describe("VAL-CONNECTORS-001: connectors page describes the tool connection flow
     expect(clientSource).toContain("Save connector passport");
     expect(clientSource).toContain("Run smoke");
     expect(clientSource).toContain("Arm connector");
+    expect(clientSource).toContain("Admin token");
   });
 
-  it("uses MCP-first server-side env config without real secrets", async () => {
+  it("moves technical setup to docs instead of product UI env templates", async () => {
     const source = await readSource("../app/connectors/page.tsx");
 
-    expect(source).toContain("PRISM_EVIDENCE_PROVIDER=mcp");
-    expect(source).toContain("PRISM_EVIDENCE_MCP_INPUT_MAPPER=query_limit");
-    expect(source).toContain("no secrets shown");
+    expect(source).toContain("Technical setup");
+    expect(source).toContain("Open docs");
+    expect(source).not.toContain("PRISM_EVIDENCE_PROVIDER=mcp");
+    expect(source).not.toContain("PRISM_EVIDENCE_MCP_AUTH_TOKEN");
+    expect(source).not.toContain("Direct adapter reference");
+    expect(source).not.toContain("x402 paid tool");
     expect(source).not.toContain("TEST_API_KEY:");
     expect(source).not.toContain("sk-");
   });
@@ -72,12 +58,34 @@ describe("VAL-CONNECTORS-001: connectors page describes the tool connection flow
   });
 });
 
-describe("VAL-CONNECTORS-002: global nav exposes connectors route", () => {
-  it("adds /connectors to GlobalNav", async () => {
+describe("VAL-CONNECTORS-002: dashboard owns live connector trust state", () => {
+  it("adds connector trust status to dashboard near Sentinel reasoning", async () => {
+    const source = await readSource("../app/dashboard/page.tsx");
+
+    expect(source).toContain("ConnectorTrustStatus");
+    expect(source).toContain("getConnectorManifestForDashboard");
+    expect(source).toContain("<ConnectorTrustStatus manifest={connectorManifest} />");
+  });
+
+  it("connector status component summarizes fail-closed armed tool state without secrets", async () => {
+    const source = await readSource("../app/components/connector-trust-status.tsx");
+
+    expect(source).toContain("Evidence tool route");
+    expect(source).toContain("Sentinel can call an armed, smoke-tested evidence tool only when an issue needs proof.");
+    expect(source).toContain("Manage tools");
+    expect(source).not.toContain("auth_secret_ciphertext");
+    expect(source).not.toContain("CONNECTOR_SECRETS_KEY");
+    expect(source).not.toContain("bearer_token");
+  });
+});
+
+describe("VAL-CONNECTORS-003: global nav de-emphasizes admin surface", () => {
+  it("labels /connectors as Tools, not a marketplace-like Connectors page", async () => {
     const source = await readSource("../app/components/global-nav.tsx");
 
     expect(source).toContain('href: "/connectors"');
-    expect(source).toContain('label: "Connectors"');
+    expect(source).toContain('label: "Tools"');
     expect(source).toContain('shortLabel: "Tools"');
+    expect(source).not.toContain('label: "Connectors"');
   });
 });

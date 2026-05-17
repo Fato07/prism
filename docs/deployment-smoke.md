@@ -51,14 +51,16 @@ Set `PRISM_EVIDENCE_DB_CONNECTORS=0` only when intentionally bypassing the DB co
 
 ## Runtime smoke
 
-1. Open `/connectors`.
-2. Enter the connector admin token.
-3. Save an MCP HTTP connector passport.
-4. Run smoke.
-5. Confirm the smoke receipt shows transport/schema/mapper/fail-closed checks.
-6. Arm the connector.
-7. Run one validation with `ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2`.
-8. Confirm unresolved blockers remain unresolved if the connector fails or returns malformed output.
+1. Open `/dashboard` and confirm the `Evidence tool route` card is visible near Sentinel reasoning.
+2. Open `/connectors`.
+3. Enter the connector admin token.
+4. Save an MCP HTTP connector passport.
+5. Run smoke.
+6. Confirm the smoke receipt shows transport/schema/mapper/fail-closed checks.
+7. Arm the connector.
+8. Return to `/dashboard` and confirm the active route shows as armed.
+9. Run one validation with `ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2`.
+10. Confirm unresolved blockers remain unresolved if the connector fails or returns malformed output.
 
 ## Public API smoke
 
