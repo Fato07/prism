@@ -109,10 +109,12 @@ function Counter({ label, target, tone, delay, inView }: CounterProps) {
   );
 
   useEffect(() => {
-    if (!inView || reduced) {
+    if (reduced) {
       motionValue.set(target);
       return;
     }
+    if (!inView) return;
+
     const controls = animate(motionValue, target, {
       duration: 1.4 + Math.min(target, 100) / 100,
       ease: FADE_EASE,
