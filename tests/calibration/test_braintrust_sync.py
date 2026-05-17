@@ -12,6 +12,7 @@ from prism_calibration.braintrust_sync import (
     _read_sync_state,
     _sync_state_path,
     _write_sync_state,
+    braintrust_project,
     read_braintrust_ref,
     sync_slice_to_braintrust,
 )
@@ -118,7 +119,7 @@ def test_resync_is_idempotent_no_duplicates(tmp_path: Path) -> None:
     # Fetch current rows from Braintrust
     import braintrust
 
-    dataset = braintrust.init_dataset(project="Prism", name=first.dataset_name)
+    dataset = braintrust.init_dataset(project=braintrust_project(), name=first.dataset_name)
     rows_after_first = list(dataset.fetch())
     first_row_count = len(rows_after_first)
     first_ids = sorted(
@@ -137,7 +138,7 @@ def test_resync_is_idempotent_no_duplicates(tmp_path: Path) -> None:
     assert second.row_count == first.row_count
 
     # No duplicate rows in Braintrust
-    dataset2 = braintrust.init_dataset(project="Prism", name=first.dataset_name)
+    dataset2 = braintrust.init_dataset(project=braintrust_project(), name=first.dataset_name)
     rows_after_second = list(dataset2.fetch())
     second_row_count = len(rows_after_second)
 
@@ -221,7 +222,7 @@ def test_interrupted_sync_resumes_from_durable_state(tmp_path: Path) -> None:
     # Verify no duplicates in Braintrust
     import braintrust
 
-    dataset = braintrust.init_dataset(project="Prism", name=result.dataset_name)
+    dataset = braintrust.init_dataset(project=braintrust_project(), name=result.dataset_name)
     remote_rows = list(dataset.fetch())
     assert len(remote_rows) == len(all_row_ids)
 
@@ -249,7 +250,7 @@ def test_clean_run_and_resumed_run_produce_same_remote_shape(
 
     import braintrust
 
-    dataset = braintrust.init_dataset(project="Prism", name=clean.dataset_name)
+    dataset = braintrust.init_dataset(project=braintrust_project(), name=clean.dataset_name)
     clean_rows = list(dataset.fetch())
     clean_ids = sorted(
         str(r.get("id", "")) if isinstance(r, dict) else str(getattr(r, "id", ""))
@@ -279,7 +280,7 @@ def test_clean_run_and_resumed_run_produce_same_remote_shape(
         root=root, slice_name="pilot", dataset_name=resume_ds_name,
     )
 
-    dataset2 = braintrust.init_dataset(project="Prism", name=resumed.dataset_name)
+    dataset2 = braintrust.init_dataset(project=braintrust_project(), name=resumed.dataset_name)
     resumed_rows = list(dataset2.fetch())
     resumed_ids = sorted(
         str(r.get("id", "")) if isinstance(r, dict) else str(getattr(r, "id", ""))
@@ -357,7 +358,7 @@ def test_cli_dataset_state_matches_braintrust_remote(tmp_path: Path) -> None:
 
     import braintrust
 
-    dataset = braintrust.init_dataset(project="Prism", name=result.dataset_name)
+    dataset = braintrust.init_dataset(project=braintrust_project(), name=result.dataset_name)
     remote_rows = list(dataset.fetch())
     remote_ids = sorted(
         str(r.get("id", "")) if isinstance(r, dict) else str(getattr(r, "id", ""))

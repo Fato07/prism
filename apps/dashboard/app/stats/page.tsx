@@ -174,7 +174,7 @@ export default async function StatsPage() {
           <Tile
             title="Calibration gap"
             value={stats.calibrationGap.toString()}
-            subtitle="Good-vs-bad synthetic trace verdict spread — target ≥30"
+            subtitle="High-vs-low live verdict spread — target ≥30"
             icon={<Target className="h-4 w-4" strokeWidth={1.8} />}
             tone={stats.calibrationGap >= 30 ? "good" : "warn"}
             sparklineData={stats.dailyCalibrationGap.map((d) => ({
@@ -236,9 +236,9 @@ export default async function StatsPage() {
             transactions are present. Builder fees use the 0.1% fill-notional model for{" "}
             <span className="text-mono">paper_filled</span> trades and reconcile to live
             builder attribution for <span className="text-mono">filled</span> trades when
-            available. Calibration gap is the score spread between high-scoring (&ge;75) and
-            low-scoring (&le;25) verdicts. Sparklines cover the last 7 days of daily
-            aggregates.
+            available. Stats-page calibration gap is the live score spread between high-scoring (&ge;75)
+            and low-scoring (&le;25) verdicts; the separate /calibration page shows the synthetic
+            startup discrimination gate. Sparklines cover the last 7 days of daily aggregates.
           </p>
         </div>
       </main>

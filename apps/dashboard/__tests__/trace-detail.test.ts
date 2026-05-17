@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { deriveCapitalGate } from "@/lib/capital-gate";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
 /* ─────────────── Test fixtures ─────────────── */
@@ -256,6 +257,38 @@ describe("VAL-TRACE-005: Agent attribution chips show correct labels", () => {
 
   it("GPT substring match works", () => {
     expect(modelFamilyLabel("gpt-4o").label).toBe("GPT");
+  });
+});
+
+/* ─────────────── Capital gate ─────────────── */
+
+describe("VAL-TRACE-021: Capital gate converts verdicts into execution policy", () => {
+  it("allows paper mode for a clean PASS verdict", () => {
+    const gate = deriveCapitalGate({
+      verdictScore: sampleVerdictContent.verdict_score,
+      verdictLabel: sampleVerdictContent.verdict_label,
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    });
+
+    expect(gate.status).toBe("ALLOW_PAPER");
+    expect(gate.recommended_action).toContain("paper mode");
+  });
+
+  it("blocks capital when a blocking issue remains unresolved", () => {
+    const gate = deriveCapitalGate({
+      verdictScore: 65,
+      verdictLabel: "PASS",
+      readiness: "usable",
+      unresolvedBlockingCount: 1,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    });
+
+    expect(gate.status).toBe("BLOCK");
+    expect(gate.reason).toContain("blocking");
   });
 });
 

@@ -20,6 +20,18 @@ export const CALIBRATION_RUN = {
   corpusCommand: "uv run python -m prism_calibration.cli --help",
 } as const;
 
+export const CALIBRATION_CORPUS = {
+  summarizedAt: "2026-05-17",
+  totalRows: 60,
+  realHarvestedRows: 28,
+  syntheticSeedRows: 20,
+  mutatedAdversarialRows: 12,
+  humanReviewedRows: 43,
+  frozenPilotRows: 54,
+  privateCorpusReason:
+    "Raw calibration rows stay local because harvested traces can contain wallet, position, requester, or market context.",
+} as const;
+
 export const CALIBRATION_CASES = [
   {
     id: "good",

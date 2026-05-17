@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { deriveCapitalGate } from "../app/lib/capital-gate";
 import {
   buildPublicIssueLedgerReport,
   buildPublicReceiptVerificationReport,
@@ -173,7 +174,83 @@ describe("VAL-PUBLIC-004: public issue-ledger report", () => {
   });
 });
 
-describe("VAL-PUBLIC-005: public receipt verification fields", () => {
+describe("VAL-PUBLIC-005: capital gate derivation", () => {
+  it("blocks rejected traces and unresolved blocking issues", () => {
+    expect(deriveCapitalGate({
+      verdictScore: 20,
+      verdictLabel: "REJECT",
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    }).status).toBe("BLOCK");
+
+    expect(deriveCapitalGate({
+      verdictScore: 65,
+      verdictLabel: "PASS",
+      readiness: "usable",
+      unresolvedBlockingCount: 1,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    }).status).toBe("BLOCK");
+  });
+
+  it("keeps WARN and unresolved material issues in review", () => {
+    expect(deriveCapitalGate({
+      verdictScore: 42,
+      verdictLabel: "WARN",
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    }).status).toBe("REVIEW");
+
+    expect(deriveCapitalGate({
+      verdictScore: 65,
+      verdictLabel: "PASS",
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 1,
+      totalIssues: 1,
+    }).status).toBe("REVIEW");
+  });
+
+  it("keeps legacy PASS receipts in review when no structured issue ledger exists", () => {
+    const gate = deriveCapitalGate({
+      verdictScore: 65,
+      verdictLabel: "PASS",
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 0,
+    });
+
+    expect(gate.status).toBe("REVIEW");
+    expect(gate.policy_constraints[0]).toContain("Legacy receipt");
+  });
+
+  it("allows paper mode for clean PASS and endorses clean high scores", () => {
+    expect(deriveCapitalGate({
+      verdictScore: 65,
+      verdictLabel: "PASS",
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    }).status).toBe("ALLOW_PAPER");
+
+    expect(deriveCapitalGate({
+      verdictScore: 88,
+      verdictLabel: "ENDORSE",
+      readiness: "usable",
+      unresolvedBlockingCount: 0,
+      unresolvedMaterialCount: 0,
+      totalIssues: 1,
+    }).status).toBe("ENDORSE");
+  });
+});
+
+describe("VAL-PUBLIC-006: public receipt verification fields", () => {
   it("reports DB/pinned verdict identity matches without exposing requester data", () => {
     const report = buildPublicReceiptVerificationReport(sampleValidation(), sampleVerdict());
 

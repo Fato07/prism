@@ -1,0 +1,86 @@
+---
+title: Calibration evidence
+description: "How Prism proves the sentinel can discriminate good, mediocre, and bad trading-agent reasoning."
+---
+
+Prism's sentinel is useful only if it can separate sound reasoning from broken reasoning before capital moves. Calibration evidence is the public trust surface for that claim.
+
+## Public startup gate
+
+The public guarantee is a small, reproducible startup discrimination gate:
+
+| Case | Expected quality | Verdict |
+| --- | --- | --- |
+| Good trace | Coherent thesis, evidence-linked risks, calibrated uncertainty | `65 PASS` |
+| Mediocre trace | Partially supported but overconfident | `42 WARN` |
+| Bad trace | Unsupported conclusion and broken calibration | `20 REJECT` |
+
+The required gap between good and bad reasoning is `>=30` points. The current gate separates them by `45` points and preserves monotonic ordering:
+
+```txt
+good > mediocre > bad
+65   > 42       > 20
+```
+
+Reproduce locally:
+
+```bash
+uv run pytest apps/sentinel/src/tests/test_calibration.py
+```
+
+## Private calibration corpus
+
+Prism also maintains a private local corpus used for release-quality work:
+
+| Corpus slice | Count |
+| --- | ---: |
+| Total rows | 60 |
+| Real harvested Trading-R1 traces | 28 |
+| Synthetic seed traces | 20 |
+| Mutated adversarial traces | 12 |
+| Human-reviewed labels | 43 |
+| Frozen pilot slice | 54 |
+
+Raw calibration rows are not committed. Harvested traces can include wallet, position, requester, or market context, so Prism publishes summary evidence and keeps the corpus local/private.
+
+## What this does and does not claim
+
+What it claims:
+
+- the sentinel passes a reproducible startup discrimination gate;
+- good, mediocre, and bad reasoning traces produce different verdict bands;
+- a broader private corpus exists for release-quality review and regression work;
+- raw private rows are intentionally withheld to avoid leaking sensitive context.
+
+What it does not claim yet:
+
+- production-grade LLM-as-judge agreement;
+- a public gold set;
+- nightly CI release gating on the full corpus;
+- that every historical verdict includes a structured issue ledger.
+
+Legacy receipts without a structured issue ledger remain review-gated by the capital gate.
+
+## Dashboard evidence
+
+The live dashboard evidence page is here:
+
+```txt
+https://prism-dashboard-production-e6e3.up.railway.app/calibration
+```
+
+The stats page also includes a `calibrationGap` metric, but that is different: it is the live score spread between high-scoring and low-scoring verdicts. The `/calibration` page is the startup discrimination and corpus-evidence surface.
+
+## Corpus workflow
+
+The local calibration package supports:
+
+```txt
+build, harvest, label, freeze, sync, eval, inspect, validate
+```
+
+Inspect the CLI surface:
+
+```bash
+uv run python -m prism_calibration.cli --help
+```

@@ -1,3 +1,4 @@
+import { deriveCapitalGate } from "@/lib/capital-gate";
 import { getPool, getTraceDetailData } from "@/lib/db";
 import {
   getIssueLedgerSummary,
@@ -332,6 +333,15 @@ export async function getPublicTraceReport(traceId: string): Promise<Record<stri
     : null;
   const verdict = parsedVerdict?.success ? parsedVerdict.data : null;
   const issueLedger = buildPublicIssueLedgerReport(verdict);
+  const validationLabel = score !== null ? verdictLabelFromScore(score) : null;
+  const capitalGate = deriveCapitalGate({
+    verdictScore: score,
+    verdictLabel: validationLabel,
+    readiness,
+    unresolvedBlockingCount: issueLedger?.summary.unresolved_blocking_count ?? null,
+    unresolvedMaterialCount: issueLedger?.summary.unresolved_material_count ?? null,
+    totalIssues: issueLedger?.summary.total_issues ?? null,
+  });
   const receiptVerification = buildPublicReceiptVerificationReport(
     detail.validation,
     verdict,
@@ -356,7 +366,7 @@ export async function getPublicTraceReport(traceId: string): Promise<Record<stri
           request_hash: detail.validation.request_hash,
           sentinel_agent_id: detail.validation.sentinel_agent_id,
           verdict_score: score,
-          verdict_label: verdictLabelFromScore(score ?? 0),
+          verdict_label: validationLabel,
           response_uri: detail.validation.response_uri,
           tx_hash: detail.validation.tx_hash,
           created_at: detail.validation.created_at,
@@ -365,6 +375,7 @@ export async function getPublicTraceReport(traceId: string): Promise<Record<stri
     reasoning_metrics: metrics,
     readiness,
     warnings,
+    capital_gate: capitalGate,
     issue_ledger: issueLedger,
     receipt_verification: receiptVerification,
     receipts: {

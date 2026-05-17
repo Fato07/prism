@@ -20,22 +20,22 @@ describe('Prism docs content', () => {
     expect(meta.pages).toContain('cli');
     expect(meta.pages).toContain('x402-mcp-validation');
     expect(meta.pages).toContain('receipts');
+    expect(meta.pages).toContain('calibration');
     expect(meta.pages).toContain('security');
     expect(meta.pages).not.toContain('api-reference');
   });
 
-  it('renders Prism brand and footer links across docs surfaces', () => {
+  it('renders Prism brand without a docs footer', () => {
     const layout = read('lib/layout.shared.tsx');
     const docsPage = read('app/docs/[[...slug]]/page.tsx');
-    const footer = read('components/site-footer.tsx');
+    const docsLayout = read('app/docs/layout.tsx');
     const home = read('app/page.tsx');
 
     expect(layout).toContain('<PrismWordmark />');
     expect(docsPage).toContain('aria-label="Prism documentation home"');
     expect(docsPage).toContain('<PrismWordmark />');
-    expect(footer).toContain('Quickstart');
-    expect(footer).toContain('Public APIs');
-    expect(home).toContain('<SiteFooter />');
+    expect(docsLayout).not.toContain('SiteFooter');
+    expect(home).not.toContain('SiteFooter');
   });
 
   it('does not publish personal Circle login details', () => {
@@ -48,11 +48,16 @@ describe('Prism docs content', () => {
     expect(combined).toContain('YOUR_CIRCLE_EMAIL');
   });
 
-  it('documents the canonical MCP endpoint with trailing slash', () => {
+  it('documents the canonical MCP endpoint with trailing slash and trust tools', () => {
     const page = read('content/docs/x402-mcp-validation.mdx');
 
     expect(page).toContain('https://prism-sentinel-production.up.railway.app/mcp/');
     expect(page).toContain('trailing slash');
+    expect(page).toContain('validate');
+    expect(page).toContain('verify_receipt');
+    expect(page).toContain('get_issue_ledger');
+    expect(page).toContain('explain_verdict');
+    expect(page).toContain('get_tool_manifest');
   });
 
   it('keeps paid validation explicit and capped', () => {
@@ -72,6 +77,21 @@ describe('Prism docs content', () => {
     expect(receipt).toContain('"payment_tx_hash"');
     expect(receipt).not.toContain('X-PAYMENT');
     expect(receiptDocs).toContain('cli-paid-validation-20260516T214837Z');
+    expect(receiptDocs).toContain('Canonical judge receipt bundle');
+    expect(receiptDocs).toContain('0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1');
+    expect(receiptDocs).toContain('Prism CLI never reads private keys');
+  });
+
+  it('documents calibration evidence without overclaiming a production gold set', () => {
+    const calibration = read('content/docs/calibration.mdx');
+
+    expect(calibration).toContain('45');
+    expect(calibration).toContain('60');
+    expect(calibration).toContain('Real harvested Trading-R1 traces');
+    expect(calibration).toContain('Raw calibration rows are not committed');
+    expect(calibration).toContain('What it does not claim yet');
+    expect(calibration).toContain('production-grade LLM-as-judge agreement');
+    expect(calibration).toContain('https://prism-dashboard-production-e6e3.up.railway.app/calibration');
   });
 
   it('ships an OpenAPI source for public dashboard APIs only', () => {

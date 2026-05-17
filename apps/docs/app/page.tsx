@@ -1,7 +1,6 @@
 import Link from 'next/link';
 
 import { PrismWordmark } from '@/components/prism-wordmark';
-import { SiteFooter } from '@/components/site-footer';
 
 const navLinks = [
   { label: 'Quickstart', href: '/docs/quickstart' },
@@ -30,28 +29,27 @@ const cards = [
 
 export default function HomePage() {
   return (
-    <>
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-8 md:py-12">
-        <nav className="mb-16 flex flex-wrap items-center justify-between gap-4" aria-label="Docs">
-          <Link href="/" aria-label="Prism documentation home">
-            <PrismWordmark />
-          </Link>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-fg-muted">
-            {navLinks.map((link) =>
-              link.href.startsWith('http') ? (
-                <a className="hover:text-fg" href={link.href} key={link.href}>
-                  {link.label}
-                </a>
-              ) : (
-                <Link className="hover:text-fg" href={link.href} key={link.href}>
-                  {link.label}
-                </Link>
-              ),
-            )}
-          </div>
-        </nav>
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-8 md:py-12">
+      <nav className="mb-16 flex flex-wrap items-center justify-between gap-4" aria-label="Docs">
+        <Link href="/" aria-label="Prism documentation home">
+          <PrismWordmark />
+        </Link>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-fg-muted">
+          {navLinks.map((link) =>
+            link.href.startsWith('http') ? (
+              <a className="hover:text-fg" href={link.href} key={link.href}>
+                {link.label}
+              </a>
+            ) : (
+              <Link className="hover:text-fg" href={link.href} key={link.href}>
+                {link.label}
+              </Link>
+            ),
+          )}
+        </div>
+      </nav>
 
-        <section className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+      <section className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
         <div>
           <p className="mb-4 text-sm font-medium uppercase tracking-[0.22em] text-trader">
             Adversarial AI validation for agentic markets
@@ -104,20 +102,18 @@ export default function HomePage() {
         </div>
       </section>
 
-        <section className="mt-16 grid gap-4 md:grid-cols-3">
-          {cards.map((card) => (
-            <Link
-              className="prism-card rounded-2xl p-5 transition hover:border-trader"
-              href={card.href}
-              key={card.href}
-            >
-              <h2 className="text-lg font-semibold text-fg">{card.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-fg-muted">{card.body}</p>
-            </Link>
-          ))}
-        </section>
-      </main>
-      <SiteFooter />
-    </>
+      <section className="mt-16 grid gap-4 md:grid-cols-3">
+        {cards.map((card) => (
+          <Link
+            className="prism-card rounded-2xl p-5 transition hover:border-trader"
+            href={card.href}
+            key={card.href}
+          >
+            <h2 className="text-lg font-semibold text-fg">{card.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-fg-muted">{card.body}</p>
+          </Link>
+        ))}
+      </section>
+    </main>
   );
 }

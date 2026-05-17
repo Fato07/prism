@@ -38,11 +38,15 @@ import {
   ExternalLink,
   FileCode,
   ShieldAlert,
+  ShieldCheck,
   Hexagon,
   Zap,
   Clock,
   Activity,
 } from "lucide-react";
+import { deriveCapitalGate } from "@/lib/capital-gate";
+import { getIssueLedgerSummary } from "@/lib/issue-ledger";
+import { computeTraceMetrics, readinessFromMetrics } from "@/lib/public-api";
 import type { TradingR1Trace, SentinelVerdict } from "@/lib/schemas";
 
 /* ─────────────── UUID validation ─────────────── */
@@ -103,6 +107,7 @@ function formatTimestamp(iso: string): string {
     return iso;
   }
 }
+
 
 /* ─────────────── Metadata ─────────────── */
 
@@ -190,6 +195,19 @@ export default async function TraceDetailPage({ params }: PageProps) {
   const score = validation?.verdict_score ?? null;
   const verdictLabel = verdictContent?.verdict_label ?? null;
   const dialogueMessages = verdictContent?.dialogue_messages ?? [];
+  const issueLedgerSummary = verdictContent ? getIssueLedgerSummary(verdictContent) : null;
+  const traceMetrics = traceContent
+    ? computeTraceMetrics(traceContent as unknown as Record<string, unknown>)
+    : null;
+  const traceReadiness = traceMetrics ? readinessFromMetrics(traceMetrics) : null;
+  const capitalGate = deriveCapitalGate({
+    verdictScore: score,
+    verdictLabel: verdictLabel as VerdictLabel | null,
+    readiness: traceReadiness,
+    unresolvedBlockingCount: issueLedgerSummary?.unresolvedBlockingCount ?? null,
+    unresolvedMaterialCount: issueLedgerSummary?.unresolvedMaterialCount ?? null,
+    totalIssues: issueLedgerSummary?.totalIssues ?? null,
+  });
 
   const traderModel = modelFamilyLabel(traceContent?.model_family);
   const sentinelModel = modelFamilyLabel(verdictContent?.model_family);
@@ -298,6 +316,43 @@ export default async function TraceDetailPage({ params }: PageProps) {
               responseUri={validation?.response_uri ?? null}
               noExpand
             />
+          </div>
+        </section>
+
+        {/* ── Capital gate ── */}
+        <section aria-label="Capital gate" className="mt-8">
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-canvas-raised)]/65 p-5 backdrop-blur-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex gap-3">
+                <span className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]">
+                  <ShieldCheck className="h-4 w-4 text-[var(--color-verdict-good)]" strokeWidth={1.8} />
+                </span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold text-fg">Capital gate</h2>
+                    <Pill tone={capitalGate.tone === "neutral" ? "neutral" : capitalGate.tone} emphasis="solid" size="xs">
+                      {capitalGate.status}
+                    </Pill>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-fg-muted">
+                    {capitalGate.reason} {capitalGate.recommended_action}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/50 px-4 py-3 text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                <div>validation · {capitalGate.checks.validation_present ? "present" : "pending"}</div>
+                <div>clean pass · {capitalGate.checks.clean_pass_allowed === null ? "n/a" : capitalGate.checks.clean_pass_allowed ? "allowed" : "gated"}</div>
+                <div>endorse · {capitalGate.checks.endorsement_allowed === null ? "n/a" : capitalGate.checks.endorsement_allowed ? "allowed" : "gated"}</div>
+              </div>
+            </div>
+            <ul className="mt-4 grid gap-2 text-xs leading-5 text-fg-faint md:grid-cols-2">
+              {capitalGate.policy_constraints.map((constraint) => (
+                <li key={constraint} className="flex gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--color-sentinel)]" aria-hidden="true" />
+                  <span>{constraint}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 

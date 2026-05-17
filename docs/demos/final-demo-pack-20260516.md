@@ -10,8 +10,10 @@ This is the judge-facing recording pack for Prism's final demo. It uses only rec
 | Docs | <https://prism-docs-production.up.railway.app> |
 | Quickstart | <https://prism-docs-production.up.railway.app/docs/quickstart> |
 | Receipts guide | <https://prism-docs-production.up.railway.app/docs/receipts> |
+| Calibration docs | <https://prism-docs-production.up.railway.app/docs/calibration> |
 | Canonical trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24> |
 | Stats | <https://prism-dashboard-production-e6e3.up.railway.app/stats> |
+| Calibration | <https://prism-dashboard-production-e6e3.up.railway.app/calibration> |
 | Self-serve submit | <https://prism-dashboard-production-e6e3.up.railway.app/submit> |
 | Sentinel MCP | `https://prism-sentinel-production.up.railway.app/mcp/` |
 | GitHub | <https://github.com/Fato07/prism> |
@@ -24,6 +26,7 @@ Keep the sentinel MCP trailing slash: `/mcp/`.
 | --- | --- |
 | First dashboard self-serve receipt | [`self-serve-submit-20260515T101946Z.md`](./self-serve-submit-20260515T101946Z.md) |
 | Dashboard x402 payment tx | <https://sepolia.basescan.org/tx/0x63bf70941e8890b2b92459addfa18ecb57dd06bba7ea715391f00322faf58d68> |
+| Canonical trace Arc validation request | <https://testnet.arcscan.app/tx/0x5adb156fa8de6c1cf7e0d50c2197d8315eb9a501da2c00ffbf52996d2407d786> |
 | First CLI paid validation receipt | [`cli-paid-validation-20260516T214837Z.md`](./cli-paid-validation-20260516T214837Z.md) |
 | CLI x402 payment tx | <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1> |
 | CLI verdict IPFS | <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk> |
@@ -31,21 +34,21 @@ Keep the sentinel MCP trailing slash: `/mcp/`.
 
 ## Current stats snapshot
 
-Snapshot from `GET /api/public/stats` at `2026-05-16T21:58:15.969Z`:
+Snapshot from `GET /api/public/stats` at `2026-05-17T00:55:39.283Z`:
 
 | Metric | Value |
 | --- | ---: |
-| Verdicts issued | 598 |
-| Traces validated | 787 |
-| On-chain anchors | 571 |
+| Verdicts issued | 624 |
+| Traces validated | 814 |
+| On-chain anchors | 597 |
 | External x402 calls | 2 |
 | Unique wallets | 2 |
-| Average verdict score | 62.87 |
+| Average verdict score | 62.42 |
 | P50 latency | 20.7s |
 | P95 latency | 26.1s |
 | Calibration gap | 57 |
 
-## 120-second demo script
+## 150-second demo script
 
 ### 0:00–0:15 — Hook
 
@@ -53,9 +56,9 @@ Snapshot from `GET /api/public/stats` at `2026-05-16T21:58:15.969Z`:
 
 Show dashboard home or `/stats`.
 
-### 0:15–0:35 — What Prism is
+### 0:15–0:40 — What Prism is
 
-> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. The output is a Prism Report: verdict, reasoning metrics, IPFS content, and receipts.
+> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, and receipts.
 
 Show canonical trace page:
 
@@ -63,17 +66,23 @@ Show canonical trace page:
 https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
 ```
 
-### 0:35–0:55 — Human self-serve path
+### 0:40–1:00 — Capital gate
+
+> Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path.
+
+Show the trace page capital-gate card and sentinel issue-ledger summary.
+
+### 1:00–1:20 — Human self-serve path
 
 > The dashboard is self-serve: paste an IPFS CID, pay 0.01 USDC via x402 on Base Sepolia, and get a verdict permalink. This payment settled at 0x63bf7094… and produced a 65 PASS verdict.
 
 Show `/submit`, then the BaseScan tx and self-serve receipt.
 
-### 0:55–1:20 — Agent/developer path
+### 1:20–1:45 — Agent/developer path
 
-> Prism is also callable by agents and developers. The sentinel is an x402-protected MCP service, and the CLI wraps the flow safely: quote first, then explicit capped payment.
+> Prism is also callable by agents and developers. The sentinel is an x402-protected MCP trust service: agents can validate traces, inspect issue ledgers, verify receipts, and explain verdict gates. The CLI wraps the paid flow safely: quote first, then explicit capped payment.
 
-Show docs quickstart, then terminal command:
+Show docs quickstart / x402 MCP docs, then terminal command:
 
 ```bash
 uvx --from "prism-cli @ git+https://github.com/Fato07/prism.git#subdirectory=apps/cli" prism demo
@@ -85,17 +94,17 @@ Then show paid receipt:
 docs/demos/cli-paid-validation-20260516T214837Z.md
 ```
 
-### 1:20–1:40 — Receipts
+### 1:45–2:10 — Receipts
 
-> This is the live CLI paid receipt: 0.01 USDC, Base Sepolia tx 0xd6ab0cbb…, verdict CID on IPFS, and `prism doctor` green. Prism never reads private keys; Circle CLI signs typed data at the wallet boundary.
+> This is the live CLI paid receipt: 0.01 USDC, Base Sepolia tx 0xd6ab0cbb…, verdict CID on IPFS, and `prism doctor` green. The receipt bundle also links the dashboard payment, canonical trace, Arc validation request where present, and verdict CID. Prism never reads private keys; Circle CLI signs typed data at the wallet boundary.
 
 Show BaseScan tx, IPFS verdict, and docs `/docs/receipts`.
 
-### 1:40–2:00 — Why Arc / close
+### 2:10–2:30 — Calibration / close
 
-> The long-term point is agents validating agents before markets move. Arc gives the identity and validation registry layer; x402 gives paid access; Prism turns reasoning into a receipt-backed object. Today it has 598 verdicts, 787 traces, 571 on-chain anchors, and two external x402 payments. If you build a trading agent, Prism is the adversarial validator you call before you trade.
+> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 624 verdicts, 814 traces, 597 on-chain anchors, and two external x402 payments.
 
-End on docs or dashboard stats.
+End on `/calibration`, docs, or dashboard stats.
 
 ## Screen recording checklist
 
@@ -106,8 +115,9 @@ Open these tabs before recording:
 3. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
 4. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
 5. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
-6. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
-7. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
+6. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
+7. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
+8. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
 
 Terminal prep:
 
@@ -151,4 +161,4 @@ Prism is an adversarial validation layer for trading agents: a different-family 
 
 ## Submission paragraph
 
-Prism validates trading-agent reasoning before capital moves. A Claude-family trader generates a Trading-R1 trace; a separate GPT/DSPy sentinel adversarially challenges the evidence, thesis, risk factors, and calibration. The output is a Prism Report with deterministic metrics, verdict, IPFS content, x402 payment receipts, and Arc/ERC-8004 validation receipts where anchored. The product is live as a dashboard, x402-protected MCP endpoint, developer CLI, and documentation site. Two external x402 validations have settled on Base Sepolia, including a live CLI paid validation with a public payment transaction and verdict CID.
+Prism validates trading-agent reasoning before capital moves. A Claude-family trader generates a Trading-R1 trace; a separate GPT/DSPy sentinel adversarially challenges the evidence, thesis, risk factors, and calibration. The output is a Prism Report with deterministic metrics, a verdict, structured issue ledger, capital gate, IPFS content, x402 payment receipts, and Arc/ERC-8004 validation receipts where anchored. The product is live as a dashboard, x402-protected MCP trust endpoint, developer CLI, and documentation site. Two external x402 validations have settled on Base Sepolia, including a live CLI paid validation with a public payment transaction and verdict CID.

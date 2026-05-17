@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from prism_calibration.models import (
 from prism_calibration.splits import write_row
 
 BRAINTRUST_PROJECT = "Prism"
+BRAINTRUST_PROJECT_ENV = "PRISM_BRAINTRUST_PROJECT"
 REVIEW_DATASET_PREFIX = "pilot-review-"
 SLICE_DATASET_PREFIX = "pilot-slice-"
 SYNC_MANIFEST_PREFIX = "sync-"
@@ -25,6 +27,16 @@ BRAINTRUST_REF_FILENAME = "braintrust-ref.json"
 
 # Review status that indicates a human has reviewed the row
 REVIEWED_STATUSES = frozenset({"human_reviewed", "approved", "rejected"})
+
+
+def braintrust_project() -> str:
+    """Return the Braintrust project for calibration sync/logging.
+
+    Defaults to the production Prism project, while tests and CI can set
+    PRISM_BRAINTRUST_PROJECT=Prism CI to avoid polluting real review runs.
+    """
+    configured = os.environ.get(BRAINTRUST_PROJECT_ENV, "").strip()
+    return configured or BRAINTRUST_PROJECT
 
 
 class BraintrustSyncError(ValueError):
@@ -350,7 +362,7 @@ def sync_slice_to_braintrust(
         or dataset_name_from_state
         or f"{SLICE_DATASET_PREFIX}{slice_name}"
     )
-    dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=effective_dataset_name)
+    dataset = braintrust.init_dataset(project=braintrust_project(), name=effective_dataset_name)
     dataset_id = dataset.id
 
     # Sync rows from frozen export
@@ -542,7 +554,7 @@ def push_flagged_to_braintrust(
 
     # Create or open the Braintrust dataset
     dataset_name = f"{REVIEW_DATASET_PREFIX}{slice_name}"
-    dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=dataset_name)
+    dataset = braintrust.init_dataset(project=braintrust_project(), name=dataset_name)
 
     pushed_row_ids: list[str] = []
     skipped_row_ids: list[str] = []
@@ -798,7 +810,7 @@ def pull_review_from_braintrust(
     # Open the Braintrust review dataset
     dataset_name = f"{REVIEW_DATASET_PREFIX}{slice_name}"
     try:
-        dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=dataset_name)
+        dataset = braintrust.init_dataset(project=braintrust_project(), name=dataset_name)
     except Exception as error:
         raise BraintrustSyncError(
             f"Unable to open Braintrust dataset '{dataset_name}': {error}"

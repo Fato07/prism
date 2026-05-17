@@ -26,10 +26,25 @@ A Prism Report is the developer-facing unit:
 - sentinel verdict
 - deterministic reasoning metrics
 - readiness classification
+- structured issue ledger
+- capital gate (`BLOCK`, `REVIEW`, `ALLOW_PAPER`, `ENDORSE`)
 - warnings
 - receipt links
 
 Use the CLI or public APIs to fetch reports.
+
+## Capital gate
+
+The capital gate converts a verdict into execution policy:
+
+| Gate | Meaning |
+| --- | --- |
+| `BLOCK` | REJECT, deterministic trace failure, or unresolved blocking issue. |
+| `REVIEW` | WARN, unresolved material issue, deterministic `needs_review`, or legacy receipt without a structured issue ledger. |
+| `ALLOW_PAPER` | Clean PASS with a structured issue ledger and no unresolved blocking issue. |
+| `ENDORSE` | High-confidence clean verdict eligible for configured risk limits. |
+
+Prism's hackathon product uses this as a policy signal. It does not claim live Polymarket fills unless a fill receipt is present.
 
 ## x402 payment
 

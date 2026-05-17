@@ -6,17 +6,18 @@ import { ScoreDonut } from "@/components/ui/score-donut";
 import { Separator } from "@/components/ui/separator";
 import {
   CALIBRATION_CASES,
+  CALIBRATION_CORPUS,
   CALIBRATION_RUN,
   calibrationGap,
   isMonotonic,
   type CalibrationCase,
 } from "./data";
-import { Activity, ArrowDown, CheckCircle2, FlaskConical, GitBranch, ShieldCheck, Terminal } from "lucide-react";
+import { Activity, ArrowDown, CheckCircle2, Database, FlaskConical, GitBranch, LockKeyhole, ShieldCheck, Terminal } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Calibration",
   description:
-    "Calibration evidence for Prism's adversarial sentinel: good, mediocre, and bad reasoning traces separate by 45 points.",
+    "Calibration evidence for Prism's adversarial sentinel: startup gate, private corpus summary, and reproducible local commands.",
 };
 
 const GAP = calibrationGap();
@@ -113,6 +114,51 @@ export default function CalibrationPage() {
           </Card>
         </section>
 
+        <section className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-fg-muted" strokeWidth={2} />
+                Private calibration corpus
+              </CardTitle>
+              <Pill tone="neutral" emphasis="outline" size="xs">
+                summarized {CALIBRATION_CORPUS.summarizedAt}
+              </Pill>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3">
+                <CorpusStat label="total rows" value={CALIBRATION_CORPUS.totalRows} />
+                <CorpusStat label="real traces" value={CALIBRATION_CORPUS.realHarvestedRows} />
+                <CorpusStat label="synthetic seeds" value={CALIBRATION_CORPUS.syntheticSeedRows} />
+                <CorpusStat label="mutations" value={CALIBRATION_CORPUS.mutatedAdversarialRows} />
+                <CorpusStat label="human reviewed" value={CALIBRATION_CORPUS.humanReviewedRows} />
+                <CorpusStat label="frozen pilot" value={CALIBRATION_CORPUS.frozenPilotRows} />
+              </div>
+              <div className="mt-4 flex gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/50 p-3 text-sm leading-6 text-fg-muted">
+                <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-fg-faint" strokeWidth={2} />
+                <p>{CALIBRATION_CORPUS.privateCorpusReason} Prism publishes summary evidence and keeps raw rows out of git.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-fg-muted" strokeWidth={2} />
+                Release-quality loop
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm leading-6 text-fg-muted">
+              <p>
+                The public guarantee is the startup discrimination gate above. The private corpus is the release-quality loop: harvest real traces, label or review them, freeze a slice, sync review context, run eval, inspect lineage, and validate frozen exports.
+              </p>
+              <p>
+                Prism does not claim a production LLM-as-judge gold set yet. The current corpus makes the next gate auditable without exposing raw wallet or market context.
+              </p>
+            </CardContent>
+          </Card>
+        </section>
+
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
@@ -134,7 +180,7 @@ export default function CalibrationPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <GitBranch className="h-4 w-4 text-fg-muted" strokeWidth={2} />
+                <ShieldCheck className="h-4 w-4 text-fg-muted" strokeWidth={2} />
                 Why this matters
               </CardTitle>
             </CardHeader>
@@ -193,6 +239,17 @@ function CalibrationCaseCard({ item }: { item: CalibrationCase }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CorpusStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)] p-3">
+      <p className="text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+        {label}
+      </p>
+      <p className="mt-1 text-mono text-2xl font-semibold text-fg">{value}</p>
+    </div>
   );
 }
 
