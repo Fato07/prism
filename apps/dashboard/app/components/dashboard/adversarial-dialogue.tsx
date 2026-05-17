@@ -38,6 +38,7 @@ interface AdversarialDialogueProps {
 }
 
 const FADE_EASE = [0.16, 1, 0.3, 1] as const;
+const TOOL_MESSAGE_PREVIEW_CHARS = 520;
 
 type Side = "trader" | "sentinel" | "neutral";
 
@@ -55,6 +56,10 @@ function verdictColor(score?: number | null): string {
   if (score < 51) return "var(--color-verdict-mid)";
   if (score < 76) return "oklch(0.78 0.18 110)";
   return "var(--color-verdict-good)";
+}
+
+function cleanDialogueText(value: string): string {
+  return value.replace(/\uFFFD/g, "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
 }
 
 export function AdversarialDialogue({
@@ -507,6 +512,11 @@ function Bubble({ side, sequence, role, children }: BubbleProps) {
   const isTrader = side === "trader";
   const isSentinel = side === "sentinel";
   const isNeutral = side === "neutral";
+  const textContent = typeof children === "string" ? cleanDialogueText(children) : null;
+  const isToolMessage = role.toLowerCase().includes("evidence_tool");
+  const toolSummary = isToolMessage && textContent
+    ? textContent.split(" — ")[0].slice(0, TOOL_MESSAGE_PREVIEW_CHARS)
+    : null;
 
   const accentVar = isTrader
     ? "var(--color-trader)"
@@ -548,7 +558,7 @@ function Bubble({ side, sequence, role, children }: BubbleProps) {
         </span>
 
         <div
-          className="relative rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed text-fg"
+          className="relative rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed text-fg break-words [overflow-wrap:anywhere]"
           style={{
             borderColor: isNeutral
               ? "var(--color-border)"
@@ -560,7 +570,16 @@ function Bubble({ side, sequence, role, children }: BubbleProps) {
             borderTopRightRadius: isSentinel ? "6px" : undefined,
           }}
         >
-          {children}
+          {toolSummary ? (
+            <>
+              {toolSummary}
+              <span className="mt-2 block text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                Full evidence is preserved in the issue ledger and receipt.
+              </span>
+            </>
+          ) : (
+            textContent ?? children
+          )}
         </div>
       </div>
     </div>

@@ -127,25 +127,23 @@ export default async function DashboardPage() {
           traderAction={traceData?.action ?? null}
           sentinelLabel={verdictData?.verdict_label ?? null}
         />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
           <TraderPanel
             trace={traceData}
             ipfsCid={traceRow?.ipfs_cid ?? null}
             contentHash={traceRow?.content_hash ?? null}
           />
-          <div className="space-y-4">
-            <SentinelPanel
-              verdict={verdictData}
-              responseUri={validationRow?.response_uri ?? null}
-              pendingMessage={
-                pendingValidation
-                  ? "Trace submitted — awaiting sentinel validation"
-                  : undefined
-              }
-            />
-            <ConnectorTrustStatus manifest={connectorManifest} />
-          </div>
+          <SentinelPanel
+            verdict={verdictData}
+            responseUri={validationRow?.response_uri ?? null}
+            pendingMessage={
+              pendingValidation
+                ? "Trace submitted — awaiting sentinel validation"
+                : undefined
+            }
+          />
         </div>
+        <ConnectorTrustStatus manifest={connectorManifest} />
       </div>
     </>
   );
