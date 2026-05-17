@@ -22,6 +22,20 @@ function statusTone(status: string): "good" | "warn" | "neutral" | "bad" {
   return "neutral";
 }
 
+/** Map raw trade status enums to human-readable labels for UI display. */
+function formatTradeStatus(status: string): string {
+  const labels: Record<string, string> = {
+    paper_filled: "Paper filled",
+    filled: "Filled",
+    open: "Open",
+    pending: "Pending",
+    cancelled: "Cancelled",
+    failed: "Failed",
+    live_failed: "Live failed",
+  };
+  return labels[status] ?? status;
+}
+
 export function TradeAttribution({
   trade,
   marketQuestion,
@@ -66,7 +80,7 @@ export function TradeAttribution({
             {trade.side}
           </Pill>
           <Pill tone={statusTone(trade.status)} emphasis="outline" size="xs">
-            <span className="text-mono">{trade.status}</span>
+            <span className="text-mono">{formatTradeStatus(trade.status)}</span>
           </Pill>
         </div>
       </CardHeader>
@@ -86,7 +100,7 @@ export function TradeAttribution({
             <span className="ml-1 text-fg-faint">USDC</span>
           </Cell>
           <Cell label="Status" emphasis="trader">
-            <span className="text-mono">{trade.status}</span>
+            <span className="text-mono">{formatTradeStatus(trade.status)}</span>
           </Cell>
         </div>
 

@@ -21,6 +21,7 @@
  */
 
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import {
   getStatsData,
   formatFee,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/stats";
 import { StatsSparkline } from "@/components/ui/stats-sparkline";
 import { VerdictDistributionChart } from "@/components/ui/verdict-distribution-chart";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
 import { GlobalNav } from "@/components/global-nav";
@@ -77,7 +79,7 @@ export default async function StatsPage() {
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Tile
             title="Verdicts issued"
-            value={stats.verdictsIssued.toLocaleString()}
+            value={<AnimatedNumber end={stats.verdictsIssued} />}
             subtitle="Total adversarial verdicts produced by the sentinel"
             icon={<ShieldCheck className="h-4 w-4" strokeWidth={1.8} />}
             tone="sentinel"
@@ -88,7 +90,7 @@ export default async function StatsPage() {
           />
           <Tile
             title="Unique wallets connected"
-            value={stats.uniqueWallets.toLocaleString()}
+            value={<AnimatedNumber end={stats.uniqueWallets} />}
             subtitle="Distinct requester wallets that paid for validations"
             icon={<Users className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
@@ -99,7 +101,7 @@ export default async function StatsPage() {
           />
           <Tile
             title="Traces validated"
-            value={stats.tracesValidated.toLocaleString()}
+            value={<AnimatedNumber end={stats.tracesValidated} />}
             subtitle="Total reasoning traces in the system"
             icon={<FileText className="h-4 w-4" strokeWidth={1.8} />}
             tone="trader"
@@ -114,8 +116,8 @@ export default async function StatsPage() {
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Tile
             title="On-chain anchors"
-            value={stats.onChainAnchors.toLocaleString()}
-            subtitle="Traces with both validationRequest and validationResponse on ERC-8004"
+            value={<AnimatedNumber end={stats.onChainAnchors} />}
+            subtitle="Traces where both the request and the response are recorded on-chain"
             icon={<Link2 className="h-4 w-4" strokeWidth={1.8} />}
             tone="neutral"
             sparklineData={stats.dailyAnchors.map((d) => ({
@@ -126,7 +128,7 @@ export default async function StatsPage() {
           <Tile
             title="Builder fees attributed"
             value={`${formatFee(stats.builderFees)} USDC`}
-            subtitle="Paper-fill fee model plus live builder-code receipts via HMAC codes"
+            subtitle="Paper-fill fee model plus live builder-code receipts via cryptographic attribution"
             icon={<DollarSign className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
             sparklineData={stats.dailyFees.map((d) => ({
@@ -136,7 +138,7 @@ export default async function StatsPage() {
           />
           <Tile
             title="External x402 calls served"
-            value={stats.externalX402Calls.toLocaleString()}
+            value={<AnimatedNumber end={stats.externalX402Calls} />}
             subtitle="Validations requested by non-Prism wallets — excludes internal agent calls"
             icon={<Zap className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
@@ -173,7 +175,7 @@ export default async function StatsPage() {
           />
           <Tile
             title="Calibration gap"
-            value={stats.calibrationGap.toString()}
+            value={<AnimatedNumber end={stats.calibrationGap} />}
             subtitle="High-vs-low live verdict spread — target ≥30"
             icon={<Target className="h-4 w-4" strokeWidth={1.8} />}
             tone={stats.calibrationGap >= 30 ? "good" : "warn"}
@@ -232,9 +234,9 @@ export default async function StatsPage() {
             IPFS, x402, and Polymarket receipts where available. External x402 calls
             exclude the trader wallet <span className="text-mono">0xc960…452b</span> and
             sentinel wallet <span className="text-mono">0x5650…ac36</span>. On-chain anchors
-            count traces where both the ERC-8004 validationRequest and validationResponse
+            count traces where both the request and the response
             transactions are present. Builder fees use the 0.1% fill-notional model for{" "}
-            <span className="text-mono">paper_filled</span> trades and reconcile to live
+            <span className="text-mono">Paper filled</span> trades and reconcile to live
             builder attribution for <span className="text-mono">filled</span> trades when
             available. Stats-page calibration gap is the live score spread between high-scoring (&ge;75)
             and low-scoring (&le;25) verdicts; the separate /calibration page shows the synthetic
@@ -260,7 +262,7 @@ const TONE_ICON_COLOR: Record<TileTone, string> = {
 
 interface TileProps {
   title: string;
-  value: string;
+  value: ReactNode;
   subtitle: string;
   icon: React.ReactNode;
   tone: TileTone;

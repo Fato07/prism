@@ -86,8 +86,8 @@ const SECONDARY_TECH: TechItem[] = [
   { label: "Polymarket V2", brand: "polymarket" },
   { label: "Neon Postgres", brand: "neon" },
   { label: "IPFS", brand: "ipfs" },
-  { label: "DSPy" },
-  { label: "Mirascope" },
+  { label: "Structured adversarial prompting" },
+  { label: "Structured trace generation" },
 ];
 
 export default async function LandingPage() {

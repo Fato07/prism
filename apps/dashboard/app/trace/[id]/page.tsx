@@ -501,7 +501,7 @@ export default async function TraceDetailPage({ params }: PageProps) {
                 <ReceiptRow
                   icon={<Zap className="h-4 w-4 text-[var(--color-trader)]" strokeWidth={1.8} />}
                   label="Builder code"
-                  sublabel="Polymarket HMAC attribution"
+                  sublabel="Polymarket trade attribution"
                 >
                   <HashChip
                     value={trade.builder_code}
@@ -531,7 +531,7 @@ export default async function TraceDetailPage({ params }: PageProps) {
                       emphasis="outline"
                       size="xs"
                     >
-                      <span className="text-mono">{trade.status}</span>
+                      <span className="text-mono">{trade.status === "paper_filled" ? "Paper filled" : trade.status === "filled" ? "Filled" : trade.status}</span>
                     </Pill>
                     {trade.polymarket_tx && (
                       <HashChip

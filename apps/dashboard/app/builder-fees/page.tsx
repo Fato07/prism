@@ -187,7 +187,7 @@ export default async function BuilderFeesPage() {
             <span className="text-mono">(size x fill_price x 0.001)</span>. Live fills
             use the same builder-code mapping and reconcile against Polymarket builder
             trade receipts as they become available. Builder codes are derived via
-            HMAC-SHA256 from the agent&apos;s ERC-8004 agentId using{" "}
+            cryptographic attribution (HMAC-SHA256) from the agent&apos;s ERC-8004 agentId using{" "}
             <span className="text-mono">@prism/builder-codes</span>.
           </p>
         </div>

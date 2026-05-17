@@ -13,6 +13,7 @@
  */
 
 import { motion } from "motion/react";
+import CountUp from "react-countup";
 import { Shader } from "@/components/ui/shader";
 import { Pill } from "@/components/ui/pill";
 import { LiveDot } from "@/components/ui/live-dot";
@@ -32,9 +33,21 @@ const FADE_EASE = [0.16, 1, 0.3, 1] as const; // ease-out-expo
 
 export function Hero({ waitlistCount }: HeroProps) {
   const countDisplay =
-    waitlistCount > 0
-      ? `${waitlistCount.toLocaleString()} on the waitlist`
-      : "Closed beta — be first";
+    waitlistCount > 0 ? (
+      <>
+        <CountUp
+          end={waitlistCount}
+          separator=","
+          duration={1.5}
+          delay={0.2}
+          enableScrollSpy
+          scrollSpyOnce
+        />{" "}
+        on the waitlist
+      </>
+    ) : (
+      "Closed beta — be first"
+    );
 
   return (
     <section

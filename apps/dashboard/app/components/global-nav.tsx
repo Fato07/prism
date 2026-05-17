@@ -27,7 +27,7 @@ const NAV_ROUTES: readonly {
   { href: "/me", label: "Me", shortLabel: "Me", page: "me" },
   { href: "/builder-fees", label: "Fees", shortLabel: "Fees", page: "builder-fees" },
   { href: "/stats", label: "Stats", shortLabel: "Stats", page: "stats" },
-  { href: "/calibration", label: "Calibration", shortLabel: "Calib", page: "calibration" },
+  { href: "/calibration", label: "Calibration", shortLabel: "Gate", page: "calibration" },
 ] as const;
 
 interface GlobalNavProps {
