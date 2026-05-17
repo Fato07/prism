@@ -128,7 +128,7 @@ export default async function StatsPage() {
           <Tile
             title="Execution attribution"
             value={builderAttributionValue(stats)}
-            subtitle="Builder-coded paper/live trades; fee totals appear when fill-price receipts are present"
+            subtitle={builderAttributionSubtitle(stats)}
             icon={<Activity className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
             sparklineData={stats.dailyFees.map((d) => ({
@@ -257,6 +257,13 @@ function builderAttributionValue(stats: StatsData): string {
     return stats.builderAttributedTrades > 0 ? "Fee pending" : "No trades yet";
   }
   return `${formatFee(stats.builderFees)} USDC`;
+}
+
+function builderAttributionSubtitle(stats: StatsData): string {
+  if (stats.builderAttributedTrades === 0) {
+    return "No builder-coded trades recorded yet";
+  }
+  return `${stats.builderAttributedTrades} builder-coded paper/live trades; fee totals appear when fill-price receipts are present`;
 }
 
 const TONE_ICON_COLOR: Record<TileTone, string> = {

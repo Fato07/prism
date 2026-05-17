@@ -416,6 +416,8 @@ describe("VAL-STATS-013: Each tile has 'What this measures' subtitle", () => {
 
     expect(page).toContain("Prism paper");
     expect(page).toContain("live Polymarket orders");
+    expect(page).toContain("builderAttributionSubtitle");
+    expect(page).toContain("builder-coded paper/live trades");
     expect(page).not.toContain("paper/live\n            Polymarket orders");
   });
 

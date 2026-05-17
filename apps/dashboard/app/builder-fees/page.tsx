@@ -49,6 +49,8 @@ export default async function BuilderFeesPage() {
   const entries = BUILDER_HMAC_SECRET
     ? await enrichBuilderFeesWithAgents(rawEntries, agents, BUILDER_HMAC_SECRET)
     : rawEntries;
+  const totalTrades = totalAttributedTrades(entries);
+  const hasPendingFeeRows = hasPendingFees(entries);
 
   return (
     <div className="min-h-screen bg-canvas text-fg">
@@ -85,9 +87,17 @@ export default async function BuilderFeesPage() {
                 />
                 Builder-code receipts
               </CardTitle>
-              <Pill tone="neutral" emphasis="outline" size="xs">
-                <span className="text-mono">{entries.length} builder code{entries.length !== 1 ? "s" : ""}</span>
-              </Pill>
+              <div className="flex flex-wrap items-center gap-2">
+                <Pill tone="neutral" emphasis="outline" size="xs">
+                  <span className="text-mono">{entries.length} builder code{entries.length !== 1 ? "s" : ""}</span>
+                </Pill>
+                <Pill tone="neutral" emphasis="outline" size="xs">
+                  <span className="text-mono">{totalTrades} attributed trades</span>
+                </Pill>
+                <Pill tone={hasPendingFeeRows ? "warn" : "good"} emphasis="soft" size="xs">
+                  {hasPendingFeeRows ? "Fee pending until fill prices exist" : "Fee totals recorded"}
+                </Pill>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -204,6 +214,14 @@ export default async function BuilderFeesPage() {
 }
 
 /* ─────────────── Helpers ─────────────── */
+
+function totalAttributedTrades(entries: BuilderFeesEntry[]): number {
+  return entries.reduce((sum, entry) => sum + entry.trade_count, 0);
+}
+
+function hasPendingFees(entries: BuilderFeesEntry[]): boolean {
+  return entries.some((entry) => feeDisplay(entry).pending);
+}
 
 function feeDisplay(entry: BuilderFeesEntry): { label: string; pending: boolean } {
   const fee = parseFloat(entry.total_fees);
