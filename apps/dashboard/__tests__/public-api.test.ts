@@ -158,6 +158,70 @@ describe("VAL-PUBLIC-004: public issue-ledger report", () => {
     expect(report?.issues[0].latest_resolution?.responder).toBe("evidence_tool");
   });
 
+  it("includes per-issue evidence tool outcomes without connector secrets", () => {
+    const verdict: SentinelVerdict = {
+      ...sampleVerdict(),
+      structured_challenges: [
+        {
+          id: "resolved-issue",
+          type: "source_quality",
+          severity: "material",
+          question: "Needs primary source.",
+          required_resolution: "Return primary source evidence.",
+          blocking_pass: false,
+          resolution_status: "resolved",
+        },
+        {
+          id: "fail-closed-issue",
+          type: "temporal",
+          severity: "blocking",
+          question: "Needs fresh evidence.",
+          required_resolution: "Return fresh evidence.",
+          blocking_pass: true,
+          resolution_status: "conceded",
+        },
+        {
+          id: "not-recorded-issue",
+          type: "logic",
+          severity: "minor",
+          question: "Needs clearer logic.",
+          required_resolution: "Clarify reasoning.",
+          blocking_pass: false,
+          resolution_status: "open",
+        },
+      ],
+      challenge_resolutions: [
+        {
+          challenge_id: "resolved-issue",
+          status: "resolved",
+          responder: "evidence_tool",
+          response: "Retrieved issue-matched evidence from brave_search: Official report.",
+          created_at: "2026-05-12T12:00:00Z",
+        },
+        {
+          challenge_id: "fail-closed-issue",
+          status: "conceded",
+          responder: "system",
+          response: "No configured evidence provider resolved this blocking issue.",
+          created_at: "2026-05-12T12:00:00Z",
+        },
+      ],
+    };
+
+    const report = buildPublicIssueLedgerReport(verdict);
+
+    expect(report?.issues.map((issue) => issue.tool_status)).toEqual([
+      "resolved",
+      "fail_closed",
+      "not_recorded",
+    ]);
+    expect(report?.issues[0].tool_provider).toBe("brave_search");
+    expect(report?.issues[0].resolved_by_evidence_tool).toBe(true);
+    expect(report?.issues[1].tool_provider).toBeNull();
+    expect(JSON.stringify(report)).not.toContain("auth_secret_ciphertext");
+    expect(JSON.stringify(report)).not.toContain("bearer");
+  });
+
   it("keeps legacy verdicts reportable without structured issues", () => {
     const verdict: SentinelVerdict = {
       ...sampleVerdict(),

@@ -3,6 +3,7 @@ import { getPool, getTraceDetailData } from "@/lib/db";
 import {
   getIssueLedgerSummary,
   latestResolutionForChallenge,
+  toolResolutionStatusForChallenge,
 } from "@/lib/issue-ledger";
 import {
   SentinelVerdictSchema,
@@ -12,6 +13,7 @@ import {
 
 export type VerdictLabel = "REJECT" | "WARN" | "PASS" | "ENDORSE";
 export type Readiness = "usable" | "needs_review" | "not_ready";
+export type PublicToolStatus = "resolved" | "fail_closed" | "not_recorded";
 
 export interface ReasoningMetrics {
   evidence_count: number;
@@ -71,6 +73,9 @@ export interface PublicIssueLedgerReport {
     question: string;
     required_resolution: string;
     claim_ref: string | null;
+    tool_status: PublicToolStatus;
+    tool_provider: string | null;
+    resolved_by_evidence_tool: boolean;
     latest_resolution: SentinelVerdict["challenge_resolutions"][number] | null;
   }>;
 }
@@ -220,18 +225,52 @@ export function buildPublicIssueLedgerReport(
       explanation: summary.explanation,
     },
     resolution_metadata: verdict.resolution_metadata ?? null,
-    issues: (verdict.structured_challenges ?? []).map((challenge) => ({
-      id: challenge.id,
-      type: challenge.type,
-      severity: challenge.severity,
-      blocking_pass: challenge.blocking_pass,
-      resolution_status: challenge.resolution_status,
-      question: challenge.question,
-      required_resolution: challenge.required_resolution,
-      claim_ref: challenge.claim_ref ?? null,
-      latest_resolution: latestResolutionForChallenge(verdict, challenge.id),
-    })),
+    issues: (verdict.structured_challenges ?? []).map((challenge) => {
+      const toolStatus = publicToolStatusForChallenge(verdict, challenge.id);
+      return {
+        id: challenge.id,
+        type: challenge.type,
+        severity: challenge.severity,
+        blocking_pass: challenge.blocking_pass,
+        resolution_status: challenge.resolution_status,
+        question: challenge.question,
+        required_resolution: challenge.required_resolution,
+        claim_ref: challenge.claim_ref ?? null,
+        tool_status: toolStatus,
+        tool_provider: evidenceToolProviderForChallenge(verdict, challenge.id),
+        resolved_by_evidence_tool: toolStatus === "resolved",
+        latest_resolution: latestResolutionForChallenge(verdict, challenge.id),
+      };
+    }),
   };
+}
+
+function publicToolStatusForChallenge(
+  verdict: SentinelVerdict,
+  challengeId: string,
+): PublicToolStatus {
+  const status = toolResolutionStatusForChallenge(verdict, challengeId);
+  if (status === "resolved") return "resolved";
+  if (status === "no_evidence") return "fail_closed";
+  return "not_recorded";
+}
+
+function evidenceToolProviderForChallenge(
+  verdict: SentinelVerdict,
+  challengeId: string,
+): string | null {
+  const evidenceToolResolutions = (verdict.challenge_resolutions ?? []).filter(
+    (resolution) => resolution.challenge_id === challengeId && resolution.responder === "evidence_tool",
+  );
+  const resolved = evidenceToolResolutions.find((resolution) => resolution.status === "resolved");
+  const resolution = resolved ?? evidenceToolResolutions[0];
+  if (!resolution) return null;
+  return extractEvidenceProvider(resolution.response);
+}
+
+function extractEvidenceProvider(response: string): string | null {
+  const match = response.match(/evidence from ([a-zA-Z0-9_.-]+):/);
+  return match?.[1] ?? null;
 }
 
 export function buildPublicReceiptVerificationReport(
