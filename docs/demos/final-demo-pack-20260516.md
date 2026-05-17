@@ -11,7 +11,8 @@ This is the judge-facing recording pack for Prism's final demo. It uses only rec
 | Quickstart | <https://prism-docs-production.up.railway.app/docs/quickstart> |
 | Receipts guide | <https://prism-docs-production.up.railway.app/docs/receipts> |
 | Calibration docs | <https://prism-docs-production.up.railway.app/docs/calibration> |
-| Canonical trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24> |
+| Broad-evidence trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1> |
+| Legacy canonical trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24> |
 | Stats | <https://prism-dashboard-production-e6e3.up.railway.app/stats> |
 | Calibration | <https://prism-dashboard-production-e6e3.up.railway.app/calibration> |
 | Self-serve submit | <https://prism-dashboard-production-e6e3.up.railway.app/submit> |
@@ -34,18 +35,38 @@ Keep the sentinel MCP trailing slash: `/mcp/`.
 
 ## Current stats snapshot
 
-Snapshot from `GET /api/public/stats` after the execution-attribution deploy:
+Snapshot from `GET /api/public/stats` after the Exa hosted MCP evidence deploy:
 
 | Metric | Value |
 | --- | ---: |
-| Verdicts issued | 754 |
-| Traces validated | 945 |
-| On-chain anchors | 727 |
-| Builder-attributed trades | 355 |
-| Builder fees | Fee pending (`0.000000` USDC; legacy paper rows lack fill-price data) |
+| Verdicts issued | 772 |
+| Traces validated | 962 |
+| On-chain anchors | 744 |
+| Builder-attributed trades | 368 |
+| Builder fees | `0.002990` USDC |
 | External x402 calls | 2 |
 | Unique wallets | 2 |
 | Live verdict score spread | 57 |
+
+## Demo modes
+
+### Broad evidence resolution — current default
+
+Active connector: `Exa hosted MCP evidence` (`mcp_http`, tool `web_search_exa`, mapper `exa_mcp_text`).
+
+Use this to show the mature path:
+
+1. Trader submits a reasoning trace.
+2. Sentinel raises temporal/calibration issues in the current public trace; source-quality coverage is tested separately.
+3. Connector Passport routes targeted evidence requests to Exa hosted MCP.
+4. Sentinel accepts only issue-matched, recent/source-adequate evidence.
+5. The issue ledger records `resolved` tool outcomes and the capital gate reaches `ALLOW_PAPER`.
+
+### Fail-closed guardrail — optional reset mode
+
+If you need to demonstrate failure safety, re-arm the market-only connector (`Prism market evidence MCP`) or use a connector that returns malformed/non-matching output, then re-run validation. Unsupported stale/source/logic issues should remain unresolved, clean PASS should stay gated, and the public report should show `fail_closed`/`not_recorded` rather than `resolved`.
+
+Do not claim connector output automatically resolves issues. Sentinel adjudicates every resolution through adequacy gates.
 
 ## 150-second demo script
 
@@ -59,17 +80,19 @@ Show dashboard home or `/stats`.
 
 > A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. Connector Passport arms external evidence tools, but the sentinel does not trust tool output blindly: evidence must pass adequacy gates before issues resolve. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, receipts, and execution attribution when a paper or live trade carries a builder code.
 
-Show canonical trace page:
+Show the broad-evidence trace page:
 
 ```txt
-https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24
+https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1
 ```
+
+Narrative checkpoint: this trace now demonstrates the full MCP evidence loop. Sentinel raised issues, Exa hosted MCP returned source-linked evidence, adequacy gates accepted only issue-matched results, and the capital gate moved to paper-mode allowed.
 
 ### 0:40–1:00 — Capital gate
 
 > Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path. If a connector fails, returns malformed data, or returns evidence that does not match the issue, Prism stays fail-closed.
 
-Show the trace page capital-gate card, sentinel issue-ledger summary, and execution-attribution page if time permits.
+Show the trace page `What happened here?` panel, capital-gate card, Sentinel issue-ledger summary, and execution-attribution page if time permits. The current broad-evidence trace should show `PASS`, `ALLOW_PAPER`, and per-issue `resolved` tool outcomes from `exa_mcp`.
 
 ### 1:00–1:20 — Human self-serve path
 
@@ -101,7 +124,7 @@ Show BaseScan tx, IPFS verdict, and docs `/docs/receipts`.
 
 ### 2:10–2:30 — Calibration / close
 
-> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 754 verdicts, 945 traces, 727 on-chain anchors, 355 builder-attributed trades, and two external x402 payments.
+> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 772 verdicts, 962 traces, 744 on-chain anchors, 368 builder-attributed trades, Exa MCP evidence resolution, and two external x402 payments.
 
 End on `/calibration`, docs, or dashboard stats.
 
@@ -113,7 +136,7 @@ Open these tabs before recording:
 2. Dashboard trust workspace: <https://prism-dashboard-production-e6e3.up.railway.app/dashboard>
 3. Workspace Tools / Connector Passport: <https://prism-dashboard-production-e6e3.up.railway.app/connectors>
 4. Execution attribution: <https://prism-dashboard-production-e6e3.up.railway.app/builder-fees>
-5. Canonical trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24>
+5. Broad-evidence trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1>
 6. Latest public report API example: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1/report>
 7. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
 8. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
@@ -158,7 +181,7 @@ Safe claims:
 - Arc/ERC-8004 registries are used for identity/validation receipts where tx hashes are present
 - Prism CLI never reads private keys
 - paid flows are explicit and capped
-- Connector Passport arms one active evidence connector and redacts connector URLs/secrets in public surfaces
+- Connector Passport currently arms Exa hosted MCP as the active broad evidence connector and redacts connector URLs/secrets in public surfaces
 - execution attribution links paper/live trades to builder codes; fee totals are shown only when fill-price data exists
 - unresolved blockers gate clean PASS even when a connector is armed
 

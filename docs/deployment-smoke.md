@@ -47,6 +47,25 @@ PRISM_EVIDENCE_MCP_INPUT_MAPPER=query_limit
 PRISM_EVIDENCE_MCP_ALLOWED_TOOLS=search
 ```
 
+Recommended hosted broad-research Connector Passport preset:
+
+```text
+name: Exa hosted MCP evidence
+transport: mcp_http
+server_url: https://mcp.exa.ai/mcp
+tool_name: web_search_exa
+input_mapper: query_max_results
+result_mapper: exa_mcp_text
+allowed_tools: web_search_exa
+max_results: 5
+max_usdc: null
+fail_closed: true
+```
+
+Smoke should pass with non-zero evidence count before arming. Sentinel still applies issue
+adequacy gates, so Exa output only resolves an issue when it is recent enough, topic-matched,
+and satisfies the challenge type.
+
 Set `PRISM_EVIDENCE_DB_CONNECTORS=0` only when intentionally bypassing the DB connector registry.
 
 For live demo evidence without a third-party research provider, sentinel exposes a free
@@ -85,7 +104,8 @@ is explicitly enabled.
 7. Arm the connector.
 8. Return to `/dashboard` and confirm the active route shows as armed.
 9. Run one validation with `ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2`.
-10. Confirm unresolved blockers remain unresolved if the connector fails or returns malformed output.
+10. For Exa hosted MCP, confirm supported issue types move to `resolved` only when public report tool outcomes show provider `exa_mcp` and the capital gate permits paper mode.
+11. For fail-closed mode, re-arm the market-only connector or a malformed connector and confirm unsupported blockers remain unresolved if the connector fails or returns non-matching output.
 
 ## Public API smoke
 
