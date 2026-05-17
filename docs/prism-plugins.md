@@ -116,7 +116,9 @@ be a core Prism connector.
 ### Evidence connectors
 
 Evidence connectors provide source-linked context for open issues in the adversarial
-resolution loop.
+resolution loop. Prism does not treat “any result returned” as resolution: normalized
+evidence must pass an adequacy gate for the challenge type and required resolution before
+an issue can move to `resolved`; otherwise the issue remains fail-closed.
 
 Preferred form:
 

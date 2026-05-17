@@ -59,7 +59,9 @@ $SENTINEL_PUBLIC_URL/market-evidence-mcp/
 Use tool `search`, input mapper `prism_evidence_request`, and result mapper
 `generic_search`. It calls the Prism Polymarket gateway and only returns evidence for
 market-structure or explicit market-status temporal challenges; unsupported issue types
-return no evidence and stay fail-closed.
+return no evidence and stay fail-closed. The sentinel also applies an evidence adequacy
+gate, so a non-empty connector response cannot resolve an issue unless it matches the
+challenge type and required resolution.
 
 Sentinel also exposes a smoke-only demo MCP server at:
 
