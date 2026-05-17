@@ -7,6 +7,7 @@ import pytest
 from sentinel.evidence_extraction import (
     EvidencePageExtractRequest,
     EvidencePageExtractResult,
+    _extract_tool_arguments,
     clean_extracted_text,
     map_extraction_result,
     sanitize_source_url,
@@ -58,6 +59,31 @@ def test_sanitize_source_url_removes_secret_parts() -> None:
     assert sanitize_source_url("https://user:secret@example.com/path?api_key=secret#frag") == (
         "https://example.com/path"
     )
+
+
+def test_exa_web_fetch_mapper_uses_hosted_mcp_schema() -> None:
+    request = EvidencePageExtractRequest(
+        url="https://example.com/report",
+        objective="Verify source evidence.",
+        max_chars=900,
+    )
+
+    assert _extract_tool_arguments("exa_web_fetch", request) == {
+        "urls": ["https://example.com/report"],
+        "maxCharacters": 900,
+    }
+
+    result = map_extraction_result(
+        "exa_extract",
+        "# Example Domain\n\nCurrent Fed rates data supports the evidence check.",
+        request,
+    )
+
+    assert result is not None
+    assert result.provider == "exa_contents"
+    assert result.tool_name == "web_fetch_exa"
+    assert result.text.startswith("# Example Domain")
+
 
 
 def test_generic_extraction_mapper_normalizes_markdown() -> None:

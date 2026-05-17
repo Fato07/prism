@@ -450,7 +450,7 @@ def _input_parallel_web_fetch(request: EvidencePageExtractRequest) -> dict[str, 
 
 
 def _input_exa_web_fetch(request: EvidencePageExtractRequest) -> dict[str, Any]:
-    return {"url": request.url, "max_characters": request.max_chars}
+    return {"urls": [request.url], "maxCharacters": request.max_chars}
 
 
 _EXTRACT_INPUT_MAPPERS: dict[str, EvidenceExtractInputMapper] = {
@@ -553,8 +553,17 @@ def _parse_exa_extract(
     body: Any,
     request: EvidencePageExtractRequest,
 ) -> EvidencePageExtractResult | None:
+    if isinstance(body, str) and body.strip():
+        return EvidencePageExtractResult(
+            url=request.url,
+            text=body[: request.max_chars],
+            provider="exa_contents",
+            tool_name="web_fetch_exa",
+            extracted_at=datetime.now(UTC).isoformat(),
+            confidence=0.8,
+        )
     if not isinstance(body, dict):
-        return _parse_generic_extract(body, request)
+        return None
     raw_results = body.get("results")
     if isinstance(raw_results, list) and raw_results:
         first = raw_results[0]
