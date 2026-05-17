@@ -31,6 +31,8 @@ describe("VAL-CONNECTORS-001: connectors are workspace settings, not a marketpla
     expect(clientSource).toContain("Run smoke");
     expect(clientSource).toContain("Arm connector");
     expect(clientSource).toContain("Admin token");
+    expect(clientSource).toContain("admin refresh required");
+    expect(clientSource).toContain("Stored connector passports are hidden until an admin token refreshes this panel");
   });
 
   it("offers provider presets before exposing advanced mapper fields", async () => {
