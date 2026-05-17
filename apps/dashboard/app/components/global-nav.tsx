@@ -23,7 +23,7 @@ const NAV_ROUTES: readonly {
   { href: "/dashboard", label: "Dashboard", shortLabel: "Home", page: "dashboard" },
   { href: "/history", label: "History", shortLabel: "History", page: "history" },
   { href: "/submit", label: "Submit", shortLabel: "Submit", page: "submit" },
-  { href: "/connectors", label: "Connectors", shortLabel: "Tools", page: "connectors" },
+  { href: "/connectors", label: "Tools", shortLabel: "Tools", page: "tools" },
   { href: "/me", label: "Me", shortLabel: "Me", page: "me" },
   { href: "/builder-fees", label: "Fees", shortLabel: "Fees", page: "builder-fees" },
   { href: "/stats", label: "Stats", shortLabel: "Stats", page: "stats" },
