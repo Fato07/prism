@@ -20,9 +20,21 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog } from "@/components/ui/dialog";
 import { ExpandButton } from "@/components/ui/expandable";
 import { formatRelativeTime } from "@/lib/utils";
+import {
+  getIssueLedgerSummary,
+  latestResolutionForChallenge,
+} from "@/lib/issue-ledger";
 import { useState } from "react";
-import { ShieldAlert, Sparkles, Target, Loader2 } from "lucide-react";
-import type { SentinelVerdict } from "@/lib/schemas";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from "lucide-react";
+import type { ChallengeResolution, SentinelVerdict } from "@/lib/schemas";
 
 interface SentinelPanelProps {
   verdict: SentinelVerdict | null;
@@ -131,6 +143,7 @@ export function SentinelPanel({
   const tone = labelTone(verdict.verdict_label);
   const structuredChallenges = verdict.structured_challenges ?? [];
   const resolutionMetadata = verdict.resolution_metadata ?? null;
+  const issueLedgerSummary = getIssueLedgerSummary(verdict);
 
   return (
     <>
@@ -175,6 +188,43 @@ export function SentinelPanel({
           </div>
         </div>
 
+        {/* Verdict explanation */}
+        <section>
+          <Eyebrow icon={ShieldCheck}>Verdict explanation</Eyebrow>
+          <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 p-4">
+            <p className="text-sm leading-relaxed text-fg-muted">
+              {issueLedgerSummary.explanation}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Pill
+                tone={issueLedgerSummary.cleanPassAllowed ? "good" : "bad"}
+                emphasis="soft"
+                size="xs"
+              >
+                {issueLedgerSummary.cleanPassAllowed ? "clean PASS allowed" : "clean PASS gated"}
+              </Pill>
+              <Pill
+                tone={issueLedgerSummary.endorsementAllowed ? "good" : "warn"}
+                emphasis="soft"
+                size="xs"
+              >
+                {issueLedgerSummary.endorsementAllowed ? "ENDORSE allowed" : "ENDORSE gated"}
+              </Pill>
+              <Pill tone="sentinel" emphasis="outline" size="xs">
+                {issueLedgerSummary.resolvedCount}/{issueLedgerSummary.totalIssues} resolved
+              </Pill>
+            </div>
+            <ul className="space-y-1.5 text-xs leading-relaxed text-fg-faint">
+              {issueLedgerSummary.activePolicyConstraints.map((constraint) => (
+                <li key={constraint} className="flex gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-sentinel)]" />
+                  <span>{constraint}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
         {/* Structured issue ledger */}
         {structuredChallenges.length > 0 && (
           <section>
@@ -192,13 +242,21 @@ export function SentinelPanel({
                 </span>
                 <Separator orientation="vertical" className="h-3" />
                 <span>
+                  material · <span className="text-fg-muted">{resolutionMetadata.unresolved_material_count}</span>
+                </span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>
                   stop · <span className="text-fg-muted">{resolutionMetadata.stop_reason}</span>
                 </span>
               </div>
             )}
             <ol className="space-y-2.5">
               {structuredChallenges.map((challenge) => (
-                <StructuredChallengeItem key={challenge.id} challenge={challenge} />
+                <StructuredChallengeItem
+                  key={challenge.id}
+                  challenge={challenge}
+                  latestResolution={latestResolutionForChallenge(verdict, challenge.id)}
+                />
               ))}
             </ol>
           </section>
@@ -322,13 +380,21 @@ function Eyebrow({
 
 type StructuredChallenge = NonNullable<SentinelVerdict["structured_challenges"]>[number];
 
-function StructuredChallengeItem({ challenge }: { challenge: StructuredChallenge }) {
+function StructuredChallengeItem({
+  challenge,
+  latestResolution,
+}: {
+  challenge: StructuredChallenge;
+  latestResolution: ChallengeResolution | null;
+}) {
   const accent =
     challenge.severity === "blocking"
       ? "var(--color-danger)"
       : challenge.severity === "material"
         ? "var(--color-warning)"
         : "var(--color-fg-muted)";
+  const isResolved = challenge.resolution_status === "resolved" ||
+    challenge.resolution_status === "superseded";
 
   return (
     <li
@@ -354,10 +420,22 @@ function StructuredChallengeItem({ challenge }: { challenge: StructuredChallenge
             <span>·</span>
             <span>{challenge.type}</span>
             <span>·</span>
-            <span>{challenge.resolution_status}</span>
+            <span className="inline-flex items-center gap-1">
+              {isResolved ? (
+                <CheckCircle2 className="h-3 w-3 text-[var(--color-success)]" />
+              ) : (
+                <AlertTriangle className="h-3 w-3 text-[var(--color-warning)]" />
+              )}
+              {challenge.resolution_status}
+            </span>
             {challenge.blocking_pass && (
               <span className="rounded bg-[var(--color-danger)]/15 px-1.5 py-0.5 text-[var(--color-danger)]">
                 blocks PASS
+              </span>
+            )}
+            {challenge.claim_ref && (
+              <span className="rounded bg-[var(--color-canvas-raised)] px-1.5 py-0.5">
+                {challenge.claim_ref}
               </span>
             )}
           </div>
@@ -365,6 +443,22 @@ function StructuredChallengeItem({ challenge }: { challenge: StructuredChallenge
           <p className="mt-1.5 text-xs leading-relaxed text-fg-faint">
             Required: {challenge.required_resolution}
           </p>
+          {latestResolution && (
+            <div className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)]/50 p-2.5">
+              <div className="mb-1 flex flex-wrap items-center gap-2 text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                <span>latest resolution</span>
+                <span>·</span>
+                <span>{latestResolution.status}</span>
+                <span>·</span>
+                <span>{latestResolution.responder}</span>
+                <span>·</span>
+                <span>{formatRelativeTime(latestResolution.created_at)}</span>
+              </div>
+              <p className="text-xs leading-relaxed text-fg-muted">
+                {latestResolution.response}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </li>
