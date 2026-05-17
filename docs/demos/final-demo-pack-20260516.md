@@ -58,7 +58,7 @@ Show dashboard home or `/stats`.
 
 ### 0:15–0:40 — What Prism is
 
-> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, and receipts.
+> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. Connector Passport arms external evidence tools, but the sentinel does not trust tool output blindly: evidence must pass adequacy gates before issues resolve. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, and receipts.
 
 Show canonical trace page:
 
@@ -68,7 +68,7 @@ https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-
 
 ### 0:40–1:00 — Capital gate
 
-> Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path.
+> Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path. If a connector fails, returns malformed data, or returns evidence that does not match the issue, Prism stays fail-closed.
 
 Show the trace page capital-gate card and sentinel issue-ledger summary.
 
@@ -80,7 +80,7 @@ Show `/submit`, then the BaseScan tx and self-serve receipt.
 
 ### 1:20–1:45 — Agent/developer path
 
-> Prism is also callable by agents and developers. The sentinel is an x402-protected MCP trust service: agents can validate traces, inspect issue ledgers, verify receipts, and explain verdict gates. The CLI wraps the paid flow safely: quote first, then explicit capped payment.
+> Prism is also callable by agents and developers. The sentinel is an x402-protected MCP trust service: agents can validate traces, inspect issue ledgers, verify receipts, explain verdict gates, and query public reports with per-issue tool outcomes: resolved, fail-closed, or not recorded. The CLI wraps the paid flow safely: quote first, then explicit capped payment.
 
 Show docs quickstart / x402 MCP docs, then terminal command:
 
@@ -111,13 +111,16 @@ End on `/calibration`, docs, or dashboard stats.
 Open these tabs before recording:
 
 1. Dashboard stats: <https://prism-dashboard-production-e6e3.up.railway.app/stats>
-2. Canonical trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24>
-3. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
-4. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
-5. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
-6. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
-7. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
-8. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
+2. Dashboard trust workspace: <https://prism-dashboard-production-e6e3.up.railway.app/dashboard>
+3. Workspace Tools / Connector Passport: <https://prism-dashboard-production-e6e3.up.railway.app/connectors>
+4. Canonical trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24>
+5. Latest public report API example: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1/report>
+6. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
+7. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
+8. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
+9. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
+10. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
+11. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
 
 Terminal prep:
 
@@ -144,6 +147,7 @@ Do not claim:
 - CCTP or Unified Balance production usage
 - custom Solidity contracts
 - live Polymarket orders unless showing an actual live-fill receipt
+- that connector output automatically resolves issues; Sentinel adjudicates and adequacy gates may keep issues fail-closed
 - that the CLI paid validation produced an Arc tx; it produced x402 payment + IPFS verdict receipts, while other Prism validation flows anchor on Arc
 
 Safe claims:
@@ -154,6 +158,8 @@ Safe claims:
 - Arc/ERC-8004 registries are used for identity/validation receipts where tx hashes are present
 - Prism CLI never reads private keys
 - paid flows are explicit and capped
+- Connector Passport arms one active evidence connector and redacts connector URLs/secrets in public surfaces
+- unresolved blockers gate clean PASS even when a connector is armed
 
 ## Submission one-liner
 
@@ -161,4 +167,4 @@ Prism is an adversarial validation layer for trading agents: a different-family 
 
 ## Submission paragraph
 
-Prism validates trading-agent reasoning before capital moves. A Claude-family trader generates a Trading-R1 trace; a separate GPT/DSPy sentinel adversarially challenges the evidence, thesis, risk factors, and calibration. The output is a Prism Report with deterministic metrics, a verdict, structured issue ledger, capital gate, IPFS content, x402 payment receipts, and Arc/ERC-8004 validation receipts where anchored. The product is live as a dashboard, x402-protected MCP trust endpoint, developer CLI, and documentation site. Two external x402 validations have settled on Base Sepolia, including a live CLI paid validation with a public payment transaction and verdict CID.
+Prism validates trading-agent reasoning before capital moves. A Claude-family trader generates a Trading-R1 trace; a separate GPT/DSPy sentinel adversarially challenges the evidence, thesis, risk factors, and calibration. Connector Passport arms MCP-first evidence tools, but Sentinel only resolves issues when normalized evidence passes adequacy gates; unresolved blockers still gate clean PASS. The output is a Prism Report with deterministic metrics, a verdict, structured issue ledger, capital gate, per-issue tool outcomes, IPFS content, x402 payment receipts, and Arc/ERC-8004 validation receipts where anchored. The product is live as a dashboard, x402-protected MCP trust endpoint, developer CLI, and documentation site. Two external x402 validations have settled on Base Sepolia, including a live CLI paid validation with a public payment transaction and verdict CID.
