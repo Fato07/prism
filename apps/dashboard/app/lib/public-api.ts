@@ -75,6 +75,7 @@ export interface PublicIssueLedgerReport {
     claim_ref: string | null;
     tool_status: PublicToolStatus;
     tool_provider: string | null;
+    tool_receipt: SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null;
     resolved_by_evidence_tool: boolean;
     latest_resolution: SentinelVerdict["challenge_resolutions"][number] | null;
   }>;
@@ -227,6 +228,8 @@ export function buildPublicIssueLedgerReport(
     resolution_metadata: verdict.resolution_metadata ?? null,
     issues: (verdict.structured_challenges ?? []).map((challenge) => {
       const toolStatus = publicToolStatusForChallenge(verdict, challenge.id);
+      const toolReceipt = redactToolReceipt(evidenceToolReceiptForChallenge(verdict, challenge.id));
+      const latestResolution = redactResolution(latestResolutionForChallenge(verdict, challenge.id));
       return {
         id: challenge.id,
         type: challenge.type,
@@ -237,9 +240,10 @@ export function buildPublicIssueLedgerReport(
         required_resolution: challenge.required_resolution,
         claim_ref: challenge.claim_ref ?? null,
         tool_status: toolStatus,
-        tool_provider: evidenceToolProviderForChallenge(verdict, challenge.id),
+        tool_provider: toolReceipt?.provider ?? evidenceToolProviderForChallenge(verdict, challenge.id),
+        tool_receipt: toolReceipt,
         resolved_by_evidence_tool: toolStatus === "resolved",
-        latest_resolution: latestResolutionForChallenge(verdict, challenge.id),
+        latest_resolution: latestResolution,
       };
     }),
   };
@@ -255,6 +259,50 @@ function publicToolStatusForChallenge(
   return "not_recorded";
 }
 
+function redactResolution(
+  resolution: SentinelVerdict["challenge_resolutions"][number] | null,
+): SentinelVerdict["challenge_resolutions"][number] | null {
+  if (!resolution) return null;
+  const toolReceipt = redactToolReceipt(resolution.tool_receipt ?? null);
+  return {
+    ...resolution,
+    response: redactPublicText(resolution.response),
+    tool_receipt: toolReceipt,
+  };
+}
+
+function redactToolReceipt(
+  receipt: SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null | undefined,
+): SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null {
+  if (!receipt) return null;
+  return {
+    ...receipt,
+    source_title: redactPublicText(receipt.source_title),
+    source_excerpt: receipt.source_excerpt ? redactPublicText(receipt.source_excerpt) : receipt.source_excerpt,
+  };
+}
+
+function redactPublicText(value: string): string {
+  return value
+    .replace(/\bauthorization\s*[:=]\s*bearer\s+[^\s,;]{8,}/gi, "Authorization: Bearer [redacted]")
+    .replace(/\bbearer\s+[^\s,;]{8,}/gi, "Bearer [redacted]")
+    .replace(/\b(api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]{8,}/gi, "$1=[redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "sk-[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted-jwt]");
+}
+
+function evidenceToolReceiptForChallenge(
+  verdict: SentinelVerdict,
+  challengeId: string,
+): SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null {
+  const evidenceToolResolutions = (verdict.challenge_resolutions ?? []).filter(
+    (resolution) => resolution.challenge_id === challengeId && resolution.responder === "evidence_tool",
+  );
+  const resolved = evidenceToolResolutions.find((resolution) => resolution.status === "resolved");
+  const resolution = resolved ?? evidenceToolResolutions[0];
+  return resolution?.tool_receipt ?? null;
+}
+
 function evidenceToolProviderForChallenge(
   verdict: SentinelVerdict,
   challengeId: string,
@@ -265,7 +313,7 @@ function evidenceToolProviderForChallenge(
   const resolved = evidenceToolResolutions.find((resolution) => resolution.status === "resolved");
   const resolution = resolved ?? evidenceToolResolutions[0];
   if (!resolution) return null;
-  return extractEvidenceProvider(resolution.response);
+  return resolution.tool_receipt?.provider ?? extractEvidenceProvider(resolution.response);
 }
 
 function extractEvidenceProvider(response: string): string | null {

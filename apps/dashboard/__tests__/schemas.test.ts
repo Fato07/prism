@@ -11,6 +11,7 @@ import {
 import {
   SentinelVerdictSchema,
   DialogueMessageSchema,
+  ChallengeResolutionSchema,
 } from "@prism/schemas/verdict";
 import {
   AgentCardSchema,
@@ -122,6 +123,35 @@ const validVerdict = {
   model_name: "gpt-4o-mini",
   created_at: "2026-05-12T11:00:00Z",
 };
+
+describe("ChallengeResolutionSchema", () => {
+  it("accepts structured evidence tool provenance", () => {
+    const result = ChallengeResolutionSchema.safeParse({
+      challenge_id: "ev-1",
+      status: "resolved",
+      responder: "evidence_tool",
+      response: "Retrieved issue-matched evidence from exa_mcp.",
+      created_at: "2026-05-12T11:00:00Z",
+      tool_receipt: {
+        provider: "exa_mcp",
+        tool_name: "web_search_exa",
+        source_title: "Current market evidence",
+        source_url: "https://example.com/evidence",
+        source_published_at: "2026-05-12T10:00:00Z",
+        confidence: 0.91,
+        adequacy_checks: ["topic_overlap", "temporal_recency"],
+        extractor_provider: "parallel_extract",
+        extractor_tool_name: "web_fetch",
+        source_content_hash: "abc123",
+        source_excerpt: "Current market evidence supports the issue.",
+        extracted_at: "2026-05-12T10:00:01Z",
+        extraction_checks: ["url_fetch_ok", "quote_supports_snippet"],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+});
 
 describe("SentinelVerdictSchema", () => {
   it("accepts a valid verdict", () => {

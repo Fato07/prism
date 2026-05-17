@@ -16,6 +16,7 @@ export {
   AdversarialResolutionMetadataSchema,
   ChallengeResolutionSchema,
   ChallengeResolutionStatusSchema,
+  EvidenceToolReceiptSchema,
   ChallengeSeveritySchema,
   ChallengeTypeSchema,
   DialogueMessageSchema,
@@ -26,6 +27,7 @@ export {
   type AdversarialResolutionMetadata,
   type ChallengeResolution,
   type DialogueMessage,
+  type EvidenceToolReceipt,
   type ResolutionRound,
   type SentinelVerdict,
 } from "./verdict.js";

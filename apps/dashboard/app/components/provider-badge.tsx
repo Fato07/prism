@@ -70,6 +70,22 @@ const PROVIDER_BRANDS: Record<ProviderBrandId, ProviderBrand> = {
   },
 };
 
+export function providerBrandFromText(value: string | null | undefined): ProviderBrand | null {
+  const haystack = (value ?? "").toLowerCase();
+  if (!haystack) return null;
+  const tokens = new Set(haystack.match(/[a-z0-9]+/g) ?? []);
+  const containsToken = (...values: string[]) => values.some((token) => tokens.has(token));
+
+  if (containsToken("firecrawl")) return PROVIDER_BRANDS.firecrawl;
+  if (containsToken("tavily")) return PROVIDER_BRANDS.tavily;
+  if (containsToken("brave")) return PROVIDER_BRANDS.brave;
+  if (containsToken("parallel")) return PROVIDER_BRANDS.parallel;
+  if (containsToken("exa")) return PROVIDER_BRANDS.exa;
+  if (containsToken("webhook") || haystack.includes("custom_webhook")) return PROVIDER_BRANDS.webhook;
+  if (containsToken("mcp")) return PROVIDER_BRANDS.custom_mcp;
+  return null;
+}
+
 export function connectorProviderBrand(connector: ConnectorPassport | null | undefined): ProviderBrand {
   if (!connector) return PROVIDER_BRANDS.custom_mcp;
 
@@ -82,18 +98,9 @@ export function connectorProviderBrand(connector: ConnectorPassport | null | und
     connector.input_mapper,
     connector.result_mapper,
     connector.allowed_tools.join(" "),
-  ].join(" ").toLowerCase();
+  ].join(" ");
 
-  if (haystack.includes("exa")) return PROVIDER_BRANDS.exa;
-  if (haystack.includes("firecrawl")) return PROVIDER_BRANDS.firecrawl;
-  if (haystack.includes("tavily")) return PROVIDER_BRANDS.tavily;
-  if (haystack.includes("brave")) return PROVIDER_BRANDS.brave;
-  if (haystack.includes("parallel")) return PROVIDER_BRANDS.parallel;
-  if (connector.transport === "custom_webhook" || haystack.includes("webhook")) {
-    return PROVIDER_BRANDS.webhook;
-  }
-
-  return PROVIDER_BRANDS.custom_mcp;
+  return providerBrandFromText(haystack) ?? PROVIDER_BRANDS.custom_mcp;
 }
 
 export function ProviderBadge({

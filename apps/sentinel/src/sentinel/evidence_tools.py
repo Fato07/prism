@@ -50,6 +50,7 @@ class EvidenceSearchResult(BaseModel):
     url: str
     snippet: str
     provider: str
+    tool_name: str | None = None
     published_at: str | None = None
     retrieved_at: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -60,6 +61,17 @@ class EvidenceProvider(Protocol):
 
     async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
         """Return evidence candidates for the targeted request."""
+
+
+def _with_default_tool_name(
+    results: list[EvidenceSearchResult],
+    tool_name: str,
+) -> list[EvidenceSearchResult]:
+    """Backfill stable tool identity while preserving provider-supplied names."""
+    return [
+        result if result.tool_name else result.model_copy(update={"tool_name": tool_name})
+        for result in results
+    ]
 
 
 class EvidenceConnectorConfig(BaseModel):
@@ -198,7 +210,8 @@ class McpEvidenceProvider:
                 input_mapper=self.input_mapper,
             )
             return []
-        return map_evidence_results(self.result_mapper, body)[: request.max_results]
+        results = map_evidence_results(self.result_mapper, body)[: request.max_results]
+        return _with_default_tool_name(results, self.tool_name)
 
 
 class FirecrawlSearchEvidenceProvider:
@@ -272,7 +285,7 @@ class FirecrawlSearchEvidenceProvider:
         )
         if body is None:
             return []
-        return _parse_firecrawl_results(body)
+        return _with_default_tool_name(_parse_firecrawl_results(body), "firecrawl_search")
 
 
 class ExaSearchEvidenceProvider:
@@ -344,7 +357,7 @@ class ExaSearchEvidenceProvider:
         )
         if body is None:
             return []
-        return _parse_exa_results(body)
+        return _with_default_tool_name(_parse_exa_results(body), "exa_search")
 
 
 class ParallelSearchEvidenceProvider:
@@ -409,7 +422,7 @@ class ParallelSearchEvidenceProvider:
         )
         if body is None:
             return []
-        return _parse_parallel_results(body)
+        return _with_default_tool_name(_parse_parallel_results(body), "parallel_search")
 
 
 class BraveSearchEvidenceProvider:
@@ -475,7 +488,7 @@ class BraveSearchEvidenceProvider:
         )
         if body is None:
             return []
-        return _parse_brave_results(body)
+        return _with_default_tool_name(_parse_brave_results(body), "brave_search")
 
 
 class TavilySearchEvidenceProvider:
@@ -540,7 +553,7 @@ class TavilySearchEvidenceProvider:
         )
         if body is None:
             return []
-        return _parse_tavily_results(body)
+        return _with_default_tool_name(_parse_tavily_results(body), "tavily_search")
 
 
 class CustomWebhookEvidenceProvider:
@@ -597,7 +610,10 @@ class CustomWebhookEvidenceProvider:
         )
         if body is None:
             return []
-        return _parse_webhook_results(body, fallback_provider="custom_webhook")
+        return _with_default_tool_name(
+            _parse_webhook_results(body, fallback_provider="custom_webhook"),
+            "custom_webhook",
+        )
 
 
 def evidence_provider_from_env() -> EvidenceProvider:
