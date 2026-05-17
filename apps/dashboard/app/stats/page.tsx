@@ -6,7 +6,7 @@
  *   2. Unique wallets connected — distinct external requester_address values
  *   3. Traces validated         — total reasoning traces in the system
  *   4. On-chain anchors         — traces with both request+response tx hashes
- *   5. Builder fees attributed  — 0.1% of fill notional from qualifying trades
+ *   5. Execution attribution    — builder-code receipts; fee totals when fill prices exist
  *   6. External x402 calls      — validations from non-Prism wallets
  *   7. Avg verdict score        — mean sentinel score across all validations
  *   8. Verdict distribution     — recharts histogram of score buckets
@@ -43,7 +43,7 @@ import {
   Users,
   FileText,
   Link2,
-  DollarSign,
+  Activity,
   Zap,
   BarChart3,
   Clock,
@@ -126,10 +126,10 @@ export default async function StatsPage() {
             }))}
           />
           <Tile
-            title="Builder fees attributed"
-            value={`${formatFee(stats.builderFees)} USDC`}
-            subtitle="Paper-fill fee model plus live builder-code receipts via cryptographic attribution"
-            icon={<DollarSign className="h-4 w-4" strokeWidth={1.8} />}
+            title="Execution attribution"
+            value={builderAttributionValue(stats)}
+            subtitle="Builder-coded paper/live trades; fee totals appear when fill-price receipts are present"
+            icon={<Activity className="h-4 w-4" strokeWidth={1.8} />}
             tone="good"
             sparklineData={stats.dailyFees.map((d) => ({
               date: d.date,
@@ -235,10 +235,9 @@ export default async function StatsPage() {
             exclude the trader wallet <span className="text-mono">0xc960…452b</span> and
             sentinel wallet <span className="text-mono">0x5650…ac36</span>. On-chain anchors
             count traces where both the request and the response
-            transactions are present. Builder fees use the 0.1% fill-notional model for{" "}
-            <span className="text-mono">Paper filled</span> trades and reconcile to live
-            builder attribution for <span className="text-mono">filled</span> trades when
-            available. Stats-page calibration gap is the live score spread between high-scoring (&ge;75)
+            transactions are present. Builder attribution links Prism reports to Prism paper
+            trade receipts and live Polymarket orders through HMAC-derived builder codes; fee totals use the 0.1%
+            fill-notional model only when fill-price data is recorded. Stats-page calibration gap is the live score spread between high-scoring (&ge;75)
             and low-scoring (&le;25) verdicts; the separate /calibration page shows the synthetic
             startup discrimination gate. Sparklines cover the last 7 days of daily aggregates.
           </p>
@@ -251,6 +250,14 @@ export default async function StatsPage() {
 /* ─────────────── Tile component ─────────────── */
 
 type TileTone = "trader" | "sentinel" | "good" | "warn" | "neutral";
+
+function builderAttributionValue(stats: StatsData): string {
+  const fee = parseFloat(stats.builderFees);
+  if (Number.isNaN(fee) || fee === 0) {
+    return stats.builderAttributedTrades > 0 ? "Fee pending" : "No trades yet";
+  }
+  return `${formatFee(stats.builderFees)} USDC`;
+}
 
 const TONE_ICON_COLOR: Record<TileTone, string> = {
   trader: "text-[var(--color-trader)]",

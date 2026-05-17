@@ -9,6 +9,7 @@
  *   - Empty state condition
  *   - Sparkline data shape validation
  *   - BuilderFeesStrip top-3 truncation
+ *   - Execution attribution copy avoids overclaiming zero-fee rows
  *   - Page is a server component (no 'use client')
  */
 
@@ -135,6 +136,12 @@ function formatFee(feeStr: string): string {
   return fee.toFixed(6).replace(/\.?0+$/, "");
 }
 
+function feeDisplay(entry: { total_fees: string; trade_count: number }): string {
+  const fee = parseFloat(entry.total_fees);
+  if ((Number.isNaN(fee) || fee === 0) && entry.trade_count > 0) return "Fee pending";
+  return formatFee(entry.total_fees);
+}
+
 describe("Fee formatting", () => {
   it("formats zero as '0'", () => {
     expect(formatFee("0")).toBe("0");
@@ -154,11 +161,31 @@ describe("Fee formatting", () => {
   it("handles NaN gracefully", () => {
     expect(formatFee("not-a-number")).toBe("0");
   });
+
+  it("shows fee pending when trades exist but fill prices are not recorded", () => {
+    expect(feeDisplay({ total_fees: "0.000000", trade_count: 73 })).toBe("Fee pending");
+  });
+
+  it("keeps zero when there are no attributed trades", () => {
+    expect(feeDisplay({ total_fees: "0.000000", trade_count: 0 })).toBe("0");
+  });
 });
 
 /* ─────────────── Empty state ─────────────── */
 
 describe("VAL-BUILDERFEES-006: Empty state when no qualifying trades", () => {
+  it("page and strip use execution attribution copy", async () => {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const page = await fs.readFile(path.join(process.cwd(), "app/builder-fees/page.tsx"), "utf-8");
+    const strip = await fs.readFile(path.join(process.cwd(), "app/components/landing/builder-fees-strip.tsx"), "utf-8");
+
+    expect(page).toContain("Execution Attribution");
+    expect(page).toContain("Fee pending");
+    expect(page).not.toContain("Builder Fee Attribution");
+    expect(strip).toContain("Execution attribution — builder codes");
+  });
+
   it("empty entries array triggers empty state", () => {
     const entries: unknown[] = [];
     const hasData = entries.length > 0;

@@ -85,7 +85,12 @@ export async function reconcileOpenLiveTrades(): Promise<PollResult> {
     const match = idx.get(row.order_id);
     if (!match) continue;
     if (match.transactionHash) {
-      const ok = await updateTradeStatus(row.order_id, "filled", match.transactionHash);
+      const ok = await updateTradeStatus(
+        row.order_id,
+        "filled",
+        match.transactionHash,
+        fillPriceFromBuilderTrade(match),
+      );
       if (ok) filled += 1;
     }
   }
@@ -95,6 +100,12 @@ export async function reconcileOpenLiveTrades(): Promise<PollResult> {
     filled,
     unchanged: open.length - filled,
   };
+}
+
+function fillPriceFromBuilderTrade(trade: BuilderTrade): number | null {
+  const raw = (trade as { price?: unknown }).price;
+  const price = Number(raw);
+  return Number.isFinite(price) ? price : null;
 }
 
 /** Convenience wrapper used by tests to verify the polling shape end-to-end. */

@@ -9,7 +9,7 @@
  *     See mock documentation below.)
  *   - Last park/unpark event with relative timestamp
  *   - 7-day event count badge
- * Renders "No treasury activity yet" empty state when treasury_events is empty.
+ * Returns null when treasury_events is empty so the homepage does not foreground roadmap-only yield scaffolding.
  *
  * ─── MOCK YIELD DOCUMENTATION ───
  * The `yieldEarned` field is computed as totalParked × 0.045 × (daysSinceFirstPark / 365).
@@ -24,8 +24,7 @@
  */
 
 import { getTreasuryData, type TreasuryData } from "@/lib/db";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { FeeSparkline } from "@/components/ui/fee-sparkline";
 import { BrandMark } from "@/components/brands/brand-mark";
 import { DollarSign, TrendingUp } from "lucide-react";
@@ -44,35 +43,7 @@ export async function TreasuryStrip({ data: propData }: TreasuryStripProps) {
   const totalParked = parseFloat(data.totalParked);
   const hasActivity = totalParked > 0 || data.lastEvent !== null;
 
-  if (!hasActivity) {
-    return (
-      <section
-        data-testid="treasury-strip"
-        aria-label="Treasury"
-        className="border-b border-[var(--color-border)]"
-      >
-        <div className="mx-auto max-w-6xl px-6 py-12">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign
-                  className="h-4 w-4 text-[var(--color-verdict-good)]"
-                  strokeWidth={1.8}
-                />
-                Treasury
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <EmptyState
-                title="No treasury activity yet"
-                description="When the trader parks idle USDC into USYC, totals and yield will appear here."
-              />
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-    );
-  }
+  if (!hasActivity) return null;
 
   // Compute mock yield: totalParked × APY × (fraction of year since first event)
   // If no lastEvent, yield is zero. This is a rough estimate.

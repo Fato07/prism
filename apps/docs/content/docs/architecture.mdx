@@ -14,7 +14,7 @@ Prism is a multi-service product with a dashboard, trader, sentinel, MCP service
 | Trader | Python + Mirascope | Generates Trading-R1 reasoning traces. |
 | Sentinel | Python + DSPy | Validates traces adversarially and exposes x402-protected MCP. |
 | MCP | Python + FastMCP | Exposes validation as an agent-callable tool. |
-| Polymarket gateway | Node + Hono | Surfaces markets and requires explicit token IDs for trades. |
+| Polymarket gateway | Node + Hono | Surfaces markets, requires explicit token IDs for trades, and attaches builder-code execution attribution. |
 | Neon | Postgres | Stores traces, validations, trades, feedback, and agent records. |
 
 ## Validation data flow
@@ -24,8 +24,9 @@ Prism is a multi-service product with a dashboard, trader, sentinel, MCP service
 3. Sentinel receives a trace URI/hash through the MCP tool.
 4. x402 middleware requires payment for external validation.
 5. Sentinel returns verdict score, label, critique, IPFS CID, and transaction hashes when available.
-6. Dashboard public APIs expose reports and receipts.
-7. CLI turns those APIs into developer workflows and local receipt files.
+6. Optional paper/live trades carry HMAC-derived builder codes for execution attribution.
+7. Dashboard public APIs expose reports and receipts.
+8. CLI turns those APIs into developer workflows and local receipt files.
 
 ## Chain boundaries
 

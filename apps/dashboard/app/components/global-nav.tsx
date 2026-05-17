@@ -25,7 +25,7 @@ const NAV_ROUTES: readonly {
   { href: "/submit", label: "Submit", shortLabel: "Submit", page: "submit" },
   { href: "/connectors", label: "Tools", shortLabel: "Tools", page: "tools" },
   { href: "/me", label: "Me", shortLabel: "Me", page: "me" },
-  { href: "/builder-fees", label: "Fees", shortLabel: "Fees", page: "builder-fees" },
+  { href: "/builder-fees", label: "Attribution", shortLabel: "Attrib", page: "builder-fees" },
   { href: "/stats", label: "Stats", shortLabel: "Stats", page: "stats" },
   { href: "/calibration", label: "Calibration", shortLabel: "Gate", page: "calibration" },
 ] as const;

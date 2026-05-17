@@ -50,11 +50,10 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
   Trader Agent (Python)                    Sentinel Agent (Python)
   Mirascope · Claude family                DSPy · GPT-4o-mini
   Trading-R1 trace generation              TraceAdversary + MIPROv2
-  Treasury (USYC dry-run scaffold)                  │
            │                                        │
   Polymarket V2 SDK                                 ▼
-  (builder code)                           x402-protected MCP
-           │                               ($0.01 USDC/validation)
+  execution attribution                    x402-protected MCP
+  (builder code)                           ($0.01 USDC/validation)
            ▵                                        │
   Polymarket CLOB (Polygon)                         │
                                                       │
@@ -69,7 +68,7 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
 
 ## Data Flow
 
-1. Fetch Polymarket market → 2. Trader generates Trading-R1 trace → 3. Pin to IPFS → 4. Persist to Postgres → 5. On-chain `validationRequest` → 6. Sentinel challenges trace → 7. Verdict + dialogue → 8. Pin to IPFS → 9. Persist to Postgres → 10. On-chain `validationResponse` → 11. Paper trade with builder code → 12. Dashboard display
+1. Fetch Polymarket market → 2. Trader generates Trading-R1 trace → 3. Pin to IPFS → 4. Persist to Postgres → 5. On-chain `validationRequest` → 6. Sentinel challenges trace → 7. Verdict + dialogue → 8. Pin to IPFS → 9. Persist to Postgres → 10. On-chain `validationResponse` → 11. Optional paper/live trade carries builder code → 12. Dashboard execution attribution
 
 ---
 
@@ -85,7 +84,7 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
 | `/history` | Paginated history of all traces and verdicts |
 | `/me` | Wallet-connected verdict history (wagmi v2 + Reown AppKit) |
 | `/submit` | Self-serve x402 validation — sign EIP-3009 transfers from the browser; shows Circle App Kit Bridge widget when USDC balance < 0.01 |
-| `/builder-fees` | Polymarket builder-code attribution — paper-fill fee model plus live-fill receipts when available |
+| `/builder-fees` | Execution attribution — Prism trade receipts with Polymarket-compatible builder codes; fee totals appear only when fill-price data is present |
 | `/stats` | Receipt-linked activity stats — validations, Arc anchors, x402 calls, builder attribution, latency, calibration |
 | `/calibration` | Sentinel calibration evidence — startup discrimination gate plus private corpus summary |
 
@@ -93,7 +92,7 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
 
 - **Web3 wallet connection** — Reown AppKit + wagmi v2 across all pages; connected address available in `/me` and `/submit`
 - **Circle App Kit Bridge** — conditional bridge widget on `/submit` when wallet USDC < 0.01 (bridge USDC from other chains to Base Sepolia for x402 payments)
-- **Treasury module** — trader service includes a USYC park/unpark scaffold; it runs in dry-run mode until an Arc Testnet USYC address is configured. Events are tracked via `treasury_events`.
+- **Execution attribution** — Prism paper receipts and live Polymarket trades carry HMAC-derived builder codes so verdicts can be linked to eventual market action; fee totals are shown only when fill-price receipts exist.
 - **Dual x402 facilitator scaffold** — public x402 payments settle on Base Sepolia today; Arc Testnet Circle-facilitator mode is implemented behind `X402_FACILITATOR_MODE` and remains off until Circle publishes a stable Arc facilitator endpoint.
 - **@prism/builder-codes** — shared workspace package for HMAC-based builder code extraction from ERC-8004 agent IDs
 - **Remotion pitch video** — 90s parameterized composition at `apps/pitch-video/`, served on port 3001
@@ -172,7 +171,7 @@ uv run python -m prism_calibration.cli --help
 | Sample reasoning traces | Circle Entity Secret & wallet private keys |
 | Dashboard public routes + wallet connection | |
 | Self-serve x402 validation page | |
-| Builder-code attribution page | |
+| Execution attribution page | |
 | Contract addresses & ABIs | |
 | x402 middleware setup (dual facilitator mode) | |
 | DSPy `TraceAdversary` signature | |
@@ -187,7 +186,7 @@ Both agents are registered on Arc testnet's ERC-8004 IdentityRegistry:
 
 | Agent | agentId | Role |
 |-------|---------|------|
-| Trader | **4140** | Generates Trading-R1 traces, requests validation, executes paper trades, treasury operations |
+| Trader | **4140** | Generates Trading-R1 traces, requests validation, executes paper trades with builder-code attribution |
 | Sentinel | **4148** | Adversarially validates traces, submits verdicts on-chain |
 
 **Contract Addresses (Arc Testnet, chain 5042002):**
@@ -327,7 +326,6 @@ _Coming soon — the founder pitch will go up on YouTube before the May 25 hacka
 | Payments | [x402](https://x402.org) protocol — HTTP-native USDC micropayments (Base Sepolia public facilitator live; Arc facilitator scaffolded) |
 | Polymarket | `@polymarket/clob-client-v2` (V2 SDK) |
 | Dashboard | Next.js 16 · React 19 · Tailwind · shadcn/ui · wagmi v2 · Reown AppKit |
-| Treasury | USYC park/unpark scaffold — dry-run until Arc Testnet token address is configured |
 | Deployment | Railway (services) + Neon (DB) |
 | Python toolchain | `uv` · Python 3.12+ · FastAPI · ruff · mypy |
 | Node toolchain | `pnpm` · Node 20 LTS · Hono · TypeScript strict |

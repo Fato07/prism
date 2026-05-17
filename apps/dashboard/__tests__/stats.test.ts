@@ -4,7 +4,7 @@
  * Covers:
  *   - Stats data computation (verdict counts, unique wallets, on-chain anchors)
  *   - External x402 metric excludes Prism's own agent wallets
- *   - Builder fees calculation (0.1% of fill notional)
+ *   - Execution attribution and fee calculation (0.1% of fill notional when price exists)
  *   - Latency formatting (seconds → human-readable)
  *   - Calibration gap (good vs bad score spread)
  *   - Verdict distribution histogram bucketing (4 buckets)
@@ -119,9 +119,9 @@ describe("VAL-STATS-007 / VAL-CROSS-011: External x402 calls exclude Prism walle
   });
 });
 
-/* ─────────────── Builder fees ─────────────── */
+/* ─────────────── Execution attribution fees ─────────────── */
 
-describe("VAL-STATS-006: Builder fees attributed", () => {
+describe("VAL-STATS-006: execution attribution fee status", () => {
   it("calculates 0.1% of fill notional for qualifying trades", () => {
     const trades = [
       { size: 100, fill_price: 0.55, status: "paper_filled" },
@@ -409,12 +409,22 @@ describe("VAL-STATS-014: Each tile has 7-day sparkline", () => {
 /* ─────────────── Subtitle presence ─────────────── */
 
 describe("VAL-STATS-013: Each tile has 'What this measures' subtitle", () => {
+  it("methodology distinguishes paper receipts from live Polymarket orders", async () => {
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const page = await fs.readFile(path.join(process.cwd(), "app/stats/page.tsx"), "utf-8");
+
+    expect(page).toContain("Prism paper");
+    expect(page).toContain("live Polymarket orders");
+    expect(page).not.toContain("paper/live\n            Polymarket orders");
+  });
+
   const tiles = [
     { title: "Verdicts issued", subtitle: "Total adversarial verdicts produced by the sentinel" },
     { title: "Unique wallets connected", subtitle: "Distinct requester wallets that paid for validations" },
     { title: "Traces validated", subtitle: "Total reasoning traces in the system" },
     { title: "On-chain anchors", subtitle: "Traces where both the request and the response are recorded on-chain" },
-    { title: "Builder fees attributed", subtitle: "Paper-fill fee model plus live builder-code receipts via cryptographic attribution" },
+    { title: "Execution attribution", subtitle: "Builder-coded paper/live trades; fee totals appear when fill-price receipts are present" },
     { title: "External x402 calls served", subtitle: "Validations requested by non-Prism wallets — excludes internal agent calls" },
     { title: "Avg sentinel verdict score", subtitle: "Mean verdict_score across all validations (0–100)" },
     { title: "Verdict latency p50", subtitle: "Median time from trace creation to sentinel verdict" },

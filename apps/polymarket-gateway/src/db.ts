@@ -26,6 +26,7 @@ export interface TradeRow {
   builder_code: string;
   status: string;
   polymarket_tx: string | null;
+  fill_price: string | null;
   created_at: string;
 }
 
@@ -43,8 +44,9 @@ export async function persistTrade(receipt: TradeReceipt): Promise<boolean> {
 
   try {
     const polymarketTx = receipt.polymarketTx ?? null;
+    const fillPrice = receipt.fillPrice ?? null;
     await sql`
-      INSERT INTO trades (order_id, trace_id, market_id, side, size, builder_code, status, polymarket_tx)
+      INSERT INTO trades (order_id, trace_id, market_id, side, size, builder_code, status, polymarket_tx, fill_price)
       VALUES (
         ${receipt.orderId},
         ${receipt.traceId},
@@ -53,7 +55,8 @@ export async function persistTrade(receipt: TradeReceipt): Promise<boolean> {
         ${receipt.size.toString()},
         ${receipt.builderCode},
         ${receipt.status},
-        ${polymarketTx}
+        ${polymarketTx},
+        ${fillPrice}
       )
     `;
     logger.info(
@@ -77,6 +80,7 @@ export async function updateTradeStatus(
   orderId: string,
   status: string,
   polymarketTx: string | null,
+  fillPrice: number | string | null = null,
 ): Promise<boolean> {
   const env = getEnv();
   const sql = neon(env.DATABASE_URL);
@@ -85,10 +89,11 @@ export async function updateTradeStatus(
     await sql`
       UPDATE trades
          SET status = ${status},
-             polymarket_tx = COALESCE(${polymarketTx}, polymarket_tx)
+             polymarket_tx = COALESCE(${polymarketTx}, polymarket_tx),
+             fill_price = COALESCE(${fillPrice}, fill_price)
        WHERE order_id = ${orderId}
     `;
-    logger.info({ orderId, status, polymarketTx }, "Trade status updated");
+    logger.info({ orderId, status, polymarketTx, fillPrice }, "Trade status updated");
     return true;
   } catch (err) {
     logger.error({ err, orderId }, "Failed to update trade status");
@@ -105,7 +110,7 @@ export async function listOpenLiveTrades(): Promise<TradeRow[]> {
   const sql = neon(env.DATABASE_URL);
   try {
     const rows = await sql`
-      SELECT order_id, trace_id, market_id, side, size, builder_code, status, polymarket_tx, created_at
+      SELECT order_id, trace_id, market_id, side, size, builder_code, status, polymarket_tx, fill_price::text AS fill_price, created_at
         FROM trades
        WHERE status = 'open'
          AND polymarket_tx IS NULL
@@ -130,7 +135,7 @@ export async function getTrade(
 
   try {
     const rows = await sql`
-      SELECT order_id, trace_id, market_id, side, size, builder_code, status, polymarket_tx, created_at
+      SELECT order_id, trace_id, market_id, side, size, builder_code, status, polymarket_tx, fill_price::text AS fill_price, created_at
       FROM trades
       WHERE order_id = ${orderId}
     `;
