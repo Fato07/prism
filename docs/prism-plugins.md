@@ -455,6 +455,25 @@ PRISM_EVIDENCE_MCP_TIMEOUT_SECONDS=20
 ADVERSARIAL_RESOLUTION_MAX_ROUNDS=2
 ```
 
+Second-stage URL extraction can verify that a returned source URL actually
+contains supporting page content before an issue is marked resolved. It is off by
+default; enable only with an approved MCP/direct extractor and budget policy:
+
+```bash
+PRISM_EVIDENCE_EXTRACTION_REQUIRED=1
+PRISM_EVIDENCE_EXTRACTOR=mcp
+PRISM_EVIDENCE_EXTRACTOR_MCP_URL=https://search.parallel.ai/mcp
+PRISM_EVIDENCE_EXTRACTOR_MCP_TOOL=web_fetch
+PRISM_EVIDENCE_EXTRACTOR_INPUT_MAPPER=parallel_web_fetch
+PRISM_EVIDENCE_EXTRACTOR_RESULT_MAPPER=parallel_extract
+PRISM_EVIDENCE_EXTRACTOR_AUTH_TOKEN=optional-bearer-token
+PRISM_EVIDENCE_EXTRACTOR_TIMEOUT_SECONDS=30
+```
+
+Receipts store the extractor provider/tool, sanitized source URL, content hash,
+short supporting excerpt, and extraction adequacy checks. They do not store full
+page contents.
+
 Local HTTP smoke coverage starts a real FastMCP HTTP server and connects through
 `McpEvidenceProvider(server_url=...)`, not the in-process test transport:
 

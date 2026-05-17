@@ -195,15 +195,21 @@ describe("VAL-PUBLIC-004: public issue-ledger report", () => {
           challenge_id: "resolved-issue",
           status: "resolved",
           responder: "evidence_tool",
-          response: "Retrieved issue-matched evidence from exa_mcp: Official report.",
+          response: "Retrieved issue-matched evidence from exa_mcp: Official report. Authorization: Bearer ghp_secretvalue123456",
           created_at: "2026-05-12T12:00:00Z",
           tool_receipt: {
             provider: "brave_search",
             tool_name: "brave_search",
-            source_title: "Official report",
+            source_title: "Official report token: titleSecretValue123",
             source_url: "https://example.com/report",
             confidence: 0.81,
             adequacy_checks: ["source_metadata", "readable_content"],
+            extractor_provider: "parallel_extract",
+            extractor_tool_name: "web_fetch",
+            source_content_hash: "abc123",
+            source_excerpt: "Official report confirms the relevant source evidence. api_key=supersecretvalue123",
+            extracted_at: "2026-05-12T12:00:01Z",
+            extraction_checks: ["url_fetch_ok", "quote_supports_snippet"],
           },
         },
         {
@@ -225,6 +231,12 @@ describe("VAL-PUBLIC-004: public issue-ledger report", () => {
     ]);
     expect(report?.issues[0].tool_provider).toBe("brave_search");
     expect(report?.issues[0].tool_receipt?.source_url).toBe("https://example.com/report");
+    expect(report?.issues[0].tool_receipt?.extractor_provider).toBe("parallel_extract");
+    expect(report?.issues[0].tool_receipt?.source_content_hash).toBe("abc123");
+    expect(report?.issues[0].tool_receipt?.source_title).not.toContain("titleSecretValue123");
+    expect(report?.issues[0].tool_receipt?.source_excerpt).not.toContain("supersecretvalue123");
+    expect(JSON.stringify(report?.issues[0].latest_resolution)).not.toContain("supersecretvalue123");
+    expect(JSON.stringify(report?.issues[0].latest_resolution)).not.toContain("ghp_secretvalue123456");
     expect(report?.issues[0].resolved_by_evidence_tool).toBe(true);
     expect(report?.issues[1].tool_provider).toBeNull();
     expect(JSON.stringify(report)).not.toContain("auth_secret_ciphertext");

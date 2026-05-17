@@ -62,6 +62,12 @@ export const EvidenceToolReceiptSchema = z.object({
   retrieved_at: z.string().nullable().optional(),
   confidence: z.number().min(0).max(1).default(0),
   adequacy_checks: z.array(z.string()).default([]),
+  extractor_provider: z.string().nullable().optional(),
+  extractor_tool_name: z.string().nullable().optional(),
+  source_content_hash: z.string().nullable().optional(),
+  source_excerpt: z.string().nullable().optional(),
+  extracted_at: z.string().nullable().optional(),
+  extraction_checks: z.array(z.string()).default([]),
 });
 
 export type EvidenceToolReceipt = z.infer<typeof EvidenceToolReceiptSchema>;

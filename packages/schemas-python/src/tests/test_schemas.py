@@ -81,12 +81,20 @@ def test_evidence_tool_receipt_validates_on_resolution():
             source_published_at="2026-05-16T00:00:00Z",
             confidence=0.91,
             adequacy_checks=["topic_overlap", "temporal_recency"],
+            extractor_provider="parallel_extract",
+            extractor_tool_name="web_fetch",
+            source_content_hash="abc123",
+            source_excerpt="Current market evidence supports the issue.",
+            extracted_at="2026-05-16T00:00:01Z",
+            extraction_checks=["url_fetch_ok", "quote_supports_snippet"],
         ),
     )
 
     assert resolution.tool_receipt is not None
     assert resolution.tool_receipt.provider == "exa_mcp"
     assert resolution.tool_receipt.adequacy_checks == ["topic_overlap", "temporal_recency"]
+    assert resolution.tool_receipt.extractor_provider == "parallel_extract"
+    assert resolution.tool_receipt.extraction_checks == ["url_fetch_ok", "quote_supports_snippet"]
 
 
 def test_tool_connector_schema_validates_redacted_passport_row():

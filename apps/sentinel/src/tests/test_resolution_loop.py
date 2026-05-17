@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace
 from prism_schemas.verdict import AdversarialChallenge, SentinelVerdict
 
+from sentinel.evidence_extraction import StaticEvidenceExtractor
 from sentinel.evidence_tools import (
     EvidenceSearchResult,
     McpEvidenceProvider,
@@ -277,7 +278,7 @@ async def test_resolution_loop_accepts_exa_mcp_current_temporal_evidence(
     provider = _exa_mcp_provider(
         _exa_mcp_text_result(
             title="Current Fed rates report",
-            url="https://api:secret@example.com/current-fed-rates?api_key=secret#frag",
+            url="https://example.com/current-fed-rates?api_key=secret#frag",
             highlights="Current Fed rates data supports the July 2026 market evidence check.",
         )
     )
@@ -303,6 +304,166 @@ async def test_resolution_loop_accepts_exa_mcp_current_temporal_evidence(
     assert "api_key" not in verdict.challenge_resolutions[0].response
     assert "source_metadata" in verdict.challenge_resolutions[0].tool_receipt.adequacy_checks
     assert "temporal_recency" in verdict.challenge_resolutions[0].tool_receipt.adequacy_checks
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_requires_extracted_url_content_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A search result can resolve only after fetched page text supports it."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    url = "https://example.com/current-fed-rates"
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = StaticEvidenceProvider(
+        {
+            "sys-temporal-stale-evidence": [
+                EvidenceSearchResult(
+                    title="Current Fed rates report api_key=titleSecretValue123",
+                    url=url,
+                    snippet=(
+                        "Current Fed rates data supports the July 2026 market evidence check. "
+                        "Authorization: Bearer ghp_secretvalue123456"
+                    ),
+                    provider="exa_mcp",
+                    tool_name="web_search_exa",
+                    published_at="2026-05-15T00:00:00Z",
+                    confidence=0.9,
+                )
+            ]
+        }
+    )
+    extractor = StaticEvidenceExtractor(
+        {
+            url: (
+                "Current Fed rates data supports the July 2026 market evidence check. "
+                "The report discusses whether the Fed will cut rates by July 2026."
+            )
+        }
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+        evidence_extractor=extractor,
+        require_evidence_extraction=True,
+    )
+
+    receipt = verdict.challenge_resolutions[0].tool_receipt
+    assert verdict.verdict_label == "PASS"
+    assert verdict.structured_challenges[0].resolution_status == "resolved"
+    assert receipt is not None
+    assert "ghp_secretvalue123456" not in verdict.challenge_resolutions[0].response
+    assert "titleSecretValue123" not in verdict.challenge_resolutions[0].response
+    assert "titleSecretValue123" not in receipt.source_title
+    assert receipt.extractor_provider == "static_extractor"
+    assert receipt.extractor_tool_name == "static_extract"
+    assert receipt.source_content_hash is not None
+    assert len(receipt.source_content_hash) == 64
+    assert "Current Fed rates data" in (receipt.source_excerpt or "")
+    assert "url_fetch_ok" in receipt.extraction_checks
+    assert "quote_supports_snippet" in receipt.extraction_checks
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_rejects_extracted_url_content_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fetched page content must support the search snippet and issue topic."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    url = "https://example.com/current-fed-rates"
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = StaticEvidenceProvider(
+        {
+            "sys-temporal-stale-evidence": [
+                EvidenceSearchResult(
+                    title="Current Fed rates report",
+                    url=url,
+                    snippet="Current Fed rates data supports the July 2026 market evidence check.",
+                    provider="exa_mcp",
+                    tool_name="web_search_exa",
+                    published_at="2026-05-15T00:00:00Z",
+                    confidence=0.9,
+                )
+            ]
+        }
+    )
+    extractor = StaticEvidenceExtractor(
+        {url: "A television recap and recipe page with no monetary policy evidence."}
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+        evidence_extractor=extractor,
+        require_evidence_extraction=True,
+    )
+
+    assert verdict.verdict_label == "WARN"
+    assert verdict.structured_challenges[0].resolution_status == "conceded"
+    assert verdict.challenge_resolutions[0].tool_receipt is None
+
+
+@pytest.mark.asyncio
+async def test_resolution_loop_blocks_private_extraction_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Private/local URLs cannot be used for second-stage extraction."""
+    base = _blocking_verdict().model_copy(update={"verdict_score": 65, "verdict_label": "PASS"})
+
+    async def fake_generate_verdict(**_: object) -> SentinelVerdict:
+        return base
+
+    url = "http://127.0.0.1/current-fed-rates"
+    monkeypatch.setattr("sentinel.resolution_loop.generate_verdict", fake_generate_verdict)
+    provider = StaticEvidenceProvider(
+        {
+            "sys-temporal-stale-evidence": [
+                EvidenceSearchResult(
+                    title="Current Fed rates report",
+                    url=url,
+                    snippet="Current Fed rates data supports the July 2026 market evidence check.",
+                    provider="exa_mcp",
+                    tool_name="web_search_exa",
+                    published_at="2026-05-15T00:00:00Z",
+                    confidence=0.9,
+                )
+            ]
+        }
+    )
+    extractor = StaticEvidenceExtractor(
+        {url: "Current Fed rates data supports the July 2026 market evidence check."}
+    )
+
+    verdict = await generate_verdict_with_resolution(
+        trace_json=json.dumps(_trace().model_dump(mode="json")),
+        request_hash="request-1",
+        trace_id="trace-resolution-1",
+        sentinel_agent_id=2,
+        max_rounds=1,
+        evidence_provider=provider,
+        evidence_extractor=extractor,
+        require_evidence_extraction=True,
+    )
+
+    assert verdict.verdict_label == "WARN"
+    assert verdict.structured_challenges[0].resolution_status == "conceded"
+    assert verdict.challenge_resolutions[0].tool_receipt is None
 
 
 @pytest.mark.asyncio

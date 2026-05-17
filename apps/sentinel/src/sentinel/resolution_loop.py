@@ -17,7 +17,6 @@ import json
 import os
 import re
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 from prism_schemas.trace import TradingR1Trace
@@ -30,6 +29,18 @@ from prism_schemas.verdict import (
 )
 
 from sentinel.adversarial import generate_verdict
+from sentinel.evidence_extraction import (
+    EvidenceExtractorProvider,
+    EvidencePageExtractRequest,
+    EvidencePageExtractResult,
+    NoopEvidenceExtractor,
+    clean_extracted_text,
+    evidence_extraction_required_from_env,
+    evidence_extractor_from_env,
+    redact_public_text,
+    sanitize_source_url,
+    source_url_is_public_http,
+)
 from sentinel.evidence_tools import (
     EvidenceProvider,
     EvidenceSearchRequest,
@@ -97,6 +108,8 @@ async def generate_verdict_with_resolution(
     sentinel_agent_id: int = 0,
     max_rounds: int | None = None,
     evidence_provider: EvidenceProvider | None = None,
+    evidence_extractor: EvidenceExtractorProvider | None = None,
+    require_evidence_extraction: bool | None = None,
 ) -> SentinelVerdict:
     """Generate a verdict and run bounded issue-resolution rounds if enabled."""
     rounds = _resolve_max_rounds(max_rounds)
@@ -112,6 +125,8 @@ async def generate_verdict_with_resolution(
 
     trace = _parse_trace(trace_json)
     provider = evidence_provider or evidence_provider_from_runtime()
+    extractor = evidence_extractor or evidence_extractor_from_env()
+    require_extraction = _resolve_require_evidence_extraction(require_evidence_extraction)
     challenge_resolutions = list(verdict.challenge_resolutions)
     resolution_rounds = list(verdict.resolution_rounds)
     challenges = list(verdict.structured_challenges)
@@ -134,6 +149,8 @@ async def generate_verdict_with_resolution(
                 trace=trace,
                 challenge=challenge,
                 provider=provider,
+                extractor=extractor,
+                require_extraction=require_extraction,
             )
             round_resolutions.append(resolution)
             _apply_resolution_to_challenge(challenge, resolution)
@@ -191,6 +208,12 @@ def _resolve_max_rounds(max_rounds: int | None) -> int:
         return 0
 
 
+def _resolve_require_evidence_extraction(value: bool | None) -> bool:
+    if value is not None:
+        return value
+    return evidence_extraction_required_from_env()
+
+
 def _parse_trace(trace_json: str) -> TradingR1Trace | None:
     try:
         return TradingR1Trace.model_validate(json.loads(trace_json))
@@ -223,6 +246,8 @@ async def _attempt_resolution(
     trace: TradingR1Trace | None,
     challenge: AdversarialChallenge,
     provider: EvidenceProvider,
+    extractor: EvidenceExtractorProvider,
+    require_extraction: bool,
 ) -> ChallengeResolution:
     market_question = trace.market_question if trace else ""
     request = EvidenceSearchRequest(
@@ -231,23 +256,28 @@ async def _attempt_resolution(
         query=query_for_challenge(market_question, challenge),
     )
     results = await provider.search(request)
-    best = _select_adequate_result(
+    selected = await _select_adequate_result(
         results=results,
         trace=trace,
         challenge=challenge,
+        extractor=extractor,
+        require_extraction=require_extraction,
     )
-    if best is not None:
-        public_url = _public_source_url(best.url)
+    if selected is not None:
+        best, extraction = selected
+        public_url = sanitize_source_url(best.url)
+        public_title = redact_public_text(best.title)
+        public_snippet = redact_public_text(best.snippet)
         return ChallengeResolution(
             challenge_id=challenge.id,
             status="resolved",
             responder="evidence_tool",
             response=(
-                f"Retrieved issue-matched evidence from {best.provider}: {best.title} "
-                f"({public_url}) — {best.snippet}"
+                f"Retrieved issue-matched evidence from {best.provider}: {public_title} "
+                f"({public_url}) — {public_snippet}"
             ),
             created_at=datetime.now(UTC),
-            tool_receipt=_tool_receipt_for_result(best, trace, challenge),
+            tool_receipt=_tool_receipt_for_result(best, trace, challenge, extraction),
         )
 
     if results:
@@ -256,6 +286,7 @@ async def _attempt_resolution(
             challenge_id=challenge.id,
             challenge_type=challenge.type,
             result_count=len(results),
+            extraction_required=require_extraction,
         )
 
     if challenge.blocking_pass:
@@ -286,16 +317,35 @@ async def _attempt_resolution(
     )
 
 
-def _select_adequate_result(
+async def _select_adequate_result(
     *,
     results: list[EvidenceSearchResult],
     trace: TradingR1Trace | None,
     challenge: AdversarialChallenge,
-) -> EvidenceSearchResult | None:
-    """Return the first evidence result that can honestly resolve the challenge."""
+    extractor: EvidenceExtractorProvider,
+    require_extraction: bool,
+) -> tuple[EvidenceSearchResult, EvidencePageExtractResult | None] | None:
+    """Return the first evidence result whose URL/content can resolve the challenge."""
     for result in results:
-        if _evidence_result_is_adequate(result=result, trace=trace, challenge=challenge):
-            return result
+        if not _evidence_result_is_adequate(result=result, trace=trace, challenge=challenge):
+            continue
+        extraction = await _extract_page_for_result(
+            result=result,
+            trace=trace,
+            challenge=challenge,
+            extractor=extractor,
+        )
+        if extraction is None:
+            if require_extraction:
+                continue
+            return result, None
+        if _extracted_page_is_adequate(
+            extraction=extraction,
+            result=result,
+            trace=trace,
+            challenge=challenge,
+        ):
+            return result, extraction
     return None
 
 
@@ -348,22 +398,114 @@ def _evidence_result_is_adequate(
     return _has_issue_keyword_overlap(result=result, trace=trace, challenge=challenge)
 
 
+async def _extract_page_for_result(
+    *,
+    result: EvidenceSearchResult,
+    trace: TradingR1Trace | None,
+    challenge: AdversarialChallenge,
+    extractor: EvidenceExtractorProvider,
+) -> EvidencePageExtractResult | None:
+    """Run second-stage extraction for one candidate URL when safe/configured."""
+    if isinstance(extractor, NoopEvidenceExtractor):
+        return None
+    if not source_url_is_public_http(result.url):
+        logger.warning(
+            "evidence_extraction_url_blocked",
+            challenge_id=challenge.id,
+            url=sanitize_source_url(result.url),
+        )
+        return None
+    extraction = await extractor.extract(
+        EvidencePageExtractRequest(
+            url=result.url,
+            objective=_extraction_objective(trace=trace, challenge=challenge),
+            challenge_id=challenge.id,
+        )
+    )
+    if extraction is None:
+        return None
+    if not source_url_is_public_http(extraction.final_url or extraction.url):
+        logger.warning(
+            "evidence_extraction_final_url_blocked",
+            challenge_id=challenge.id,
+            url=sanitize_source_url(extraction.final_url or extraction.url),
+        )
+        return None
+    return extraction
+
+
+def _extraction_objective(
+    *,
+    trace: TradingR1Trace | None,
+    challenge: AdversarialChallenge,
+) -> str:
+    market = trace.market_question if trace else "the prediction market"
+    return (
+        "Extract readable source content needed to verify a Prism issue. "
+        f"Market: {market}. Issue: {challenge.question}. "
+        f"Required resolution: {challenge.required_resolution}."
+    )
+
+
+def _extracted_page_is_adequate(
+    *,
+    extraction: EvidencePageExtractResult,
+    result: EvidenceSearchResult,
+    trace: TradingR1Trace | None,
+    challenge: AdversarialChallenge,
+) -> bool:
+    """Verify the fetched page content supports the candidate search result."""
+    text = clean_extracted_text(extraction.text).lower()
+    if not text or len(text) < 80:
+        return False
+    if "\ufffd" in extraction.text or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", extraction.text):
+        return False
+    extracted_words = _keywords(text)
+    snippet_words = _keywords(result.snippet)
+    title_words = _keywords(result.title)
+    issue_words = _keywords(f"{challenge.question} {challenge.required_resolution}")
+    market_words = _keywords(trace.market_question if trace else "")
+    snippet_support = len(extracted_words & snippet_words) >= min(3, max(1, len(snippet_words)))
+    title_support = len(extracted_words & title_words) >= min(2, max(1, len(title_words)))
+    topic_support = (
+        len(extracted_words & issue_words) >= 2
+        or len(extracted_words & market_words) >= 2
+    )
+    return (snippet_support or title_support) and topic_support
+
+
 def _tool_receipt_for_result(
     result: EvidenceSearchResult,
     trace: TradingR1Trace | None,
     challenge: AdversarialChallenge,
+    extraction: EvidencePageExtractResult | None,
 ) -> EvidenceToolReceipt:
     """Build a structured, queryable receipt for the evidence result used."""
     retrieved_at = result.retrieved_at or datetime.now(UTC).isoformat()
+    extraction_checks = _extraction_check_labels(
+        extraction=extraction,
+        result=result,
+        trace=trace,
+        challenge=challenge,
+    ) if extraction is not None else []
+    source_published_at = (
+        extraction.published_at if extraction and extraction.published_at else result.published_at
+    )
     return EvidenceToolReceipt(
         provider=result.provider,
         tool_name=result.tool_name,
-        source_title=result.title.strip(),
-        source_url=_public_source_url(result.url),
-        source_published_at=result.published_at,
+        source_title=redact_public_text(result.title.strip()),
+        source_url=sanitize_source_url(result.url),
+        source_published_at=source_published_at,
         retrieved_at=retrieved_at,
         confidence=result.confidence,
         adequacy_checks=_adequacy_check_labels(result=result, trace=trace, challenge=challenge),
+        extractor_provider=extraction.provider if extraction else None,
+        extractor_tool_name=extraction.tool_name if extraction else None,
+        source_content_hash=extraction.content_hash() if extraction else None,
+        source_excerpt=extraction.excerpt() if extraction else None,
+        extracted_at=extraction.extracted_at if extraction else None,
+        extraction_checks=extraction_checks,
     )
 
 
@@ -394,6 +536,28 @@ def _adequacy_check_labels(
         or bool(re.search(r"\d+(?:\.\d+)?%", _evidence_text(result)))
     ):
         labels.append("calibration_terms")
+    return labels
+
+
+def _extraction_check_labels(
+    *,
+    extraction: EvidencePageExtractResult,
+    result: EvidenceSearchResult,
+    trace: TradingR1Trace | None,
+    challenge: AdversarialChallenge,
+) -> list[str]:
+    """Return labels for URL extraction gates satisfied by the accepted page."""
+    labels = ["url_fetch_ok", "extract_readable_content", "source_content_hash"]
+    extracted_words = _keywords(clean_extracted_text(extraction.text))
+    if extracted_words & _keywords(result.snippet):
+        labels.append("quote_supports_snippet")
+    if extracted_words & _keywords(result.title):
+        labels.append("title_supported_by_page")
+    if trace and len(extracted_words & _keywords(trace.market_question)) >= 2:
+        labels.append("extracted_market_topic_overlap")
+    issue_words = _keywords(f"{challenge.question} {challenge.required_resolution}")
+    if len(extracted_words & issue_words) >= 2:
+        labels.append("extracted_issue_topic_overlap")
     return labels
 
 
@@ -498,28 +662,7 @@ def _evidence_source_is_usable(result: EvidenceSearchResult) -> bool:
         return False
     if len(result.snippet.strip()) < 20:
         return False
-    try:
-        parsed = urlsplit(result.url.strip())
-    except ValueError:
-        return False
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
-def _public_source_url(url: str) -> str:
-    """Return a receipt-safe source URL with credentials, query, and fragment removed."""
-    raw = url.strip()
-    if not raw:
-        return "redacted-url"
-    try:
-        parsed = urlsplit(raw)
-        port = parsed.port
-    except ValueError:
-        return "redacted-url"
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        return "redacted-url"
-    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-    netloc = f"{host}:{port}" if port is not None else host
-    return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+    return source_url_is_public_http(result.url)
 
 
 def _evidence_content_is_readable(result: EvidenceSearchResult) -> bool:

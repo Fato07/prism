@@ -240,6 +240,20 @@ components:
           type: array
           items:
             type: string
+        extractor_provider:
+          type: [string, 'null']
+        extractor_tool_name:
+          type: [string, 'null']
+        source_content_hash:
+          type: [string, 'null']
+        source_excerpt:
+          type: [string, 'null']
+        extracted_at:
+          type: [string, 'null']
+        extraction_checks:
+          type: array
+          items:
+            type: string
     CapitalGate:
       type: object
       required: [status, label, tone, recommended_action, reason, policy_constraints, checks]

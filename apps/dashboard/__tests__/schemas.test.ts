@@ -140,6 +140,12 @@ describe("ChallengeResolutionSchema", () => {
         source_published_at: "2026-05-12T10:00:00Z",
         confidence: 0.91,
         adequacy_checks: ["topic_overlap", "temporal_recency"],
+        extractor_provider: "parallel_extract",
+        extractor_tool_name: "web_fetch",
+        source_content_hash: "abc123",
+        source_excerpt: "Current market evidence supports the issue.",
+        extracted_at: "2026-05-12T10:00:01Z",
+        extraction_checks: ["url_fetch_ok", "quote_supports_snippet"],
       },
     });
 

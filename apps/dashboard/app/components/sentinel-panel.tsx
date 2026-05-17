@@ -425,7 +425,7 @@ function StructuredChallengeItem({
   const isResolved = challenge.resolution_status === "resolved" ||
     challenge.resolution_status === "superseded";
   const displayedResolution = latestResolution
-    ? summarizeResolutionResponse(latestResolution.response)
+    ? summarizeResolutionResponse(redactReceiptText(latestResolution.response))
     : null;
   const resolutionBrand = brandForResolution(latestResolution);
 
@@ -505,6 +505,16 @@ function StructuredChallengeItem({
                   </span>
                 )}
               </p>
+              {latestResolution.tool_receipt?.source_excerpt && (
+                <div className="mt-2 rounded border border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/60 p-2 text-xs leading-relaxed text-fg-faint">
+                  <span className="mb-1 block text-mono text-[10px] uppercase tracking-[var(--tracking-wide)] text-fg-faint">
+                    URL verified · {latestResolution.tool_receipt.source_content_hash?.slice(0, 10) ?? "content hash"}
+                  </span>
+                  <span className="break-words [overflow-wrap:anywhere]">
+                    {redactReceiptText(latestResolution.tool_receipt.source_excerpt)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -531,6 +541,15 @@ function brandForResolution(
   }
   const providerToken = resolution.response.match(/evidence from ([a-zA-Z0-9_.-]+):/)?.[1] ?? null;
   return providerBrandFromText(providerToken);
+}
+
+function redactReceiptText(value: string): string {
+  return value
+    .replace(/\bauthorization\s*[:=]\s*bearer\s+[^\s,;]{8,}/gi, "Authorization: Bearer [redacted]")
+    .replace(/\bbearer\s+[^\s,;]{8,}/gi, "Bearer [redacted]")
+    .replace(/\b(api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]{8,}/gi, "$1=[redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "sk-[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted-jwt]");
 }
 
 function ToolProviderChip({ brand }: { brand: ProviderBrand }) {

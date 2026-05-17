@@ -54,6 +54,12 @@ class EvidenceToolReceipt(BaseModel):
     retrieved_at: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     adequacy_checks: list[str] = Field(default_factory=list)
+    extractor_provider: str | None = None
+    extractor_tool_name: str | None = None
+    source_content_hash: str | None = None
+    source_excerpt: str | None = None
+    extracted_at: str | None = None
+    extraction_checks: list[str] = Field(default_factory=list)
 
 
 class ChallengeResolution(BaseModel):

@@ -228,7 +228,8 @@ export function buildPublicIssueLedgerReport(
     resolution_metadata: verdict.resolution_metadata ?? null,
     issues: (verdict.structured_challenges ?? []).map((challenge) => {
       const toolStatus = publicToolStatusForChallenge(verdict, challenge.id);
-      const toolReceipt = evidenceToolReceiptForChallenge(verdict, challenge.id);
+      const toolReceipt = redactToolReceipt(evidenceToolReceiptForChallenge(verdict, challenge.id));
+      const latestResolution = redactResolution(latestResolutionForChallenge(verdict, challenge.id));
       return {
         id: challenge.id,
         type: challenge.type,
@@ -242,7 +243,7 @@ export function buildPublicIssueLedgerReport(
         tool_provider: toolReceipt?.provider ?? evidenceToolProviderForChallenge(verdict, challenge.id),
         tool_receipt: toolReceipt,
         resolved_by_evidence_tool: toolStatus === "resolved",
-        latest_resolution: latestResolutionForChallenge(verdict, challenge.id),
+        latest_resolution: latestResolution,
       };
     }),
   };
@@ -256,6 +257,38 @@ function publicToolStatusForChallenge(
   if (status === "resolved") return "resolved";
   if (status === "no_evidence") return "fail_closed";
   return "not_recorded";
+}
+
+function redactResolution(
+  resolution: SentinelVerdict["challenge_resolutions"][number] | null,
+): SentinelVerdict["challenge_resolutions"][number] | null {
+  if (!resolution) return null;
+  const toolReceipt = redactToolReceipt(resolution.tool_receipt ?? null);
+  return {
+    ...resolution,
+    response: redactPublicText(resolution.response),
+    tool_receipt: toolReceipt,
+  };
+}
+
+function redactToolReceipt(
+  receipt: SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null | undefined,
+): SentinelVerdict["challenge_resolutions"][number]["tool_receipt"] | null {
+  if (!receipt) return null;
+  return {
+    ...receipt,
+    source_title: redactPublicText(receipt.source_title),
+    source_excerpt: receipt.source_excerpt ? redactPublicText(receipt.source_excerpt) : receipt.source_excerpt,
+  };
+}
+
+function redactPublicText(value: string): string {
+  return value
+    .replace(/\bauthorization\s*[:=]\s*bearer\s+[^\s,;]{8,}/gi, "Authorization: Bearer [redacted]")
+    .replace(/\bbearer\s+[^\s,;]{8,}/gi, "Bearer [redacted]")
+    .replace(/\b(api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]{8,}/gi, "$1=[redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, "sk-[redacted]")
+    .replace(/\b[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{10,}\b/g, "[redacted-jwt]");
 }
 
 function evidenceToolReceiptForChallenge(
