@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from prism_calibration.braintrust_sync import BRAINTRUST_PROJECT
+from prism_calibration.braintrust_sync import braintrust_project
 from prism_calibration.freeze import FrozenExportManifest, _load_manifest
 from prism_calibration.models import CalibrationRow
 
@@ -357,7 +357,7 @@ def _log_to_braintrust(
     }
 
     experiment = braintrust.init(
-        project=BRAINTRUST_PROJECT,
+        project=braintrust_project(),
         experiment=effective_experiment_name,
         metadata=experiment_metadata,
         tags=["calibration", "eval", manifest.slice_name],

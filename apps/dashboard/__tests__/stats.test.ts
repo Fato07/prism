@@ -419,7 +419,7 @@ describe("VAL-STATS-013: Each tile has 'What this measures' subtitle", () => {
     { title: "Avg sentinel verdict score", subtitle: "Mean verdict_score across all validations (0–100)" },
     { title: "Verdict latency p50", subtitle: "Median time from trace creation to sentinel verdict" },
     { title: "Verdict latency p95", subtitle: "95th-percentile time from trace creation to verdict — tail latency" },
-    { title: "Calibration gap", subtitle: "Good-vs-bad synthetic trace verdict spread — target ≥30" },
+    { title: "Calibration gap", subtitle: "High-vs-low live verdict spread — target ≥30" },
   ];
 
   it("every tile has a non-empty subtitle", () => {

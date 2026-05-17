@@ -8,9 +8,9 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Arc Testnet](https://img.shields.io/badge/chain-Arc_Testnet_(5042002)-purple)](https://docs.arc.network/)
 
-**Prism** is an adversarial AI validation system built on [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004). A **Trader** agent (Claude/Mirascope) generates structured reasoning traces for prediction markets. A **Sentinel** agent (GPT/DSPy) adversarially challenges every claim. Both are registered on-chain, every validation is anchored on Arc testnet, and the sentinel is exposed as an x402-protected service other agents can call.
+**Prism** is an adversarial AI validation system built on [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004). A **Trader** agent (Claude/Mirascope) generates structured reasoning traces for prediction markets. A **Sentinel** agent (GPT/DSPy) adversarially challenges every claim. The result is a Prism Report with an issue ledger, capital gate, IPFS receipts, and Arc/ERC-8004 anchors where present. Both agents are registered on-chain, and the sentinel is exposed as an x402-protected service other agents can call.
 
-> *Prism makes AI agents accountable to other AI agents.*
+> *Prism makes AI agents accountable to other AI agents before capital moves.*
 
 ---
 
@@ -81,12 +81,13 @@ First live CLI paid validation on 2026-05-16 settled at [`0xd6ab0cbb…`](https:
 |-------|-------------|
 | `/` | Landing page with the product story, live activity strip, and waitlist |
 | `/dashboard` | Split-screen trace + verdict dialogue, on-chain receipts |
-| `/trace/[id]` | Trace detail page — server component with structured layout and dynamic OG image |
+| `/trace/[id]` | Trace detail page — server component with structured layout, capital gate, receipts, and dynamic OG image |
 | `/history` | Paginated history of all traces and verdicts |
 | `/me` | Wallet-connected verdict history (wagmi v2 + Reown AppKit) |
 | `/submit` | Self-serve x402 validation — sign EIP-3009 transfers from the browser; shows Circle App Kit Bridge widget when USDC balance < 0.01 |
 | `/builder-fees` | Polymarket builder-code attribution — paper-fill fee model plus live-fill receipts when available |
 | `/stats` | Receipt-linked activity stats — validations, Arc anchors, x402 calls, builder attribution, latency, calibration |
+| `/calibration` | Sentinel calibration evidence — startup discrimination gate plus private corpus summary |
 
 ### Infrastructure
 

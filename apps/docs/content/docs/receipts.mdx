@@ -5,6 +5,23 @@ description: "Understand and verify Prism receipt fields across IPFS, x402 payme
 
 A receipt is the evidence bundle behind a Prism Report. It should let another developer answer: what trace was validated, who paid for validation, what verdict was produced, and where the public proof lives.
 
+## Canonical judge receipt bundle
+
+This is the smallest bundle a reviewer can use to verify the current product path:
+
+| Proof | Link or value |
+| --- | --- |
+| Canonical trace report | [trace report](https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24) |
+| Trace IPFS CID | `QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8` |
+| Trace content hash | `0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb` |
+| Dashboard x402 payment tx | [BaseScan tx](https://sepolia.basescan.org/tx/0x63bf70941e8890b2b92459addfa18ecb57dd06bba7ea715391f00322faf58d68) |
+| Canonical trace Arc validation request | [Arc tx](https://testnet.arcscan.app/tx/0x5adb156fa8de6c1cf7e0d50c2197d8315eb9a501da2c00ffbf52996d2407d786) |
+| CLI x402 payment tx | [BaseScan tx](https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1) |
+| CLI verdict IPFS CID | [IPFS verdict](https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk) |
+| CLI payer wallet | `0x229d65c16eb0386ac9a759625836e7d2b9831c3e` |
+
+Circle is the payment and wallet boundary; Arc/ERC-8004 is the validation receipt layer where tx hashes are present; IPFS is the content-addressed trace/verdict layer. The canonical trace has an Arc validation-request tx; validation-response txs are shown only on reports where `validation_arc_tx` is present. Prism CLI never reads private keys and local receipt files never store raw `X-PAYMENT` headers.
+
 ## Canonical CLI paid receipt
 
 The first live CLI paid validation receipt is checked into the repository:

@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from prism_calibration.braintrust_sync import (
-    BRAINTRUST_PROJECT,
     BraintrustSyncError,
     REVIEW_DATASET_PREFIX,
+    braintrust_project,
 )
 
 
@@ -52,7 +52,7 @@ def _simulate_review_on_braintrust(
 
     dataset_name = f"{REVIEW_DATASET_PREFIX}{slice_name}"
     try:
-        dataset = braintrust.init_dataset(project=BRAINTRUST_PROJECT, name=dataset_name)
+        dataset = braintrust.init_dataset(project=braintrust_project(), name=dataset_name)
     except Exception as error:
         raise BraintrustSyncError(
             f"Unable to open Braintrust dataset '{dataset_name}': {error}"

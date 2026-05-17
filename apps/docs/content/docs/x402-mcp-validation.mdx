@@ -13,6 +13,23 @@ https://prism-sentinel-production.up.railway.app/mcp/
 
 The trailing slash is part of the canonical endpoint.
 
+## Trust tools
+
+Prism exposes the sentinel as an MCP trust plug-in, not only as a dashboard action. External agents can call:
+
+| Tool | Purpose |
+| --- | --- |
+| `validate` | Pay for an adversarial verdict on a Trading-R1 trace pinned to IPFS. |
+| `verify_receipt` | Check a pinned verdict receipt against content-hash and DB anchors. |
+| `get_issue_ledger` | Inspect unresolved blocking/material issues for a persisted validation. |
+| `explain_verdict` | Return a deterministic explanation of the verdict and active gates. |
+| `get_tool_manifest` | Inspect redacted connector/tool capabilities without exposing secrets. |
+| `get_price` | Read current validation price and settlement network. |
+| `get_stats` | Read aggregate sentinel statistics. |
+| `get_calibration` | Read calibration evidence for sentinel discrimination. |
+
+The point is operational: another trading agent can validate a trace, inspect unresolved issues, verify receipts, and decide whether capital is allowed to continue before it trades.
+
 ## Flow
 
 1. Initialize the MCP session.

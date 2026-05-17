@@ -10,6 +10,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CALIBRATION_CASES,
+  CALIBRATION_CORPUS,
   CALIBRATION_RUN,
   calibrationGap,
   isMonotonic,
@@ -48,7 +49,19 @@ describe("VAL-CALIBRATION-002: discrimination gate", () => {
   });
 });
 
-describe("VAL-CALIBRATION-003: reproduction copy", () => {
+describe("VAL-CALIBRATION-003: private corpus summary", () => {
+  it("summarizes the local corpus without publishing raw private rows", () => {
+    expect(CALIBRATION_CORPUS.totalRows).toBe(60);
+    expect(CALIBRATION_CORPUS.realHarvestedRows).toBe(28);
+    expect(CALIBRATION_CORPUS.syntheticSeedRows).toBe(20);
+    expect(CALIBRATION_CORPUS.mutatedAdversarialRows).toBe(12);
+    expect(CALIBRATION_CORPUS.humanReviewedRows).toBe(43);
+    expect(CALIBRATION_CORPUS.frozenPilotRows).toBe(54);
+    expect(CALIBRATION_CORPUS.privateCorpusReason).toContain("wallet");
+  });
+});
+
+describe("VAL-CALIBRATION-004: reproduction copy", () => {
   it("points to the sentinel pytest calibration gate", () => {
     expect(CALIBRATION_RUN.command).toBe(
       "uv run pytest apps/sentinel/src/tests/test_calibration.py",
@@ -60,7 +73,7 @@ describe("VAL-CALIBRATION-003: reproduction copy", () => {
   });
 });
 
-describe("VAL-CALIBRATION-004: dashboard route integration", () => {
+describe("VAL-CALIBRATION-005: dashboard route integration", () => {
   it("global nav exposes /calibration", () => {
     const navPath = path.join(process.cwd(), "app/components/global-nav.tsx");
     const source = fs.readFileSync(navPath, "utf8");

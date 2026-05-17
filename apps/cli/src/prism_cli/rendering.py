@@ -243,6 +243,10 @@ def print_report(report: PublicTraceReport) -> None:
         )
     if report.readiness:
         console.print(f"Readiness: {report.readiness}")
+    if report.capital_gate:
+        console.print(f"Capital gate: [bold]{report.capital_gate.status}[/bold] — {report.capital_gate.label}")
+        console.print(f"Action:    {report.capital_gate.recommended_action}")
+        console.print(f"Reason:    {report.capital_gate.reason}")
     if report.reasoning_metrics:
         console.print()
         print_inspect(

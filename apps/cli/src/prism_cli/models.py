@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Readiness = Literal["usable", "needs_review", "not_ready"]
 VerdictLabel = Literal["REJECT", "WARN", "PASS", "ENDORSE"]
+CapitalGateStatus = Literal["PENDING_VALIDATION", "BLOCK", "REVIEW", "ALLOW_PAPER", "ENDORSE"]
 
 
 class Evidence(BaseModel):
@@ -107,6 +108,18 @@ class PublicHistoryResponse(BaseModel):
     entries: list[PublicHistoryEntry]
 
 
+class CapitalGate(BaseModel):
+    """Execution/capital gate derived from a sentinel verdict and issue ledger."""
+
+    status: CapitalGateStatus
+    label: str
+    tone: Literal["neutral", "bad", "warn", "good"]
+    recommended_action: str
+    reason: str
+    policy_constraints: list[str] = Field(default_factory=list)
+    checks: dict[str, Any] = Field(default_factory=dict)
+
+
 class PublicTraceReport(BaseModel):
     """Trace report returned by the public dashboard report API."""
 
@@ -116,6 +129,7 @@ class PublicTraceReport(BaseModel):
     reasoning_metrics: ReasoningMetrics | None
     readiness: Readiness | None
     warnings: list[str] = Field(default_factory=list)
+    capital_gate: CapitalGate | None = None
     receipts: dict[str, Any]
 
 

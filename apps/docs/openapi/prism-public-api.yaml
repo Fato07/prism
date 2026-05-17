@@ -122,7 +122,7 @@ components:
           type: [string, 'null']
     PublicTraceReport:
       type: object
-      required: [generated_at, trace, validation, reasoning_metrics, readiness, warnings, receipts]
+      required: [generated_at, trace, validation, reasoning_metrics, readiness, warnings, capital_gate, receipts]
       properties:
         generated_at:
           type: string
@@ -143,6 +143,31 @@ components:
           type: array
           items:
             type: string
+        capital_gate:
+          $ref: '#/components/schemas/CapitalGate'
         receipts:
+          type: object
+          additionalProperties: true
+    CapitalGate:
+      type: object
+      required: [status, label, tone, recommended_action, reason, policy_constraints, checks]
+      properties:
+        status:
+          type: string
+          enum: [PENDING_VALIDATION, BLOCK, REVIEW, ALLOW_PAPER, ENDORSE]
+        label:
+          type: string
+        tone:
+          type: string
+          enum: [neutral, bad, warn, good]
+        recommended_action:
+          type: string
+        reason:
+          type: string
+        policy_constraints:
+          type: array
+          items:
+            type: string
+        checks:
           type: object
           additionalProperties: true

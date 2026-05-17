@@ -7,6 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from prism_calibration.braintrust_sync import braintrust_project
 from prism_calibration.eval import run_eval
 from prism_calibration.freeze import freeze_slice
 from prism_calibration.logs import (
@@ -169,7 +170,7 @@ def test_eval_run_emits_logs_tied_to_slice_and_case(
     import braintrust
 
     experiment = braintrust.init(
-        project="Prism",
+        project=braintrust_project(),
         experiment=expt_name,
         open=True,
     )
