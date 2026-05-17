@@ -34,18 +34,17 @@ Keep the sentinel MCP trailing slash: `/mcp/`.
 
 ## Current stats snapshot
 
-Snapshot from `GET /api/public/stats` at `2026-05-17T13:04:59.133Z`:
+Snapshot from `GET /api/public/stats` after the execution-attribution deploy:
 
 | Metric | Value |
 | --- | ---: |
-| Verdicts issued | 745 |
-| Traces validated | 936 |
-| On-chain anchors | 718 |
+| Verdicts issued | 754 |
+| Traces validated | 945 |
+| On-chain anchors | 727 |
+| Builder-attributed trades | 355 |
+| Builder fees | Fee pending (`0.000000` USDC; legacy paper rows lack fill-price data) |
 | External x402 calls | 2 |
 | Unique wallets | 2 |
-| Average verdict score | 60.57 |
-| P50 latency | 20.7s |
-| P95 latency | 25.9s |
 | Live verdict score spread | 57 |
 
 ## 150-second demo script
@@ -102,7 +101,7 @@ Show BaseScan tx, IPFS verdict, and docs `/docs/receipts`.
 
 ### 2:10–2:30 — Calibration / close
 
-> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 745 verdicts, 936 traces, 718 on-chain anchors, and two external x402 payments.
+> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 754 verdicts, 945 traces, 727 on-chain anchors, 355 builder-attributed trades, and two external x402 payments.
 
 End on `/calibration`, docs, or dashboard stats.
 
