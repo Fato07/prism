@@ -3,6 +3,7 @@
 After paper trade execution, result written to trades table:
 - order_id, trace_id, market_id, side, size, builder_code, status
 - polymarket_tx is null for paper trades
+- fill_price is recorded for paper fills so builder fee totals are not silently zero
 - SELECT by order_id returns 1 matching row
 
 Note: These tests require a real DATABASE_URL to a Neon instance with
@@ -42,6 +43,7 @@ vi.mock("@neondatabase/serverless", () => ({
             builder_code: "0xabcdef",
             status: "paper_filled",
             polymarket_tx: null,
+            fill_price: "0.5",
             created_at: new Date().toISOString(),
           },
         ];
@@ -63,6 +65,7 @@ describe("VAL-POLY-004: Paper trade persisted to Neon", () => {
     builderCode: "0xabcdef",
     status: "paper_filled",
     timestamp: new Date().toISOString(),
+    fillPrice: 0.5,
   };
 
   it("persistTrade returns true on success", async () => {
@@ -75,6 +78,7 @@ describe("VAL-POLY-004: Paper trade persisted to Neon", () => {
     expect(row).not.toBeNull();
     expect(row?.polymarket_tx).toBeNull();
     expect(row?.status).toBe("paper_filled");
+    expect(row?.fill_price).toBe("0.5");
   });
 
   it("persisted trade has all required fields", async () => {
@@ -87,6 +91,7 @@ describe("VAL-POLY-004: Paper trade persisted to Neon", () => {
     expect(row).toHaveProperty("builder_code");
     expect(row).toHaveProperty("status");
     expect(row).toHaveProperty("polymarket_tx");
+    expect(row).toHaveProperty("fill_price");
   });
 
   it("getTrade returns null for non-existent order", async () => {

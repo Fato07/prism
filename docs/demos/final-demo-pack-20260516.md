@@ -58,7 +58,7 @@ Show dashboard home or `/stats`.
 
 ### 0:15–0:40 — What Prism is
 
-> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. Connector Passport arms external evidence tools, but the sentinel does not trust tool output blindly: evidence must pass adequacy gates before issues resolve. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, and receipts.
+> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. Connector Passport arms external evidence tools, but the sentinel does not trust tool output blindly: evidence must pass adequacy gates before issues resolve. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, receipts, and execution attribution when a paper or live trade carries a builder code.
 
 Show canonical trace page:
 
@@ -70,7 +70,7 @@ https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-
 
 > Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path. If a connector fails, returns malformed data, or returns evidence that does not match the issue, Prism stays fail-closed.
 
-Show the trace page capital-gate card and sentinel issue-ledger summary.
+Show the trace page capital-gate card, sentinel issue-ledger summary, and execution-attribution page if time permits.
 
 ### 1:00–1:20 — Human self-serve path
 
@@ -113,14 +113,15 @@ Open these tabs before recording:
 1. Dashboard stats: <https://prism-dashboard-production-e6e3.up.railway.app/stats>
 2. Dashboard trust workspace: <https://prism-dashboard-production-e6e3.up.railway.app/dashboard>
 3. Workspace Tools / Connector Passport: <https://prism-dashboard-production-e6e3.up.railway.app/connectors>
-4. Canonical trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24>
-5. Latest public report API example: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1/report>
-6. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
-7. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
-8. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
-9. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
-10. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
-11. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
+4. Execution attribution: <https://prism-dashboard-production-e6e3.up.railway.app/builder-fees>
+5. Canonical trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24>
+6. Latest public report API example: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1/report>
+7. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
+8. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
+9. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
+10. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
+11. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
+12. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
 
 Terminal prep:
 
@@ -159,6 +160,7 @@ Safe claims:
 - Prism CLI never reads private keys
 - paid flows are explicit and capped
 - Connector Passport arms one active evidence connector and redacts connector URLs/secrets in public surfaces
+- execution attribution links paper/live trades to builder codes; fee totals are shown only when fill-price data exists
 - unresolved blockers gate clean PASS even when a connector is armed
 
 ## Submission one-liner

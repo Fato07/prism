@@ -2,7 +2,7 @@
 
 When PRISM_TRADE_MODE=paper:
 - placePrismOrder does NOT send HTTP to Polymarket CLOB
-- Returns simulated receipt with: orderId, traceId, marketId, side, size, builderCode, status:'paper_filled'
+- Returns simulated receipt with: orderId, traceId, marketId, side, size, builderCode, status:'paper_filled', fillPrice
 - builderCode matches mapAgentIdToBuilderCode(agentId)
 - Works without POLYMARKET_API_KEY
 */
@@ -41,6 +41,7 @@ describe("VAL-POLY-002: Paper trade returns simulated receipt", () => {
     expect(receipt).toHaveProperty("builderCode");
     expect(receipt).toHaveProperty("status", "paper_filled");
     expect(receipt).toHaveProperty("timestamp");
+    expect(receipt).toHaveProperty("fillPrice", 0.5);
   });
 
   it("orderId is a valid UUID", async () => {
@@ -81,6 +82,11 @@ describe("VAL-POLY-002: Paper trade returns simulated receipt", () => {
     const receipt = await placePrismOrder(sellParams);
     expect(receipt.side).toBe("SELL");
     expect(receipt.status).toBe("paper_filled");
+  });
+
+  it("uses priceLimit as paper fill price when supplied", async () => {
+    const receipt = await placePrismOrder({ ...validParams, priceLimit: 0.62 });
+    expect(receipt.fillPrice).toBe(0.62);
   });
 
   it("polymarketTx is null for paper receipts", async () => {

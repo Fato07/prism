@@ -63,6 +63,8 @@ export interface TradeReceipt {
   status: TradeStatus;
   timestamp: string;
   polymarketTx?: string | null;
+  /** Fill or assumed paper-fill price. Null until a live order fills. */
+  fillPrice?: number | null;
   errorMsg?: string;
 }
 
@@ -150,6 +152,9 @@ function buildPaperReceipt(
   params: PrismOrderParams,
   builderCode: string,
 ): TradeReceipt {
+  const rawPrice = params.priceLimit ?? DEFAULT_LIVE_PRICE;
+  const fillPrice = Math.max(PRICE_MIN, Math.min(PRICE_MAX, rawPrice));
+
   const receipt: TradeReceipt = {
     orderId: randomUUID(),
     traceId: params.traceId,
@@ -160,6 +165,7 @@ function buildPaperReceipt(
     status: "paper_filled",
     timestamp: new Date().toISOString(),
     polymarketTx: null,
+    fillPrice,
   };
   logger.info(
     {
@@ -223,6 +229,7 @@ async function buildLiveReceipt(
       status: "failed",
       timestamp: new Date().toISOString(),
       polymarketTx: null,
+      fillPrice: null,
       errorMsg: message,
     };
   }
@@ -251,6 +258,7 @@ async function buildLiveReceipt(
       status: "failed",
       timestamp: new Date().toISOString(),
       polymarketTx: null,
+      fillPrice: null,
       errorMsg,
     };
   }
@@ -268,6 +276,7 @@ async function buildLiveReceipt(
     status,
     timestamp: new Date().toISOString(),
     polymarketTx: firstTx,
+    fillPrice: firstTx ? price : null,
   };
 
   logger.info(

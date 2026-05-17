@@ -67,8 +67,10 @@ export interface StatsData {
   tracesValidated: number;
   /** Traces with both validationRequest + validationResponse anchored on-chain. */
   onChainAnchors: number;
-  /** Total builder fees attributed (0.1% of fill notional). */
+  /** Total builder fees attributed when fill-price data is present (0.1% of fill notional). */
   builderFees: string;
+  /** Qualifying paper/live trade receipts that carry builder codes. */
+  builderAttributedTrades: number;
   /** x402 calls from external wallets (excluding Prism's own agent wallets). */
   externalX402Calls: number;
   /** Average sentinel verdict score (0–100). */
@@ -115,6 +117,7 @@ export async function getStatsData(): Promise<StatsData> {
       tracesResult,
       anchorsResult,
       feesResult,
+      builderTradesResult,
       externalResult,
       avgScoreResult,
       latencyResult,
@@ -147,6 +150,12 @@ export async function getStatsData(): Promise<StatsData> {
         `SELECT COALESCE(SUM(size * COALESCE(fill_price::numeric, 0)) * 0.001, 0)::numeric(20,6) AS total
            FROM trades
           WHERE status IN ('paper_filled', 'filled')`,
+      ),
+      client.query(
+        `SELECT count(*) AS cnt
+           FROM trades
+          WHERE status IN ('paper_filled', 'filled')
+            AND builder_code IS NOT NULL`,
       ),
       client.query(
         `SELECT count(*) AS cnt
@@ -282,6 +291,7 @@ export async function getStatsData(): Promise<StatsData> {
     const tracesValidated = Number(tracesResult.rows[0]?.cnt ?? 0);
     const onChainAnchors = Number(anchorsResult.rows[0]?.cnt ?? 0);
     const builderFees = String(feesResult.rows[0]?.total ?? "0");
+    const builderAttributedTrades = Number(builderTradesResult.rows[0]?.cnt ?? 0);
     const externalX402Calls = Number(externalResult.rows[0]?.cnt ?? 0);
     const avgVerdictScore = String(avgScoreResult.rows[0]?.avg ?? "0");
     const p50Seconds = Number(latencyResult.rows[0]?.p50 ?? 0);
@@ -329,6 +339,7 @@ export async function getStatsData(): Promise<StatsData> {
       tracesValidated,
       onChainAnchors,
       builderFees,
+      builderAttributedTrades,
       externalX402Calls,
       avgVerdictScore,
       latencyP50: formatLatency(p50Seconds),
@@ -353,6 +364,7 @@ export async function getStatsData(): Promise<StatsData> {
       tracesValidated: 0,
       onChainAnchors: 0,
       builderFees: "0",
+      builderAttributedTrades: 0,
       externalX402Calls: 0,
       avgVerdictScore: "0",
       latencyP50: "—",

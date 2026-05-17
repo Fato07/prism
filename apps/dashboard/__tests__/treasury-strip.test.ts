@@ -3,7 +3,7 @@
  *
  * Covers VAL-TREASURYSTRIP-001..004 and VAL-CROSS-005:
  *   - Widget renders on dashboard home with data-testid="treasury-strip"
- *   - Empty state — "No treasury activity yet" when zero rows
+ *   - Empty state hidden — returns null when zero rows
  *   - Populated state — shows total parked + last event + sparkline/badge
  *   - Server component (no 'use client' at widget root)
  *   - TreasuryData.totalParked computation (park sum − unpark sum, floored at 0)
@@ -73,8 +73,8 @@ describe("VAL-TREASURYSTRIP-001: TreasuryStrip renders on dashboard home", () =>
 
 /* ─────────────── VAL-TREASURYSTRIP-002: Empty state ─────────────── */
 
-describe("VAL-TREASURYSTRIP-002: Empty state — graceful copy when zero rows", () => {
-  it("renders 'No treasury activity yet' empty state text", async () => {
+describe("VAL-TREASURYSTRIP-002: Empty state hidden when zero rows", () => {
+  it("returns null instead of foregrounding roadmap-only treasury copy", async () => {
     const fs = await import("fs/promises");
     const path = await import("path");
     const filePath = path.join(
@@ -82,18 +82,9 @@ describe("VAL-TREASURYSTRIP-002: Empty state — graceful copy when zero rows", 
       "app/components/landing/treasury-strip.tsx",
     );
     const content = await fs.readFile(filePath, "utf-8");
-    expect(content).toContain("No treasury activity yet");
-  });
-
-  it("empty state uses the EmptyState component", async () => {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-    const filePath = path.join(
-      process.cwd(),
-      "app/components/landing/treasury-strip.tsx",
-    );
-    const content = await fs.readFile(filePath, "utf-8");
-    expect(content).toContain("<EmptyState");
+    expect(content).toContain("if (!hasActivity) return null");
+    expect(content).not.toContain("No treasury activity yet");
+    expect(content).not.toContain("<EmptyState");
   });
 
   it("empty state renders when totalParked is 0 and lastEvent is null", () => {
@@ -104,7 +95,7 @@ describe("VAL-TREASURYSTRIP-002: Empty state — graceful copy when zero rows", 
       recentEventCount: 0,
       dailyParked: [],
     };
-    // The component should render the empty state when hasActivity is false
+    // The component should hide itself when hasActivity is false
     const totalParked = parseFloat(emptyData.totalParked);
     const hasActivity = totalParked > 0 || emptyData.lastEvent !== null;
     expect(hasActivity).toBe(false);

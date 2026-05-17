@@ -17,13 +17,13 @@ vi.mock("../src/clob.js", () => ({
   resetClobClient: vi.fn(),
 }));
 
-let updateStatusCalls: Array<{ orderId: string; status: string; tx: string | null }> = [];
+let updateStatusCalls: Array<{ orderId: string; status: string; tx: string | null; fillPrice: number | string | null }> = [];
 const openTradesRef: { value: Array<Record<string, unknown>> } = { value: [] };
 
 vi.mock("../src/db.js", () => ({
   listOpenLiveTrades: vi.fn(async () => openTradesRef.value),
-  updateTradeStatus: vi.fn(async (orderId: string, status: string, tx: string | null) => {
-    updateStatusCalls.push({ orderId, status, tx });
+  updateTradeStatus: vi.fn(async (orderId: string, status: string, tx: string | null, fillPrice: number | string | null = null) => {
+    updateStatusCalls.push({ orderId, status, tx, fillPrice });
     return true;
   }),
   persistTrade: vi.fn(async () => true),
@@ -93,6 +93,7 @@ describe("VAL-TRADE-008: builder-trades polling persists fill status", () => {
         orderId: "ord-A",
         status: "filled",
         tx: "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        fillPrice: 0.5,
       },
     ]);
   });

@@ -60,6 +60,12 @@ https://prism-sentinel-production.up.railway.app/mcp/
 
 Keep the trailing slash. Treat this as an MCP transport endpoint, not a normal REST route.
 
+## Execution attribution
+
+Prism links validated reasoning to eventual market action through Prism trade receipts with Polymarket-compatible builder codes. Paper receipts and live trades carry HMAC-derived builder codes from ERC-8004 agent IDs, so a trade can be tied back to the agent/report that produced it. Live fills reconcile to Polymarket builder-trade receipts when present.
+
+Fee totals are shown only when filled trades include price data. Legacy paper receipts without `fill_price` stay marked as fee-pending instead of being counted as revenue.
+
 ## Receipts
 
 Receipts link the report to evidence:
@@ -68,5 +74,6 @@ Receipts link the report to evidence:
 - verdict IPFS CID
 - Base Sepolia x402 payment transaction when paid externally
 - Arc validation request and response transactions when present
+- Prism trade receipts with Polymarket-compatible builder codes when a trade exists
 
 Prism does not deploy custom Solidity contracts. Arc interactions use deployed registries and Circle wallet infrastructure.
