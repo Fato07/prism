@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Pill } from "@/components/ui/pill";
 import type { ConnectorManifest, ConnectorPassport } from "@/lib/connectors";
 
+const TRANSPORTS = ["mcp_http", "custom_webhook"] as const;
 const INPUT_MAPPERS = ["query", "query_limit", "query_max_results", "q_count", "prism_evidence_request"] as const;
 const INPUT_CLASS = "w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-canvas-sunken)] px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-[var(--color-sentinel)]";
 
@@ -21,6 +22,7 @@ const RESULT_MAPPERS = [
 ] as const;
 
 const EMPTY_FORM = {
+  transport: "mcp_http",
   name: "Primary MCP evidence server",
   server_url: "",
   tool_name: "search",
@@ -76,6 +78,7 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
         method: "POST",
         headers: { "content-type": "application/json", ...adminHeaders(adminToken) },
         body: JSON.stringify({
+          transport: form.transport,
           name: form.name,
           server_url: form.server_url,
           tool_name: form.tool_name,
@@ -134,7 +137,7 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
           </button>
           {manifest.connectors.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-canvas-sunken)]/40 p-4 text-sm leading-6 text-fg-muted">
-              No connector passport is stored yet. Save an MCP connector, run smoke, then arm it for sentinel issue resolution.
+              No connector passport is stored yet. Save an MCP or webhook connector, run smoke, then arm it for sentinel issue resolution.
             </div>
           ) : (
             manifest.connectors.map((connector) => (
@@ -157,9 +160,9 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
           <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-[var(--color-verdict-good)]" strokeWidth={2} />
-            Create MCP passport
+            Create connector passport
           </CardTitle>
-          <Pill tone="sentinel" emphasis="outline" size="xs">encrypted token capture</Pill>
+          <Pill tone="sentinel" emphasis="outline" size="xs">MCP-first · encrypted token capture</Pill>
         </CardHeader>
         <CardContent>
           <form className="grid grid-cols-1 gap-3 md:grid-cols-2" onSubmit={handleSave}>
@@ -169,8 +172,13 @@ export function ConnectorStudioClient({ initialManifest }: { initialManifest: Co
             <Field label="Name">
               <input className={INPUT_CLASS} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
             </Field>
-            <Field label="MCP HTTP URL">
-              <input className={INPUT_CLASS} placeholder="https://server.example/mcp" value={form.server_url} onChange={(event) => setForm({ ...form, server_url: event.target.value })} />
+            <Field label="Transport">
+              <select className={INPUT_CLASS} value={form.transport} onChange={(event) => setForm({ ...form, transport: event.target.value })}>
+                {TRANSPORTS.map((transport) => <option key={transport}>{transport}</option>)}
+              </select>
+            </Field>
+            <Field label="Endpoint URL">
+              <input className={INPUT_CLASS} placeholder={form.transport === "mcp_http" ? "https://server.example/mcp" : "https://hooks.example/evidence"} value={form.server_url} onChange={(event) => setForm({ ...form, server_url: event.target.value })} />
             </Field>
             <Field label="Tool name">
               <input className={INPUT_CLASS} value={form.tool_name} onChange={(event) => setForm({ ...form, tool_name: event.target.value })} />

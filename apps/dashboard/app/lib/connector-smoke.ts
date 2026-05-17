@@ -69,6 +69,17 @@ export async function runMcpConnectorSmoke({
   const failClosedOk = row.fail_closed;
   const costCapOk = row.max_usdc === null || Number(row.max_usdc) >= 0;
 
+  if (row.transport === "custom_webhook") {
+    return runCustomWebhookConnectorSmoke({
+      row,
+      bearerToken,
+      fetchImpl,
+      checkedAt,
+      failClosedOk,
+      costCapOk,
+    });
+  }
+
   if (row.transport !== "mcp_http") {
     return failedConnectorSmokeReceipt({
       checkedAt,
@@ -186,6 +197,136 @@ export async function runMcpConnectorSmoke({
       errorCode: transportOk ? "mcp_call_failed" : "transport_error",
     });
   }
+}
+
+async function runCustomWebhookConnectorSmoke({
+  row,
+  bearerToken,
+  fetchImpl,
+  checkedAt,
+  failClosedOk,
+  costCapOk,
+}: {
+  row: ToolConnectorRow;
+  bearerToken?: string | null;
+  fetchImpl: SmokeFetch;
+  checkedAt: string;
+  failClosedOk: boolean;
+  costCapOk: boolean;
+}): Promise<ToolConnectorSmokeReceipt> {
+  let transportOk = false;
+  let toolReachable = false;
+  let schemaOk = false;
+  let mapperOk = false;
+
+  if (!row.server_url) {
+    return failedConnectorSmokeReceipt({
+      checkedAt,
+      transportOk,
+      toolReachable,
+      schemaOk,
+      mapperOk,
+      failClosedOk,
+      costCapOk,
+      errorCode: "connector_unconfigured",
+    });
+  }
+
+  if (!isSafeConnectorUrl(row.server_url)) {
+    return failedConnectorSmokeReceipt({
+      checkedAt,
+      transportOk,
+      toolReachable,
+      schemaOk,
+      mapperOk,
+      failClosedOk,
+      costCapOk,
+      errorCode: "unsafe_connector_url",
+    });
+  }
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (bearerToken) headers.authorization = `Bearer ${bearerToken}`;
+
+  try {
+    const response = await fetchImpl(row.server_url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(buildWebhookSmokeRequest(row)),
+    });
+    transportOk = true;
+    toolReachable = response.ok;
+    if (!response.ok) {
+      return failedConnectorSmokeReceipt({
+        checkedAt,
+        transportOk,
+        toolReachable,
+        schemaOk,
+        mapperOk,
+        failClosedOk,
+        costCapOk,
+        errorCode: response.status === 402 ? "x402_payment_required" : "webhook_http_error",
+      });
+    }
+
+    const body = (await response.json()) as unknown;
+    schemaOk = true;
+    const evidenceCount = countEvidenceItems(body);
+    mapperOk = evidenceCount > 0;
+    if (!mapperOk) {
+      return failedConnectorSmokeReceipt({
+        checkedAt,
+        transportOk,
+        toolReachable,
+        schemaOk,
+        mapperOk,
+        failClosedOk,
+        costCapOk,
+        errorCode: "mapper_no_results",
+      });
+    }
+
+    return {
+      status: "passed",
+      checked_at: checkedAt,
+      transport_ok: true,
+      tool_reachable: true,
+      schema_ok: true,
+      mapper_ok: true,
+      fail_closed_ok: failClosedOk,
+      cost_cap_ok: costCapOk,
+      evidence_count: evidenceCount,
+    };
+  } catch {
+    return failedConnectorSmokeReceipt({
+      checkedAt,
+      transportOk,
+      toolReachable,
+      schemaOk,
+      mapperOk,
+      failClosedOk,
+      costCapOk,
+      errorCode: transportOk ? "webhook_parse_error" : "transport_error",
+    });
+  }
+}
+
+function buildWebhookSmokeRequest(row: Pick<ToolConnectorRow, "max_results">): Record<string, unknown> {
+  return {
+    query: SMOKE_QUERY,
+    max_results: row.max_results,
+    market_question: "Will the connector return current external evidence?",
+    challenge: {
+      id: "smoke-temporal-001",
+      type: "temporal",
+      severity: "material",
+      question: "Can this tool return recent evidence for sentinel issue resolution?",
+      required_resolution: "Return at least one parseable evidence result.",
+      blocking_pass: false,
+      claim_ref: null,
+      resolution_status: "open",
+    },
+  };
 }
 
 async function callMcp(

@@ -918,6 +918,34 @@ async def test_custom_webhook_provider_returns_empty_on_http_failure() -> None:
     assert await provider.search(_request()) == []
 
 
+@pytest.mark.asyncio
+async def test_custom_webhook_provider_redacts_failure_url_in_logs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeLogger:
+        def warning(self, event: str, **kwargs: object) -> None:
+            captured["event"] = event
+            captured.update(kwargs)
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "down"})
+
+    monkeypatch.setattr(evidence_tools, "logger", FakeLogger())
+    provider = CustomWebhookEvidenceProvider(
+        url="https://user:pass@evidence.example/secret-path?token=secret-token",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await provider.search(_request()) == []
+    assert captured["event"] == "custom_evidence_webhook_failed"
+    assert captured["url"] == "https://evidence.example"
+    assert "secret-token" not in str(captured)
+    assert "secret-path" not in str(captured)
+    assert "pass@" not in str(captured)
+
+
 def test_evidence_provider_from_env_uses_mcp_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PRISM_EVIDENCE_PROVIDER", "mcp")
     monkeypatch.setenv("PRISM_EVIDENCE_MCP_URL", "https://tools.example.com/mcp/")
@@ -963,6 +991,28 @@ def test_evidence_provider_from_connector_row_uses_armed_mcp_passport() -> None:
     assert provider.input_mapper == "query_limit"
     assert provider.result_mapper == "generic_search"
     assert provider.allowed_tools == ["search"]
+
+
+def test_evidence_provider_from_connector_row_uses_armed_custom_webhook_passport() -> None:
+    provider = evidence_provider_from_connector_row(
+        {
+            "id": "connector-2",
+            "transport": "custom_webhook",
+            "server_url": "https://hooks.example.com/evidence",
+            "tool_name": "search",
+            "input_mapper": "prism_evidence_request",
+            "result_mapper": "custom_webhook",
+            "allowed_tools": ["search"],
+            "timeout_seconds": "20.000",
+            "smoke_status": "passed",
+            "fail_closed": True,
+            "auth_secret_ciphertext": None,
+        }
+    )
+
+    assert isinstance(provider, CustomWebhookEvidenceProvider)
+    assert provider.url == "https://hooks.example.com/evidence"
+    assert provider.timeout_seconds == 20.0
 
 
 def test_evidence_provider_from_connector_row_fails_closed_when_token_key_missing(

@@ -28,8 +28,11 @@ export const EvidenceResultMapperSchema = z.enum([
   "brave_search",
 ]);
 
+export const ConnectorPassportWritableTransportSchema = z.enum(["mcp_http", "custom_webhook", "x402_http"]);
+
 export const CreateMcpConnectorRequestSchema = z.object({
   id: z.string().uuid().optional(),
+  transport: ConnectorPassportWritableTransportSchema.default("mcp_http"),
   name: z.string().trim().min(1).max(120),
   server_url: z.string().trim().url().refine(isSafeConnectorUrl, "Connector URL is not allowed"),
   tool_name: z.string().trim().min(1).max(120),

@@ -206,8 +206,8 @@ Current behavior:
 3. `/dashboard` shows the active evidence route next to Sentinel reasoning, so connector
    state is part of the trust workspace rather than a standalone product marketplace.
 4. `/connectors` is a compact workspace tools/settings route where an operator saves an
-   MCP HTTP connector, chooses explicit input/result mappers, runs smoke, and arms the
-   connector.
+   MCP HTTP connector or custom webhook bridge, chooses explicit input/result mappers,
+   runs smoke, and arms the connector.
 5. Smoke receipts record redacted checks: transport, tool reachability, schema, mapper,
    fail-closed behavior, cost cap, and parsed evidence count.
 6. A connector can be armed only after smoke passes. A partial unique index enforces one
@@ -229,6 +229,10 @@ Hosted deployments should keep `CONNECTOR_ALLOW_PRIVATE_URLS=0` and
 `CONNECTOR_ALLOW_HTTP_CONNECTORS=0` so smoke tests cannot SSRF private infrastructure.
 
 Self-hosted/env-only mode remains available with `PRISM_EVIDENCE_DB_CONNECTORS=0`.
+
+Direct `x402_http` paid execution is intentionally not armed in hosted Connector Passport
+until a Circle-wallet-compatible payment client and per-call USDC cap are approved. Use a
+custom webhook bridge when an operator already controls a paid x402 wrapper.
 
 For live demo evidence without a third-party research provider, sentinel mounts
 `/market-evidence-mcp/`, a free read-only FastMCP server with tool `search`. Configure it
@@ -384,7 +388,9 @@ Current pieces:
 - `tool_connectors` migration — Connector Passport v1 registry with one armed
   evidence connector per workspace.
 - `/api/connectors` plus `/api/connectors/[id]/smoke` and `/arm` — redacted
-  dashboard control plane for save → smoke → arm.
+  dashboard control plane for save → smoke → arm. MCP HTTP is preferred; custom webhook
+  bridges are supported for operator-controlled wrappers around internal tools or paid
+  services.
 - `/market-evidence-mcp/` — read-only Polymarket gateway evidence MCP server for resolving
   market-structure/status issues without pretending to answer broader research questions.
 - `/demo-evidence-mcp/` — smoke-only demo MCP evidence server mounted on sentinel for
@@ -401,7 +407,8 @@ Current pieces:
 - `EvidenceConnectorConfig` / `ToolConnectorManifest` — small Pydantic manifest models.
 - explicit result mapper registry — `generic_search`, `firecrawl_search`, `exa_search`,
   `tavily_search`, `parallel_search`, `brave_search`, `custom_webhook`.
-- `CustomWebhookEvidenceProvider` — BYO bridge; useful for wrapping MCP/internal tools.
+- `CustomWebhookEvidenceProvider` — BYO bridge; useful for wrapping MCP/internal tools
+  and now loadable from an armed Connector Passport row.
 - `ParallelSearchEvidenceProvider` — direct adapter fallback/reference mapper.
 - `TavilySearchEvidenceProvider` — direct adapter fallback/reference mapper.
 - `ExaSearchEvidenceProvider` — direct adapter fallback/reference mapper.
