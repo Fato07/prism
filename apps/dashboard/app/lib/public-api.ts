@@ -1,4 +1,13 @@
 import { getPool, getTraceDetailData } from "@/lib/db";
+import {
+  getIssueLedgerSummary,
+  latestResolutionForChallenge,
+} from "@/lib/issue-ledger";
+import {
+  SentinelVerdictSchema,
+  type SentinelVerdict,
+  type ValidationRow,
+} from "@/lib/schemas";
 
 export type VerdictLabel = "REJECT" | "WARN" | "PASS" | "ENDORSE";
 export type Readiness = "usable" | "needs_review" | "not_ready";
@@ -38,6 +47,43 @@ interface TraceEvidenceLike {
 interface TraceThesisLike {
   supporting_evidence_ids?: unknown;
   risk_factors?: unknown;
+}
+
+export interface PublicIssueLedgerReport {
+  summary: {
+    total_issues: number;
+    resolved_count: number;
+    unresolved_blocking_count: number;
+    unresolved_material_count: number;
+    clean_pass_allowed: boolean;
+    endorsement_allowed: boolean;
+    active_policy_constraints: string[];
+    explanation: string;
+  };
+  resolution_metadata: SentinelVerdict["resolution_metadata"] | null;
+  issues: Array<{
+    id: string;
+    type: string;
+    severity: string;
+    blocking_pass: boolean;
+    resolution_status: string;
+    question: string;
+    required_resolution: string;
+    claim_ref: string | null;
+    latest_resolution: SentinelVerdict["challenge_resolutions"][number] | null;
+  }>;
+}
+
+export interface PublicReceiptVerificationReport {
+  response_uri: string | null;
+  verdict_ipfs: string | null;
+  validation_arc_tx: string | null;
+  schema_valid: boolean;
+  request_hash_matches: boolean | null;
+  trace_id_matches: boolean | null;
+  sentinel_agent_id_matches: boolean | null;
+  verdict_score_matches: boolean | null;
+  db_receipt_present: boolean;
 }
 
 function dashboardBaseUrl(): string {
@@ -155,6 +201,63 @@ export function readinessFromMetrics(metrics: ReasoningMetrics): Readiness {
   return "needs_review";
 }
 
+export function buildPublicIssueLedgerReport(
+  verdict: SentinelVerdict | null,
+): PublicIssueLedgerReport | null {
+  if (!verdict) return null;
+
+  const summary = getIssueLedgerSummary(verdict);
+  return {
+    summary: {
+      total_issues: summary.totalIssues,
+      resolved_count: summary.resolvedCount,
+      unresolved_blocking_count: summary.unresolvedBlockingCount,
+      unresolved_material_count: summary.unresolvedMaterialCount,
+      clean_pass_allowed: summary.cleanPassAllowed,
+      endorsement_allowed: summary.endorsementAllowed,
+      active_policy_constraints: summary.activePolicyConstraints,
+      explanation: summary.explanation,
+    },
+    resolution_metadata: verdict.resolution_metadata ?? null,
+    issues: (verdict.structured_challenges ?? []).map((challenge) => ({
+      id: challenge.id,
+      type: challenge.type,
+      severity: challenge.severity,
+      blocking_pass: challenge.blocking_pass,
+      resolution_status: challenge.resolution_status,
+      question: challenge.question,
+      required_resolution: challenge.required_resolution,
+      claim_ref: challenge.claim_ref ?? null,
+      latest_resolution: latestResolutionForChallenge(verdict, challenge.id),
+    })),
+  };
+}
+
+export function buildPublicReceiptVerificationReport(
+  validation: ValidationRow | null,
+  verdict: SentinelVerdict | null,
+): PublicReceiptVerificationReport | null {
+  if (!validation) return null;
+
+  return {
+    response_uri: validation.response_uri,
+    verdict_ipfs: extractCid(validation.response_uri)
+      ? `ipfs://${extractCid(validation.response_uri)}`
+      : null,
+    validation_arc_tx: validation.tx_hash,
+    schema_valid: verdict !== null,
+    request_hash_matches: verdict
+      ? normalizeHash(verdict.request_hash) === normalizeHash(validation.request_hash)
+      : null,
+    trace_id_matches: verdict ? verdict.trace_id === validation.trace_id : null,
+    sentinel_agent_id_matches: verdict
+      ? verdict.sentinel_agent_id === validation.sentinel_agent_id
+      : null,
+    verdict_score_matches: verdict ? verdict.verdict_score === validation.verdict_score : null,
+    db_receipt_present: true,
+  };
+}
+
 export function warningsFromMetrics(metrics: ReasoningMetrics): string[] {
   const warnings: string[] = [];
   if (metrics.evidence_count < 2) warnings.push("Trace has fewer than 2 evidence items.");
@@ -224,6 +327,15 @@ export async function getPublicTraceReport(traceId: string): Promise<Record<stri
   const warnings = metrics ? warningsFromMetrics(metrics) : [];
   const score = detail.validation?.verdict_score ?? null;
   const verdictCid = extractCid(detail.validation?.response_uri ?? "");
+  const parsedVerdict = detail.verdictContent
+    ? SentinelVerdictSchema.safeParse(detail.verdictContent)
+    : null;
+  const verdict = parsedVerdict?.success ? parsedVerdict.data : null;
+  const issueLedger = buildPublicIssueLedgerReport(verdict);
+  const receiptVerification = buildPublicReceiptVerificationReport(
+    detail.validation,
+    verdict,
+  );
 
   return {
     generated_at: new Date().toISOString(),
@@ -253,6 +365,8 @@ export async function getPublicTraceReport(traceId: string): Promise<Record<stri
     reasoning_metrics: metrics,
     readiness,
     warnings,
+    issue_ledger: issueLedger,
+    receipt_verification: receiptVerification,
     receipts: {
       trace_ipfs: detail.trace.ipfs_cid ? `ipfs://${detail.trace.ipfs_cid}` : null,
       verdict_ipfs: verdictCid ? `ipfs://${verdictCid}` : null,
@@ -272,6 +386,10 @@ function extractCid(uri: string): string | null {
 function numberOrNull(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeHash(value: string): string {
+  return value.trim().replace(/^0x/i, "").toLowerCase();
 }
 
 function round4(value: number): number {
