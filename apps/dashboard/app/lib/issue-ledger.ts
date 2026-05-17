@@ -3,6 +3,8 @@ import type { ChallengeResolution, SentinelVerdict } from "@/lib/schemas";
 const RESOLVED_STATUSES = new Set(["resolved", "superseded"]);
 const UNRESOLVED_STATUSES = new Set(["open", "answered", "conceded"]);
 
+export type ToolResolutionStatus = "resolved" | "no_evidence" | "not_attempted";
+
 export interface IssueLedgerSummary {
   totalIssues: number;
   resolvedCount: number;
@@ -12,6 +14,13 @@ export interface IssueLedgerSummary {
   cleanPassAllowed: boolean;
   endorsementAllowed: boolean;
   explanation: string;
+}
+
+export interface ToolResolutionSummary {
+  resolvedCount: number;
+  noEvidenceCount: number;
+  notRecordedCount: number;
+  label: string;
 }
 
 export function latestResolutionForChallenge(
@@ -33,6 +42,82 @@ export function latestResolutionForChallenge(
 function timestampMs(value: string): number {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+export function toolResolutionStatus(
+  resolution: ChallengeResolution | null,
+): ToolResolutionStatus {
+  if (!resolution) return "not_attempted";
+  return toolResolutionStatusFromResolutions([resolution]);
+}
+
+export function toolResolutionStatusForChallenge(
+  verdict: SentinelVerdict,
+  challengeId: string,
+): ToolResolutionStatus {
+  const resolutions = (verdict.challenge_resolutions ?? []).filter(
+    (resolution) => resolution.challenge_id === challengeId,
+  );
+  return toolResolutionStatusFromResolutions(resolutions);
+}
+
+function toolResolutionStatusFromResolutions(
+  resolutions: ChallengeResolution[],
+): ToolResolutionStatus {
+  if (resolutions.some((resolution) => (
+    resolution.responder === "evidence_tool" && RESOLVED_STATUSES.has(resolution.status)
+  ))) {
+    return "resolved";
+  }
+  if (resolutions.some((resolution) => (
+    resolution.responder === "evidence_tool" || isNoEvidenceResolution(resolution)
+  ))) {
+    return "no_evidence";
+  }
+  return "not_attempted";
+}
+
+export function getToolResolutionSummary(verdict: SentinelVerdict): ToolResolutionSummary {
+  const challenges = verdict.structured_challenges ?? [];
+  const statuses = challenges.map((challenge) => (
+    toolResolutionStatusForChallenge(verdict, challenge.id)
+  ));
+  const resolvedCount = statuses.filter((status) => status === "resolved").length;
+  const noEvidenceCount = statuses.filter((status) => status === "no_evidence").length;
+  const notRecordedCount = statuses.filter((status) => status === "not_attempted").length;
+
+  return {
+    resolvedCount,
+    noEvidenceCount,
+    notRecordedCount,
+    label: toolResolutionLabel({ resolvedCount, noEvidenceCount }),
+  };
+}
+
+function isNoEvidenceResolution(resolution: ChallengeResolution): boolean {
+  if (resolution.responder !== "system") return false;
+  const response = resolution.response.toLowerCase();
+  return response.includes("no configured evidence provider") ||
+    response.includes("no additional evidence retrieved");
+}
+
+function toolResolutionLabel({
+  resolvedCount,
+  noEvidenceCount,
+}: {
+  resolvedCount: number;
+  noEvidenceCount: number;
+}): string {
+  if (resolvedCount === 0 && noEvidenceCount === 0) {
+    return "No evidence-tool resolution was recorded.";
+  }
+  if (resolvedCount > 0 && noEvidenceCount === 0) {
+    return "Evidence tool resolved every recorded issue.";
+  }
+  if (resolvedCount > 0) {
+    return "Evidence tool resolved some issues; the rest stayed fail-closed.";
+  }
+  return "Evidence route accepted no usable evidence; issues stayed fail-closed.";
 }
 
 export function getIssueLedgerSummary(verdict: SentinelVerdict): IssueLedgerSummary {
