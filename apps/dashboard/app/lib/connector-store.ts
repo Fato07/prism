@@ -118,7 +118,7 @@ export async function upsertMcpConnector(input: CreateMcpConnectorRequest): Prom
         armed,
         updated_at
       ) VALUES (
-        $1, $2, 'mcp_http', 'mcp', $3, $4, $5, $6, $7::text[], $8, $9, $10, $11, $12, $13, 'not_run', NULL, FALSE, NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10, $11, $12, $13, $14, $15, 'not_run', NULL, FALSE, NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
@@ -143,6 +143,8 @@ export async function upsertMcpConnector(input: CreateMcpConnectorRequest): Prom
     [
       id,
       parsed.name,
+      parsed.transport,
+      providerForTransport(parsed.transport),
       parsed.server_url,
       parsed.tool_name,
       parsed.input_mapper,
@@ -253,6 +255,18 @@ function parseConnectorRow(row: Record<string, unknown>): ToolConnectorRow {
     allowed_tools: Array.isArray(row.allowed_tools) ? row.allowed_tools : [],
     max_results: Number(row.max_results),
   });
+}
+
+function providerForTransport(transport: CreateMcpConnectorRequest["transport"]): string {
+  switch (transport) {
+    case "custom_webhook":
+      return "custom_webhook";
+    case "x402_http":
+      return "x402";
+    case "mcp_http":
+    default:
+      return "mcp";
+  }
 }
 
 function uniqueStrings(values: string[]): string[] {

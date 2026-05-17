@@ -33,6 +33,17 @@ const baseConnector = {
   updated_at: "2026-05-17T00:00:00Z",
 } satisfies ToolConnectorRow;
 
+const webhookConnector = {
+  ...baseConnector,
+  name: "Research webhook evidence",
+  transport: "custom_webhook",
+  provider: "custom_webhook",
+  server_url: "https://hooks.example.com/evidence",
+  input_mapper: "prism_evidence_request",
+  result_mapper: "custom_webhook",
+  max_usdc: null,
+} satisfies ToolConnectorRow;
+
 function jsonResponse(payload: unknown, ok = true, headers = new Headers({ "content-type": "application/json" })): Response {
   return {
     ok,
@@ -116,5 +127,36 @@ describe("connector smoke helpers", () => {
     expect(receipt.status).toBe("failed");
     expect(receipt.error_code).toBe("mapper_no_results");
     expect(receipt.fail_closed_ok).toBe(true);
+  });
+
+  it("smokes custom webhook connectors with a normalized evidence request", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        results: [{ title: "Smoke", url: "https://example.com", snippet: "fresh evidence" }],
+      })
+    );
+
+    const receipt = await runMcpConnectorSmoke({
+      row: webhookConnector,
+      bearerToken: "webhook-token",
+      fetchImpl,
+    });
+
+    expect(receipt.status).toBe("passed");
+    expect(receipt.evidence_count).toBe(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://hooks.example.com/evidence",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ authorization: "Bearer webhook-token" }),
+      })
+    );
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      query: expect.stringContaining("Prism connector smoke test"),
+      max_results: 5,
+      challenge: { id: "smoke-temporal-001", type: "temporal" },
+    });
+    expect(JSON.stringify(receipt)).not.toContain("webhook-token");
   });
 });

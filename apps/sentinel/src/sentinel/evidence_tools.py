@@ -14,6 +14,7 @@ import json
 import os
 from collections.abc import Callable, Mapping
 from typing import Any, Literal, Protocol
+from urllib.parse import urlsplit
 
 import httpx
 import psycopg
@@ -581,9 +582,10 @@ class CustomWebhookEvidenceProvider:
         except httpx.HTTPError as exc:
             logger.warning(
                 "custom_evidence_webhook_failed",
-                url=self.url,
+                url=_redacted_url_for_log(self.url),
                 challenge_id=request.challenge.id,
-                error=str(exc),
+                error=type(exc).__name__,
+                status_code=_http_status_code(exc),
             )
             return []
 
@@ -792,7 +794,7 @@ def evidence_provider_from_connector_row(row: Mapping[str, Any]) -> EvidenceProv
     transport = str(row.get("transport", "")).strip().lower()
     smoke_status = str(row.get("smoke_status", "")).strip().lower()
     fail_closed = bool(row.get("fail_closed", True))
-    if transport != "mcp_http" or smoke_status != "passed" or not fail_closed:
+    if smoke_status != "passed" or not fail_closed:
         logger.warning(
             "active_evidence_connector_not_usable",
             connector_id=connector_id,
@@ -807,7 +809,7 @@ def evidence_provider_from_connector_row(row: Mapping[str, Any]) -> EvidenceProv
     tool_name = _optional_string(_row_string(row, "tool_name"))
     result_mapper = _row_string(row, "result_mapper") or "generic_search"
     input_mapper = _row_string(row, "input_mapper") or "query"
-    if server_url is None or tool_name is None:
+    if server_url is None or (transport == "mcp_http" and tool_name is None):
         logger.warning(
             "active_evidence_connector_missing_required_config",
             connector_id=connector_id,
@@ -841,8 +843,24 @@ def evidence_provider_from_connector_row(row: Mapping[str, Any]) -> EvidenceProv
         return NoopEvidenceProvider()
 
     auth_token = auth_token_value if isinstance(auth_token_value, str) else None
-    allowed_tools = _row_string_list(row.get("allowed_tools")) or [tool_name]
     timeout_seconds = _row_float(row.get("timeout_seconds"), fallback=20.0)
+    if transport == "custom_webhook":
+        return CustomWebhookEvidenceProvider(
+            url=server_url,
+            bearer_token=auth_token,
+            timeout_seconds=timeout_seconds,
+        )
+    if transport != "mcp_http":
+        logger.warning(
+            "active_evidence_connector_unsupported_transport",
+            connector_id=connector_id,
+            transport=transport,
+            fallback="noop",
+        )
+        return NoopEvidenceProvider()
+
+    assert tool_name is not None
+    allowed_tools = _row_string_list(row.get("allowed_tools")) or [tool_name]
     return McpEvidenceProvider(
         server_url=server_url,
         tool_name=tool_name,
@@ -989,6 +1007,27 @@ def _csv_env(name: str) -> list[str]:
     """Return a comma-separated env var as stripped non-empty values."""
     raw_value = os.environ.get(name, "")
     return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
+def _redacted_url_for_log(url: str) -> str:
+    """Return a log-safe URL origin without credentials, path, query, or fragment."""
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return "redacted-url"
+    if not parsed.scheme or parsed.hostname is None:
+        return "redacted-url"
+    host = parsed.hostname
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    return f"{parsed.scheme}://{host}"
+
+
+def _http_status_code(exc: httpx.HTTPError) -> int | None:
+    """Return a response status code without serializing request URLs."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code
+    return None
 
 
 def _optional_string(value: str | None) -> str | None:

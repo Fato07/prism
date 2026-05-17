@@ -110,8 +110,39 @@ describe("connectors API routes", () => {
 
     expect(response.status).toBe(201);
     expect(body.connector.id).toBe(connector.id);
-    expect(mocks.upsertMcpConnector).toHaveBeenCalledWith(expect.objectContaining({ tool_name: "search" }));
+    expect(mocks.upsertMcpConnector).toHaveBeenCalledWith(expect.objectContaining({ transport: "mcp_http", tool_name: "search" }));
     expect(JSON.stringify(body)).not.toContain("token_1234");
+  });
+
+  it("POST /api/connectors validates and saves custom webhook connector config", async () => {
+    mocks.upsertMcpConnector.mockResolvedValue({
+      ...connector,
+      transport: "custom_webhook",
+      provider: "custom_webhook",
+      result_mapper: "custom_webhook",
+    });
+    const request = adminRequest("http://localhost/api/connectors", {
+      method: "POST",
+      body: JSON.stringify({
+        transport: "custom_webhook",
+        name: "Research webhook",
+        server_url: "https://hooks.example.com/evidence",
+        tool_name: "search",
+        input_mapper: "prism_evidence_request",
+        result_mapper: "custom_webhook",
+        timeout_seconds: 20,
+        max_results: 5,
+        bearer_token: "webhook_token_1234",
+      }),
+    });
+
+    const response = await POST(request as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.connector.transport).toBe("custom_webhook");
+    expect(mocks.upsertMcpConnector).toHaveBeenCalledWith(expect.objectContaining({ transport: "custom_webhook" }));
+    expect(JSON.stringify(body)).not.toContain("webhook_token_1234");
   });
 
   it("POST /api/connectors rejects invalid connector payloads", async () => {

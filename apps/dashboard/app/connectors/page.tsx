@@ -40,7 +40,7 @@ export default function ConnectorsPage() {
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-fg-muted sm:text-base">
               Connector Passport is not a tool marketplace. It is a workspace control that lets
-              Sentinel call one armed, smoke-tested MCP evidence tool during issue resolution.
+              Sentinel call one armed, smoke-tested MCP evidence tool or custom webhook bridge during issue resolution.
             </p>
           </div>
 
@@ -95,7 +95,7 @@ export default function ConnectorsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm leading-6 text-fg-muted">
-                MCP input/result mappers, deployment envs, x402 tools, webhook bridges, and
+                MCP input/result mappers, webhook bridge contracts, deployment envs, x402 tools, and
                 direct adapter fallbacks live in the developer docs rather than this workspace UI.
               </p>
               <Link
