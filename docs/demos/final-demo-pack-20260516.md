@@ -1,4 +1,4 @@
-# Prism final demo pack — 2026-05-16
+# Prism final demo pack — 2026-05-17 update
 
 This is the judge-facing recording pack for Prism's final demo. It uses only receipt-backed claims.
 
@@ -10,10 +10,14 @@ This is the judge-facing recording pack for Prism's final demo. It uses only rec
 | Docs | <https://prism-docs-production.up.railway.app> |
 | Quickstart | <https://prism-docs-production.up.railway.app/docs/quickstart> |
 | Receipts guide | <https://prism-docs-production.up.railway.app/docs/receipts> |
+| Public APIs | <https://prism-docs-production.up.railway.app/docs/public-apis> |
 | Calibration docs | <https://prism-docs-production.up.railway.app/docs/calibration> |
-| Broad-evidence trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1> |
-| Legacy canonical trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24> |
+| URL-verified Exa evidence trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea> |
+| URL-verified Exa public report | <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea/report> |
+| Fail-closed guardrail trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/74cead4a-5def-4cec-8cb2-b5294d739acb> |
+| Legacy self-serve canonical trace | <https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24> |
 | Stats | <https://prism-dashboard-production-e6e3.up.railway.app/stats> |
+| Connector Passport | <https://prism-dashboard-production-e6e3.up.railway.app/connectors> |
 | Calibration | <https://prism-dashboard-production-e6e3.up.railway.app/calibration> |
 | Self-serve submit | <https://prism-dashboard-production-e6e3.up.railway.app/submit> |
 | Sentinel MCP | `https://prism-sentinel-production.up.railway.app/mcp/` |
@@ -25,6 +29,10 @@ Keep the sentinel MCP trailing slash: `/mcp/`.
 
 | Proof | Link |
 | --- | --- |
+| URL-verified Exa paid validation receipt | [`external-call-20260517T203104+0000.md`](./external-call-20260517T203104+0000.md) |
+| URL-verified Exa x402 payment tx | <https://sepolia.basescan.org/tx/0x8d5d7a46bd88b2ffba5b6e6c6d70221598ee041d4206377ca5991e90f5c12421> |
+| URL-verified Exa verdict IPFS | <https://gateway.pinata.cloud/ipfs/QmYmfMRuHxRWJXHswWhRjbQkbqvKmpDaHxuwyR63bFk7AR> |
+| Canonical demo trace list | [`canonical-traces-20260517.md`](./canonical-traces-20260517.md) |
 | First dashboard self-serve receipt | [`self-serve-submit-20260515T101946Z.md`](./self-serve-submit-20260515T101946Z.md) |
 | Dashboard x402 payment tx | <https://sepolia.basescan.org/tx/0x63bf70941e8890b2b92459addfa18ecb57dd06bba7ea715391f00322faf58d68> |
 | Canonical trace Arc validation request | <https://testnet.arcscan.app/tx/0x5adb156fa8de6c1cf7e0d50c2197d8315eb9a501da2c00ffbf52996d2407d786> |
@@ -35,38 +43,56 @@ Keep the sentinel MCP trailing slash: `/mcp/`.
 
 ## Current stats snapshot
 
-Snapshot from `GET /api/public/stats` after the Exa hosted MCP evidence deploy:
+Snapshot from `GET /api/public/stats` after the Exa URL-verification paid validation:
 
 | Metric | Value |
 | --- | ---: |
-| Verdicts issued | 772 |
-| Traces validated | 962 |
-| On-chain anchors | 744 |
-| Builder-attributed trades | 368 |
-| Builder fees | `0.002990` USDC |
-| External x402 calls | 2 |
-| Unique wallets | 2 |
+| Verdicts issued | 815 |
+| Traces validated | 1,005 |
+| On-chain anchors | 786 |
+| Builder-attributed trades | 404 |
+| Builder fees with fill-price receipts | `0.013186` USDC |
+| External x402 calls | 3 |
+| Unique wallets | 3 |
 | Live verdict score spread | 57 |
 
 ## Demo modes
 
-### Broad evidence resolution — current default
+### URL-verified Exa evidence resolution — current default
 
-Active connector: `Exa hosted MCP evidence` (`mcp_http`, tool `web_search_exa`, mapper `exa_mcp_text`).
+Active connector: `Exa hosted MCP evidence` (`mcp_http`, search tool `web_search_exa`, mapper `exa_mcp_text`). Production Sentinel also requires extraction through Exa `web_fetch_exa` (`PRISM_EVIDENCE_EXTRACTION_REQUIRED=1`).
 
 Use this to show the mature path:
 
 1. Trader submits a reasoning trace.
-2. Sentinel raises temporal/calibration issues in the current public trace; source-quality coverage is tested separately.
+2. Sentinel raises source-quality, temporal, market-structure, logic, or calibration issues.
 3. Connector Passport routes targeted evidence requests to Exa hosted MCP.
-4. Sentinel accepts only issue-matched, recent/source-adequate evidence.
-5. The issue ledger records `resolved` tool outcomes from `exa_mcp`; the clean-PASS blocker gate clears, while the final capital gate may still require review if the score/label remains WARN.
+4. Sentinel accepts only issue-matched, readable, recent/source-adequate search results.
+5. Sentinel fetches the selected source URL through Exa `web_fetch_exa`.
+6. The public issue ledger records `resolved`, `fail_closed`, or `not_recorded` tool outcomes plus structured `tool_receipt` fields: provider, tool, extractor provider/tool, source URL, source content hash, and excerpt.
+7. Clean PASS / ENDORSE still depends on unresolved issue gates; a PASS score can remain non-endorseable if material issues are still open.
 
-### Fail-closed guardrail — optional reset mode
+Canonical URL-verified trace:
 
-If you need to demonstrate failure safety, re-arm the market-only connector (`Prism market evidence MCP`) or use a connector that returns malformed/non-matching output, then re-run validation. Unsupported stale/source/logic issues should remain unresolved, clean PASS should stay gated, and the public report should show `fail_closed`/`not_recorded` rather than `resolved`.
+```txt
+https://prism-dashboard-production-e6e3.up.railway.app/trace/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea
+```
 
-Do not claim connector output automatically resolves issues. Sentinel adjudicates every resolution through adequacy gates.
+Public report API:
+
+```txt
+https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea/report
+```
+
+### Fail-closed guardrail — current demo trace
+
+Use this trace to demonstrate failure safety without reconfiguring production connectors:
+
+```txt
+https://prism-dashboard-production-e6e3.up.railway.app/trace/74cead4a-5def-4cec-8cb2-b5294d739acb
+```
+
+The report shows material source-quality issues that stayed `open` with `tool_status=fail_closed`. Do not claim connector output automatically resolves issues. Sentinel adjudicates every resolution through adequacy and extraction gates.
 
 ## 150-second demo script
 
@@ -78,21 +104,21 @@ Show dashboard home or `/stats`.
 
 ### 0:15–0:40 — What Prism is
 
-> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. Connector Passport arms external evidence tools, but the sentinel does not trust tool output blindly: evidence must pass adequacy gates before issues resolve. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, receipts, and execution attribution when a paper or live trade carries a builder code.
+> A Claude-family trader creates a structured Trading-R1 trace. A separate GPT-family sentinel attacks the evidence, thesis, and calibration. Connector Passport arms external evidence tools, but the sentinel does not trust tool output blindly: evidence must pass adequacy gates and URL extraction checks before issues resolve. The output is a Prism Report: verdict, reasoning metrics, an issue ledger, a capital gate, IPFS content, evidence provenance receipts, and execution attribution when a paper or live trade carries a builder code.
 
-Show the broad-evidence trace page:
+Show the URL-verified Exa evidence trace page:
 
 ```txt
-https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1
+https://prism-dashboard-production-e6e3.up.railway.app/trace/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea
 ```
 
-Narrative checkpoint: this trace now demonstrates the full MCP evidence loop. Sentinel raised issues, Exa hosted MCP returned source-linked evidence, and adequacy gates accepted only issue-matched results. In the latest receipt, blocking evidence gates are resolved by `exa_mcp`; the final capital gate remains REVIEW when the live verdict score/label stays in the warning band.
+Narrative checkpoint: this trace demonstrates the full MCP evidence loop. Sentinel raised issues, Exa hosted MCP returned source-linked evidence, Sentinel fetched selected source URLs with `web_fetch_exa`, and adequacy gates accepted only issue-matched results. The public report exposes provider/tool/extractor identity, source URLs, source excerpts, and SHA-256 source content hashes.
 
 ### 0:40–1:00 — Capital gate
 
 > Prism is not commentary. It is an execution gate: the trader proposes, the sentinel challenges, and Prism decides whether capital may continue. REJECT or unresolved blocking issues block capital; WARN, material issues, or legacy receipts without a structured issue ledger require review; clean PASS with a structured ledger can continue in paper mode; ENDORSE is the high-confidence path. If a connector fails, returns malformed data, or returns evidence that does not match the issue, Prism stays fail-closed.
 
-Show the trace page `What happened here?` panel, capital-gate card, Sentinel issue-ledger summary, and execution-attribution page if time permits. The current broad-evidence trace should show per-issue `resolved` tool outcomes from `exa_mcp`; the verdict/capital gate may show `WARN`/`REVIEW` if the score remains in the warning band after blockers are cleared.
+Show the trace page `What happened here?` panel, capital-gate card, Sentinel issue-ledger summary, and execution-attribution page if time permits. The URL-verified trace should show per-issue `resolved` tool outcomes from `exa_mcp` with extractor fields; the fail-closed guardrail trace should show material issues left open when adequate evidence was not found.
 
 ### 1:00–1:20 — Human self-serve path
 
@@ -118,13 +144,13 @@ docs/demos/cli-paid-validation-20260516T214837Z.md
 
 ### 1:45–2:10 — Receipts
 
-> This is the live CLI paid receipt: 0.01 USDC, Base Sepolia tx 0xd6ab0cbb…, verdict CID on IPFS, and `prism doctor` green. The receipt bundle also links the dashboard payment, canonical trace, Arc validation request where present, and verdict CID. Prism never reads private keys; Circle CLI signs typed data at the wallet boundary.
+> This is the newest paid MCP receipt: 0.01 USDC, Base Sepolia tx `0x8d5d7a46bd88b2ffba5b6e6c6d70221598ee041d4206377ca5991e90f5c12421`, a verdict CID on IPFS, and a public report with URL-verified evidence receipts. The receipt bundle also links the dashboard payment, CLI payment, canonical traces, Arc validation request where present, and verdict CIDs. Prism never reads private keys; paid flows are explicit and capped.
 
-Show BaseScan tx, IPFS verdict, and docs `/docs/receipts`.
+Show the full BaseScan tx URL, public report API, IPFS verdict, and docs `/docs/receipts`.
 
 ### 2:10–2:30 — Calibration / close
 
-> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 772 verdicts, 962 traces, 744 on-chain anchors, 368 builder-attributed trades, Exa MCP evidence resolution, and two external x402 payments.
+> The sentinel has to prove it discriminates. Prism's startup gate separates good, mediocre, and bad synthetic traces by 45 points, and the private calibration corpus now summarizes 60 rows: real harvested traces, synthetic seeds, mutations, and human-reviewed labels. The long-term point is agents validating agents before markets move. Today Prism has 815 verdicts, 1,005 traces, 786 on-chain anchors, 404 builder-attributed trade receipts, URL-verified Exa MCP evidence receipts, and three external x402 payments.
 
 End on `/calibration`, docs, or dashboard stats.
 
@@ -136,14 +162,17 @@ Open these tabs before recording:
 2. Dashboard trust workspace: <https://prism-dashboard-production-e6e3.up.railway.app/dashboard>
 3. Workspace Tools / Connector Passport: <https://prism-dashboard-production-e6e3.up.railway.app/connectors>
 4. Execution attribution: <https://prism-dashboard-production-e6e3.up.railway.app/builder-fees>
-5. Broad-evidence trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1>
-6. Latest public report API example: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/f7b4f87c-568b-4bac-90ec-d4a3df1f7bd1/report>
-7. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
-8. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
-9. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
-10. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
-11. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
-12. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
+5. URL-verified Exa evidence trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea>
+6. URL-verified public report API example: <https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/85d58b9c-f45f-4aa1-8b8a-7a4b1c1c8fea/report>
+7. Fail-closed guardrail trace: <https://prism-dashboard-production-e6e3.up.railway.app/trace/74cead4a-5def-4cec-8cb2-b5294d739acb>
+8. Submit page: <https://prism-dashboard-production-e6e3.up.railway.app/submit>
+9. Docs quickstart: <https://prism-docs-production.up.railway.app/docs/quickstart>
+10. Docs receipts: <https://prism-docs-production.up.railway.app/docs/receipts>
+11. Calibration: <https://prism-dashboard-production-e6e3.up.railway.app/calibration>
+12. CLI payment tx: <https://sepolia.basescan.org/tx/0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1>
+13. CLI verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmUQpQEaggjuZqGAJpxoDXg4ghJ3ReufWM546g856KqUnk>
+14. URL-verified x402 payment tx: <https://sepolia.basescan.org/tx/0x8d5d7a46bd88b2ffba5b6e6c6d70221598ee041d4206377ca5991e90f5c12421>
+15. URL-verified verdict IPFS: <https://gateway.pinata.cloud/ipfs/QmYmfMRuHxRWJXHswWhRjbQkbqvKmpDaHxuwyR63bFk7AR>
 
 Terminal prep:
 
@@ -182,6 +211,7 @@ Safe claims:
 - Prism CLI never reads private keys
 - paid flows are explicit and capped
 - Connector Passport currently arms Exa hosted MCP as the active broad evidence connector and redacts connector URLs/secrets in public surfaces
+- URL-verified evidence receipts include Exa `web_search_exa`, Exa `web_fetch_exa`, source URL, source excerpt, and source content hash where adequate
 - execution attribution links paper/live trades to builder codes; fee totals are shown only when fill-price data exists
 - unresolved blockers gate clean PASS even when a connector is armed
 
@@ -191,4 +221,4 @@ Prism is an adversarial validation layer for trading agents: a different-family 
 
 ## Submission paragraph
 
-Prism validates trading-agent reasoning before capital moves. A Claude-family trader generates a Trading-R1 trace; a separate GPT/DSPy sentinel adversarially challenges the evidence, thesis, risk factors, and calibration. Connector Passport arms MCP-first evidence tools, but Sentinel only resolves issues when normalized evidence passes adequacy gates; unresolved blockers still gate clean PASS. The output is a Prism Report with deterministic metrics, a verdict, structured issue ledger, capital gate, per-issue tool outcomes, IPFS content, x402 payment receipts, and Arc/ERC-8004 validation receipts where anchored. The product is live as a dashboard, x402-protected MCP trust endpoint, developer CLI, and documentation site. Two external x402 validations have settled on Base Sepolia, including a live CLI paid validation with a public payment transaction and verdict CID.
+Prism validates trading-agent reasoning before capital moves. A Claude-family trader generates a Trading-R1 trace; a separate GPT/DSPy sentinel adversarially challenges the evidence, thesis, risk factors, and calibration. Connector Passport arms MCP-first evidence tools; Sentinel searches with Exa `web_search_exa`, verifies selected source URLs with Exa `web_fetch_exa`, and only resolves issues when evidence passes adequacy and extraction gates. The output is a Prism Report with deterministic metrics, a verdict, structured issue ledger, capital gate, per-issue tool outcomes, evidence provenance receipts, IPFS content, x402 payment receipts, and Arc/ERC-8004 validation receipts where anchored. The product is live as a dashboard, x402-protected MCP trust endpoint, developer CLI, and documentation site. Three external x402 validations have settled on Base Sepolia, including a fresh paid MCP validation with URL-verified Exa evidence receipts.
