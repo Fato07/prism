@@ -179,7 +179,7 @@ export function SentinelPanel({
           <div className="flex-1 space-y-3">
             <div>
               <span className="text-mono text-[10px] font-medium uppercase tracking-[var(--tracking-wide)] text-fg-faint">
-                Discrimination
+                Score interpretation
               </span>
               <p className="mt-1 text-sm leading-relaxed text-fg-muted">
                 {scoreNarrative(verdict.verdict_score)}
@@ -549,6 +549,6 @@ function ChallengeItem({
 function scoreNarrative(score: number): string {
   if (score >= 76) return "Strong reasoning. Sentinel found no fatal flaws.";
   if (score >= 51) return "Reasoning passes. Some weak evidence, but thesis holds.";
-  if (score >= 26) return "Caution. Calibration off; evidence under-supports thesis.";
+  if (score >= 26) return "Review required. Trader confidence is not fully supported by evidence.";
   return "Reject. Reasoning has critical flaws. Capital should not move.";
 }
