@@ -15,6 +15,7 @@ import {
 import { HashChip } from "@/components/ui/hash-chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Pill } from "@/components/ui/pill";
 import { FeeSparkline } from "@/components/ui/fee-sparkline";
 import { BrandMark } from "@/components/brands/brand-mark";
 import { Activity } from "lucide-react";
@@ -40,6 +41,7 @@ export async function BuilderFeesStrip({ entries: propEntries }: BuilderFeesStri
   }
 
   const top3 = entries.slice(0, 3);
+  const hasPendingFeeRows = hasPendingFees(entries);
 
   if (top3.length === 0) {
     return (
@@ -80,6 +82,14 @@ export async function BuilderFeesStrip({ entries: propEntries }: BuilderFeesStri
           <p className="mt-2 max-w-2xl text-sm text-fg-muted">
             Prism links validated reasoning traces to Prism trade receipts with Polymarket-compatible builder codes. Live fills reconcile to Polymarket builder-trade receipts when present.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Pill tone="neutral" emphasis="outline" size="xs">
+              <span className="text-mono">{totalAttributedTrades(entries)} attributed trades</span>
+            </Pill>
+            <Pill tone={hasPendingFeeRows ? "warn" : "good"} emphasis="soft" size="xs">
+              {hasPendingFeeRows ? "Fee pending until fill prices exist" : "Fee totals recorded"}
+            </Pill>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -145,6 +155,14 @@ export async function BuilderFeesStrip({ entries: propEntries }: BuilderFeesStri
       </div>
     </section>
   );
+}
+
+function totalAttributedTrades(entries: BuilderFeesEntry[]): number {
+  return entries.reduce((sum, entry) => sum + entry.trade_count, 0);
+}
+
+function hasPendingFees(entries: BuilderFeesEntry[]): boolean {
+  return entries.some((entry) => feeDisplay(entry).pending);
 }
 
 function feeDisplay(entry: BuilderFeesEntry): { label: string; pending: boolean } {

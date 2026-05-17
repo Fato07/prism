@@ -181,9 +181,11 @@ describe("VAL-BUILDERFEES-006: Empty state when no qualifying trades", () => {
     const strip = await fs.readFile(path.join(process.cwd(), "app/components/landing/builder-fees-strip.tsx"), "utf-8");
 
     expect(page).toContain("Execution Attribution");
-    expect(page).toContain("Fee pending");
+    expect(page).toContain("attributed trades");
+    expect(page).toContain("Fee pending until fill prices exist");
     expect(page).not.toContain("Builder Fee Attribution");
     expect(strip).toContain("Execution attribution — builder codes");
+    expect(strip).toContain("attributed trades");
   });
 
   it("empty entries array triggers empty state", () => {
