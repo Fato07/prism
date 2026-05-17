@@ -533,6 +533,37 @@ class TestMcpHttpMount:
         assert resp.headers.get("mcp-session-id")
         assert "jsonrpc" in body.lower()
 
+    def test_market_evidence_mcp_endpoint_remains_open(self) -> None:
+        """Market evidence MCP is free/read-only for Connector Passport evidence."""
+        patches = _patch_sentinel_main()
+        try:
+            with patch.dict(os.environ, {"X402_BYPASS": ""}, clear=False):
+                from sentinel.main import app
+
+                with TestClient(app) as client:
+                    resp = client.post(
+                        "/market-evidence-mcp/",
+                        json={
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "initialize",
+                            "params": {
+                                "protocolVersion": "2025-03-26",
+                                "capabilities": {},
+                                "clientInfo": {"name": "market-evidence-test", "version": "1.0"},
+                            },
+                        },
+                        headers={"Accept": "application/json, text/event-stream"},
+                    )
+                    body = resp.text
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert resp.status_code == 200, body
+        assert resp.headers.get("mcp-session-id")
+        assert "jsonrpc" in body.lower()
+
     def test_health_endpoint_remains_open(self) -> None:
         patches = _patch_sentinel_main()
         try:

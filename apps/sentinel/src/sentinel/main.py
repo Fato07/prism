@@ -3,8 +3,9 @@
 Endpoints:
   GET  /health    — liveness check
   POST /validate          — adversarially validate a trader's reasoning trace
-  ALL  /mcp/*             — FastMCP ASGI sub-app exposing ``validate`` as an MCP tool
+  ALL  /mcp/*               — FastMCP ASGI sub-app exposing ``validate`` as an MCP tool
   ALL  /demo-evidence-mcp/* — free demo MCP evidence server for connector smoke tests
+  ALL  /market-evidence-mcp/* — free read-only Polymarket evidence MCP server
 
 Startup gates (all must pass before the service accepts requests):
   1. Environment variable validation
@@ -39,6 +40,7 @@ from pydantic import BaseModel, Field
 
 from sentinel.demo_evidence_mcp import build_demo_evidence_mcp_server
 from sentinel.ipfs import PinataClient
+from sentinel.market_evidence_mcp import build_market_evidence_mcp_server
 from sentinel.persistence import (
     ensure_agent_row,
     persist_verdict,
@@ -114,6 +116,8 @@ _mcp_server = build_mcp_server()
 _mcp_app = _mcp_server.http_app(path="/")
 _demo_evidence_mcp_server = build_demo_evidence_mcp_server()
 _demo_evidence_mcp_app = _demo_evidence_mcp_server.http_app(path="/")
+_market_evidence_mcp_server = build_market_evidence_mcp_server()
+_market_evidence_mcp_app = _market_evidence_mcp_server.http_app(path="/")
 
 
 @asynccontextmanager
@@ -122,6 +126,7 @@ async def _combined_mcp_lifespan(fastapi_app: FastAPI) -> AsyncIterator[None]:
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(_mcp_app.lifespan(fastapi_app))
         await stack.enter_async_context(_demo_evidence_mcp_app.lifespan(fastapi_app))
+        await stack.enter_async_context(_market_evidence_mcp_app.lifespan(fastapi_app))
         yield
 
 
@@ -129,6 +134,7 @@ app = FastAPI(title="Prism Sentinel", version="0.1.0", lifespan=_combined_mcp_li
 app.middleware("http")(x402_middleware)
 app.mount("/mcp", _mcp_app)
 app.mount("/demo-evidence-mcp", _demo_evidence_mcp_app)
+app.mount("/market-evidence-mcp", _market_evidence_mcp_app)
 
 
 # ---------------------------------------------------------------------------

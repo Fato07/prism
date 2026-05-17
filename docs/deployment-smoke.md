@@ -49,8 +49,19 @@ PRISM_EVIDENCE_MCP_ALLOWED_TOOLS=search
 
 Set `PRISM_EVIDENCE_DB_CONNECTORS=0` only when intentionally bypassing the DB connector registry.
 
-If no production MCP research provider is ready yet, the sentinel service exposes a free
-smoke-only demo MCP server at:
+For live demo evidence without a third-party research provider, sentinel exposes a free
+read-only market evidence MCP server at:
+
+```text
+$SENTINEL_PUBLIC_URL/market-evidence-mcp/
+```
+
+Use tool `search`, input mapper `prism_evidence_request`, and result mapper
+`generic_search`. It calls the Prism Polymarket gateway and only returns evidence for
+market-structure or explicit market-status temporal challenges; unsupported issue types
+return no evidence and stay fail-closed.
+
+Sentinel also exposes a smoke-only demo MCP server at:
 
 ```text
 $SENTINEL_PUBLIC_URL/demo-evidence-mcp/
