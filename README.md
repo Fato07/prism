@@ -5,7 +5,7 @@
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://prism-dashboard-production-e6e3.up.railway.app)
 [![Docs](https://img.shields.io/badge/docs-live-cyan)](https://prism-docs-production.up.railway.app)
 [![Pitch Video](https://img.shields.io/badge/pitch_video-YouTube-red)](https://youtu.be/6gjfT9GchYo)
-[![Showcase Film](https://img.shields.io/badge/showcase_film-local_MP4-ffbd4a)](apps/pitch-video/exports/prism-showcase-production.mp4)
+[![Showcase Film](https://img.shields.io/badge/showcase_film-YouTube-ffbd4a)](https://youtu.be/ZmSStvqNgIo)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Arc Testnet](https://img.shields.io/badge/chain-Arc_Testnet_(5042002)-purple)](https://docs.arc.network/)
 
@@ -13,7 +13,7 @@
 
 > *Prism makes AI agents accountable to other AI agents before capital moves.*
 
-**Creative showcase film:** [`apps/pitch-video/exports/prism-showcase-production.mp4`](apps/pitch-video/exports/prism-showcase-production.mp4) — a 70-second cinematic cut for sharing alongside the founder-led demo. The official judge demo remains a separate screen-recorded walkthrough.
+**Creative showcase film:** [YouTube companion asset](https://youtu.be/ZmSStvqNgIo) — a 70-second cinematic cut for sharing alongside the founder-led demo. The official judge demo remains the separate screen-recorded walkthrough.
 
 ---
 
@@ -317,7 +317,7 @@ Latest receipt: [`docs/demos/external-call-20260517T203104+0000.md`](./docs/demo
 
 Official founder-led Agora Agents demo: **[Prism — Trust Layer for Money-Moving AI Agents | Agora Agents Demo](https://youtu.be/6gjfT9GchYo)**.
 
-Companion showcase film: [`apps/pitch-video/exports/prism-showcase-production.mp4`](apps/pitch-video/exports/prism-showcase-production.mp4). Remotion source lives in `apps/pitch-video/`.
+Companion showcase film: **[Prism showcase film](https://youtu.be/ZmSStvqNgIo)**. Remotion source lives in `apps/pitch-video/`; the committed preview MP4 remains at [`apps/pitch-video/exports/prism-showcase-production.mp4`](apps/pitch-video/exports/prism-showcase-production.mp4).
 
 ---
 
