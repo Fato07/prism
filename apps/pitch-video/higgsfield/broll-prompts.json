@@ -1,0 +1,62 @@
+[
+  {
+    "key": "refractionSrc",
+    "output": "refraction.mp4",
+    "model": "cinematic_studio_video_v2",
+    "params": {
+      "aspect_ratio": "16:9",
+      "duration": 5,
+      "mode": "std",
+      "genre": "spectacle",
+      "prompt": "Cinematic macro shot in a dark obsidian digital studio: a thin white beam of data-light enters a transparent triangular glass prism and refracts into three precise beams: cyan, magenta, and green. Minimal premium fintech aesthetic, high contrast, subtle volumetric haze, glass caustics, slow dolly-in, 35mm lens, no text, no humans, no logos, no cartoon style, no glitch artifacts."
+    }
+  },
+  {
+    "key": "traceAssemblySrc",
+    "output": "trace-assembly.mp4",
+    "model": "cinematic_studio_video_v2",
+    "params": {
+      "aspect_ratio": "16:9",
+      "duration": 5,
+      "mode": "std",
+      "genre": "suspense",
+      "prompt": "Abstract product-film visual: cyan structured reasoning cards assemble in a dark 3D space like a forensic trading trace. Cards contain unreadable tiny lines, evidence nodes, risk markers, probability dial. Premium enterprise software aesthetic, black obsidian background, cyan glow, shallow depth of field, smooth camera pan, no readable text, no humans, no stock market tickers, no logos."
+    }
+  },
+  {
+    "key": "urlVerificationSrc",
+    "output": "url-verification.mp4",
+    "model": "cinematic_studio_video_v2",
+    "params": {
+      "aspect_ratio": "16:9",
+      "duration": 5,
+      "mode": "std",
+      "genre": "suspense",
+      "prompt": "A source webpage transforms into a cryptographic content hash and a green verification receipt in a dark futuristic interface. Abstract browser frame, URL bar shape, excerpt block, hash characters as tiny unreadable glyphs, premium fintech motion design, green verification pulse, no real brand names, no readable text, no humans."
+    }
+  },
+  {
+    "key": "capitalGateSrc",
+    "output": "capital-gate.mp4",
+    "model": "cinematic_studio_video_v2",
+    "params": {
+      "aspect_ratio": "16:9",
+      "duration": 5,
+      "mode": "std",
+      "genre": "spectacle",
+      "prompt": "A glowing amber capital gate blocks a red trade arrow because evidence nodes are unresolved, then a green path appears only after verification receipts lock into place. Abstract financial safety system, black obsidian background, cyan magenta green Prism palette, cinematic lighting, no humans, no logos, no readable text."
+    }
+  },
+  {
+    "key": "arcAnchorSrc",
+    "output": "arc-anchor.mp4",
+    "model": "cinematic_studio_video_v2",
+    "params": {
+      "aspect_ratio": "16:9",
+      "duration": 5,
+      "mode": "std",
+      "genre": "spectacle",
+      "prompt": "A validation receipt hash is etched into a dark glass blockchain ledger, with a subtle circular network motif and green finality pulse. Premium on-chain proof visual, cinematic macro, black glass material, faint cyan and violet edges, no readable text, no brand logos, no humans."
+    }
+  }
+]

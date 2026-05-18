@@ -29,7 +29,40 @@ pnpm render:showcase
 pnpm still:showcase
 ```
 
-Optional local assets can be placed under `apps/pitch-video/public/` and passed as props:
+### Higgsfield b-roll pipeline
+
+The prompt pack lives at `higgsfield/broll-prompts.json`; the guarded generator is `scripts/generate-higgsfield-broll.mjs`.
+
+Preflight cost/credits without creating jobs:
+
+```bash
+cd apps/pitch-video
+pnpm higgsfield:broll:dry
+```
+
+Generate and download all b-roll clips after reviewing the estimate:
+
+```bash
+cd apps/pitch-video
+HIGGSFIELD_MAX_CREDITS=60 pnpm higgsfield:broll
+```
+
+The script:
+
+- checks `higgsfield account status`;
+- estimates each clip with `higgsfield generate cost`;
+- blocks if credits are insufficient or the estimate exceeds `HIGGSFIELD_MAX_CREDITS`;
+- creates jobs with `--wait`;
+- downloads videos to `public/broll/`;
+- writes `public/broll/showcase-broll-props.json` for Remotion.
+
+Render with generated b-roll:
+
+```bash
+pnpm render:showcase -- --props=public/broll/showcase-broll-props.json
+```
+
+Optional local assets can also be placed under `apps/pitch-video/public/` and passed as props manually:
 
 ```bash
 pnpm render:showcase -- --props='{
