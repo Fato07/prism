@@ -158,6 +158,31 @@ export function RefractionBackdrop() {
       <div
         style={{
           position: "absolute",
+          width: 560,
+          height: 560,
+          right: -70,
+          top: -170,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${COLORS.warn}26 0%, ${COLORS.warn}10 38%, transparent 66%)`,
+          boxShadow: `0 0 120px ${COLORS.warn}16`,
+          opacity: 0.36 + pulse * 0.1,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          width: 380,
+          height: 380,
+          right: 16,
+          top: -78,
+          borderRadius: "50%",
+          border: `1px solid ${COLORS.warn}24`,
+          opacity: 0.28 + pulse * 0.08,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
           inset: 0,
           background:
             "linear-gradient(90deg, rgba(255,255,255,0.05), transparent 18%, transparent 82%, rgba(255,255,255,0.05))",
@@ -221,7 +246,7 @@ export function BrollPlate({
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(180deg, rgba(5,7,11,0.04), rgba(5,7,11,0.34)), linear-gradient(90deg, rgba(5,7,11,0.18), transparent)",
+            "linear-gradient(180deg, rgba(5,7,11,0.16), rgba(5,7,11,0.50)), linear-gradient(90deg, rgba(5,7,11,0.32), transparent), radial-gradient(circle at 70% 20%, rgba(255,255,255,0.10), transparent 42%)",
         }}
       />
     </div>
@@ -409,12 +434,12 @@ export function EvidenceRail() {
 export function CapitalGateGraphic() {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const gateSpring = spring({ frame: frame - 20, fps, config: { damping: 15, stiffness: 90 } });
-  const blockerOpacity = interpolate(frame, [0, 18, 52, 68], [0, 1, 1, 0], {
+  const gateSpring = spring({ frame: frame - 18, fps, config: { damping: 15, stiffness: 90 } });
+  const holdOpacity = interpolate(frame, [52, 72], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const verifiedOpacity = interpolate(frame, [56, 78], [0, 1], {
+  const waitOpacity = interpolate(frame, [0, 18], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -424,55 +449,75 @@ export function CapitalGateGraphic() {
       <div
         style={{
           position: "absolute",
-          left: 0,
-          top: 155,
-          width: 1080,
+          left: 20,
+          top: 190,
+          width: 700,
           height: 7,
           borderRadius: 99,
-          background: `linear-gradient(90deg, ${COLORS.trader}, ${COLORS.warn}, ${COLORS.verified})`,
-          opacity: 0.55,
+          background: `linear-gradient(90deg, ${COLORS.trader}, ${COLORS.warn}, ${COLORS.blocked})`,
+          opacity: 0.62,
         }}
       />
       <div
         style={{
           position: "absolute",
-          left: 410,
-          top: 50 - gateSpring * 14,
-          width: 260,
-          height: 260,
+          right: 36,
+          top: 190,
+          width: 270,
+          height: 7,
+          borderRadius: 99,
+          background: `linear-gradient(90deg, ${COLORS.blocked}55, rgba(255,255,255,0.07))`,
+          opacity: 0.42,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 384,
+          top: 42 - gateSpring * 14,
+          width: 312,
+          height: 270,
           borderRadius: 34,
           border: `2px solid ${COLORS.warn}`,
-          background: `${COLORS.warn}10`,
-          boxShadow: `0 0 46px ${COLORS.warn}20`,
+          background: `linear-gradient(135deg, ${COLORS.warn}18, rgba(7, 10, 16, 0.96))`,
+          boxShadow: `0 0 54px ${COLORS.warn}24`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          opacity: blockerOpacity,
+          opacity: waitOpacity,
         }}
       >
         <div style={{ textAlign: "center" }}>
           <div style={{ color: COLORS.warn, fontFamily: FONT.mono, fontSize: 22, letterSpacing: "0.14em" }}>REVIEW</div>
-          <div style={{ color: COLORS.text, fontSize: 31, fontWeight: 760, marginTop: 8 }}>Capital waits</div>
+          <div style={{ color: COLORS.text, fontSize: 32, fontWeight: 760, marginTop: 8 }}>Capital waits</div>
+          <div style={{ color: COLORS.muted, fontFamily: FONT.mono, fontSize: 15, letterSpacing: "0.12em", marginTop: 18 }}>
+            FAIL-CLOSED
+          </div>
         </div>
       </div>
       <div
         style={{
           position: "absolute",
-          right: 70,
+          right: 82,
           top: 80,
           width: 220,
           height: 220,
           borderRadius: "50%",
-          border: `2px solid ${COLORS.verified}`,
-          background: `${COLORS.verified}12`,
-          boxShadow: `0 0 56px ${COLORS.verified}26`,
+          border: `2px solid ${COLORS.blocked}`,
+          background: `${COLORS.blocked}12`,
+          boxShadow: `0 0 56px ${COLORS.blocked}22`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          opacity: verifiedOpacity,
+          opacity: holdOpacity,
         }}
       >
-        <div style={{ color: COLORS.verified, fontFamily: FONT.mono, fontSize: 26, letterSpacing: "0.12em" }}>VERIFIED</div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ color: COLORS.blocked, fontFamily: FONT.mono, fontSize: 28, letterSpacing: "0.12em" }}>HOLD</div>
+          <div style={{ color: COLORS.muted, fontFamily: FONT.mono, fontSize: 13, letterSpacing: "0.12em", marginTop: 8 }}>
+            NO TRADE
+          </div>
+        </div>
       </div>
     </div>
   );

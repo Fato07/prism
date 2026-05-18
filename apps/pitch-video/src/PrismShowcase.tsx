@@ -55,7 +55,7 @@ export const PrismShowcase: React.FC<PrismShowcaseProps> = ({
         <EvidenceScene brollSrc={broll.urlVerificationSrc} />
       </Sequence>
       <Sequence from={42 * fps} durationInFrames={10 * fps}>
-        <CapitalGateScene brollSrc={broll.capitalGateSrc} />
+        <CapitalGateScene />
       </Sequence>
       <Sequence from={52 * fps} durationInFrames={10 * fps}>
         <SettlementScene brollSrc={broll.arcAnchorSrc} />
@@ -90,15 +90,16 @@ function HookScene({ brollSrc }: { brollSrc?: string }) {
 
 function ProblemScene() {
   return (
-    <SceneShell eyebrow="problem" title="Confidence is not a reasoning audit." align="left">
-      <div style={{ display: "flex", gap: 22, marginTop: 50 }}>
-        <RiskCard title="Lucky trade" body="Bad reasoning can still make money." tone={COLORS.warn} delay={14} />
-        <RiskCard title="Stale evidence" body="Old citations can masquerade as current conviction." tone={COLORS.blocked} delay={26} />
+    <SceneShell eyebrow="problem" title="Confidence is not an audit." align="left">
+      <FailClosedSignal />
+      <div style={{ display: "flex", gap: 20, marginTop: 50 }}>
+        <RiskCard title="Lucky trade" body="Profit can hide bad reasoning." tone={COLORS.warn} delay={14} />
+        <RiskCard title="Stale evidence" body="Old citations can masquerade as conviction." tone={COLORS.blocked} delay={26} />
         <RiskCard title="No provenance" body="A claim without a source cannot move capital." tone={COLORS.sentinel} delay={38} />
       </div>
       <FadeIn delay={66}>
-        <div style={{ ...captionStyle, marginTop: 46 }}>
-          Prism turns uncertainty into an explicit gate instead of hidden risk.
+        <div style={{ ...captionStyle, marginTop: 46, textAlign: "left" }}>
+          Prism turns hidden uncertainty into a visible capital gate.
         </div>
       </FadeIn>
     </SceneShell>
@@ -107,11 +108,11 @@ function ProblemScene() {
 
 function MechanismScene({ brollSrc }: { brollSrc?: string }) {
   return (
-    <SceneShell eyebrow="mechanism" title="The trader proposes. The sentinel attacks.">
+    <SceneShell eyebrow="mechanism" title="Trader proposes. Sentinel attacks.">
       <BrollPlate
         src={brollSrc}
         accent={COLORS.trader}
-        style={{ right: 86, bottom: 84, width: 520, height: 292, opacity: 0.62 }}
+        style={{ right: 86, bottom: 84, width: 430, height: 242, opacity: 0.34, filter: "blur(0.6px) saturate(0.82)" }}
       />
       <div style={{ display: "flex", alignItems: "center", gap: 54, marginTop: 58 }}>
         <AgentBeam label="Claude / Mirascope" detail="Trader writes a Trading-R1 trace" color={COLORS.trader} side="left" delay={14} />
@@ -135,7 +136,7 @@ function EvidenceScene({ brollSrc }: { brollSrc?: string }) {
       <BrollPlate
         src={brollSrc}
         accent={COLORS.verified}
-        style={{ left: 82, right: "auto", bottom: 68, width: 500, height: 280, opacity: 0.48 }}
+        style={{ left: 82, right: "auto", bottom: 68, width: 380, height: 214, opacity: 0.26, filter: "blur(1.1px) saturate(0.72)" }}
       />
       <EvidenceRail />
       <div style={{ display: "flex", gap: 18, marginTop: 48 }}>
@@ -153,14 +154,9 @@ function EvidenceScene({ brollSrc }: { brollSrc?: string }) {
   );
 }
 
-function CapitalGateScene({ brollSrc }: { brollSrc?: string }) {
+function CapitalGateScene() {
   return (
     <SceneShell eyebrow="capital gate" title="If the proof fails, capital waits.">
-      <BrollPlate
-        src={brollSrc}
-        accent={COLORS.warn}
-        style={{ right: 110, bottom: 80, width: 470, height: 265, opacity: 0.34, filter: "blur(0.4px)" }}
-      />
       <CapitalGateGraphic />
       <FadeIn delay={72}>
         <div style={{ ...captionStyle, marginTop: 18 }}>
@@ -173,7 +169,7 @@ function CapitalGateScene({ brollSrc }: { brollSrc?: string }) {
 
 function SettlementScene({ brollSrc }: { brollSrc?: string }) {
   return (
-    <SceneShell eyebrow="settlement" title="Agents can pay. Anyone can verify.">
+    <SceneShell eyebrow="settlement" title="Agents pay. Anyone verifies.">
       <BrollPlate
         src={brollSrc}
         accent={COLORS.arc}
@@ -182,12 +178,12 @@ function SettlementScene({ brollSrc }: { brollSrc?: string }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginTop: 56 }}>
         <ProofCard title="x402 paid validation" value={SHOWCASE_PROOF.x402Tx} accent={COLORS.usdc} delay={14} />
         <ProofCard title="Verdict IPFS" value={SHOWCASE_PROOF.verdictCid} accent={COLORS.arc} delay={28} />
-        <ProofCard title="Canonical report" value={SHOWCASE_PROOF.canonicalTraceId.slice(0, 18) + "…"} accent={COLORS.sentinel} delay={42} />
+        <ProofCard title="Public report" value={SHOWCASE_PROOF.canonicalTraceId.slice(0, 18) + "…"} accent={COLORS.sentinel} delay={42} />
         <ProofCard title="Outcome" value={SHOWCASE_PROOF.score} accent={COLORS.verified} delay={56} />
       </div>
       <FadeIn delay={86}>
         <div style={{ ...captionStyle, marginTop: 42 }}>
-          x402 payments, IPFS content, Arc/ERC-8004 receipts, and URL-verified source hashes.
+          Paid validation. Pinned verdict. Public report. URL-verified source hashes.
         </div>
       </FadeIn>
     </SceneShell>
@@ -202,7 +198,7 @@ function CloseScene({ stats }: { stats: PrismShowcaseProps["stats"] }) {
       </div>
       <FadeIn delay={34}>
         <div style={{ ...captionStyle, marginTop: 22, fontSize: 34 }}>
-          The trust layer for money-moving agents.
+          Receipts over confidence for money-moving agents.
         </div>
       </FadeIn>
       <FadeIn delay={56}>
@@ -223,6 +219,59 @@ function CloseScene({ stats }: { stats: PrismShowcaseProps["stats"] }) {
   );
 }
 
+function FailClosedSignal() {
+  const rows = [
+    ["claim", "unchecked", COLORS.warn],
+    ["source", "stale", COLORS.blocked],
+    ["action", "hold", COLORS.warn],
+  ] as const;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 92,
+        top: 282,
+        width: 390,
+        borderRadius: 30,
+        border: `1px solid ${COLORS.warn}36`,
+        background: `linear-gradient(135deg, ${COLORS.warn}10, ${COLORS.panelStrong})`,
+        boxShadow: `0 0 80px ${COLORS.warn}12`,
+        padding: 26,
+      }}
+    >
+      <div style={{ fontFamily: FONT.mono, color: COLORS.warn, fontSize: 15, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+        fail-closed gate
+      </div>
+      <div style={{ marginTop: 24, display: "grid", gap: 13 }}>
+        {rows.map(([label, value, color]) => (
+          <div
+            key={label}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderRadius: 15,
+              border: `1px solid ${color}2f`,
+              background: `${color}0e`,
+              padding: "14px 16px",
+              fontFamily: FONT.mono,
+              textTransform: "uppercase",
+              letterSpacing: "0.12em",
+            }}
+          >
+            <span style={{ color: COLORS.faint, fontSize: 13 }}>{label}</span>
+            <span style={{ color, fontSize: 15, fontWeight: 760 }}>{value}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 22, color: COLORS.text, fontSize: 34, fontWeight: 780, letterSpacing: "-0.045em" }}>
+        No proof, no trade.
+      </div>
+    </div>
+  );
+}
+
 function RiskCard({
   title,
   body,
@@ -238,8 +287,8 @@ function RiskCard({
     <FadeIn delay={delay} y={30}>
       <div
         style={{
-          width: 420,
-          minHeight: 230,
+          width: 390,
+          minHeight: 218,
           borderRadius: 26,
           border: `1px solid ${tone}45`,
           background: `linear-gradient(135deg, ${tone}12, ${COLORS.panel})`,
@@ -250,7 +299,7 @@ function RiskCard({
         <div style={{ fontFamily: FONT.mono, color: tone, fontSize: 18, textTransform: "uppercase", letterSpacing: "0.15em" }}>
           {title}
         </div>
-        <div style={{ color: COLORS.text, fontSize: 32, lineHeight: 1.12, letterSpacing: "-0.035em", fontWeight: 720, marginTop: 30 }}>
+        <div style={{ color: COLORS.text, fontSize: 30, lineHeight: 1.12, letterSpacing: "-0.035em", fontWeight: 720, marginTop: 28 }}>
           {body}
         </div>
       </div>
