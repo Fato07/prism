@@ -239,11 +239,14 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.error("yield_mode_invalid", error=str(exc))
         sys.exit(1)
 
-    # Auto-start pipeline scheduler when AUTO_PIPELINE=true
+    # Auto-start pipeline scheduler when AUTO_PIPELINE=true.
+    # Store the task in the same global used by /schedule so DELETE /schedule
+    # can stop auto-started loops as well as manually-started loops.
     if os.environ.get("AUTO_PIPELINE", "").strip().lower() in ("1", "true", "yes"):
+        global _pipeline_task  # noqa: PLW0603
         interval = int(os.environ.get("PIPELINE_INTERVAL_MINUTES", "5"))
         loop = asyncio.get_event_loop()
-        loop.create_task(_pipeline_loop(interval))
+        _pipeline_task = loop.create_task(_pipeline_loop(interval))
         logger.info("auto_pipeline_enabled", interval_minutes=interval)
 
     yield
