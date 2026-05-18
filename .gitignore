@@ -61,9 +61,11 @@ docs/submission/
 docs/traction-plan.md
 packages/research-*.md
 
-# Pitch-video rendered output (regenerate with pnpm render)
+# Pitch-video rendered output and local generated assets (regenerate with pnpm render / Higgsfield)
 apps/pitch-video/out/*.mp4
 apps/pitch-video/out/*.webm
+apps/pitch-video/out/*.png
+apps/pitch-video/public/broll/
 
 # Local agent loop state
 .ralph/

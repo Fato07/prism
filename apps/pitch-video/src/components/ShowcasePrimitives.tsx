@@ -5,10 +5,17 @@ import {
   spring,
   useCurrentFrame,
   useVideoConfig,
-  Video,
+  OffthreadVideo as RemotionOffthreadVideo,
   staticFile,
 } from "remotion";
 import { COLORS, FONT } from "../brand";
+
+const OffthreadVideo = RemotionOffthreadVideo as unknown as React.FC<{
+  src: string;
+  muted?: boolean;
+  loop?: boolean;
+  style?: React.CSSProperties;
+}>;
 
 export function FadeIn({
   children,
@@ -164,14 +171,75 @@ export function OptionalBroll({ src }: { src?: string }) {
   if (!src) return null;
   const resolved = src.startsWith("http") ? src : staticFile(src);
   return (
-    <AbsoluteFill style={{ opacity: 0.35, mixBlendMode: "screen" }}>
-      <Video
+    <AbsoluteFill style={{ opacity: 0.42, mixBlendMode: "screen" }}>
+      <OffthreadVideo
         src={resolved}
         muted
         loop
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
     </AbsoluteFill>
+  );
+}
+
+export function BrollPlate({
+  src,
+  accent = COLORS.trader,
+  style,
+}: {
+  src?: string;
+  accent?: string;
+  style?: React.CSSProperties;
+}) {
+  if (!src) return null;
+  const resolved = src.startsWith("http") ? src : staticFile(src);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        width: 620,
+        height: 350,
+        right: 86,
+        bottom: 72,
+        borderRadius: 30,
+        overflow: "hidden",
+        border: `1px solid ${accent}55`,
+        boxShadow: `0 0 70px ${accent}24`,
+        background: COLORS.panel,
+        opacity: 0.82,
+        ...style,
+      }}
+    >
+      <OffthreadVideo
+        src={resolved}
+        muted
+        loop
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(180deg, rgba(5,7,11,0.04), rgba(5,7,11,0.34)), linear-gradient(90deg, rgba(5,7,11,0.18), transparent)",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 18,
+          top: 16,
+          fontFamily: FONT.mono,
+          fontSize: 13,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          color: accent,
+          opacity: 0.78,
+        }}
+      >
+        generated b-roll
+      </div>
+    </div>
   );
 }
 

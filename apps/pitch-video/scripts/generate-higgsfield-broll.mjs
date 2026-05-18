@@ -163,4 +163,4 @@ for (const prompt of estimates) {
 writeFileSync(propsPath, JSON.stringify({ broll: brollProps }, null, 2));
 console.log(`Wrote Remotion props: ${propsPath}`);
 console.log("Render with:");
-console.log(`pnpm --dir apps/pitch-video render:showcase -- --props=public/broll/showcase-broll-props.json`);
+console.log("pnpm --dir apps/pitch-video render:showcase:broll");

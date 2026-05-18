@@ -59,8 +59,10 @@ The script:
 Render with generated b-roll:
 
 ```bash
-pnpm render:showcase -- --props=public/broll/showcase-broll-props.json
+pnpm render:showcase:broll
 ```
+
+`PrismShowcaseBroll` is a convenience composition that points at the generated `public/broll/*.mp4` files. Use `PrismShowcase` when you want the deterministic Remotion-only cut.
 
 Optional local assets can also be placed under `apps/pitch-video/public/` and passed as props manually:
 

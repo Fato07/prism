@@ -9,6 +9,7 @@
     "render": "remotion render src/index.tsx PrismPitch out/prism-pitch.mp4",
     "render:quick": "remotion render src/index.tsx PrismPitch out/prism-pitch.mp4 --concurrency=1",
     "render:showcase": "remotion render src/index.tsx PrismShowcase out/prism-showcase.mp4 --concurrency=1",
+    "render:showcase:broll": "remotion render src/index.tsx PrismShowcaseBroll out/prism-showcase-broll.mp4 --concurrency=1",
     "higgsfield:broll:dry": "node scripts/generate-higgsfield-broll.mjs --dry-run",
     "higgsfield:broll": "node scripts/generate-higgsfield-broll.mjs --yes",
     "still": "remotion still src/index.tsx PrismPitch out/thumbnail.png",

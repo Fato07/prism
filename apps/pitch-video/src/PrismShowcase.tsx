@@ -4,6 +4,7 @@ import { z } from "zod";
 import { COLORS, FONT, SHOWCASE_PROOF, SHOWCASE_STATS } from "./brand";
 import {
   AgentBeam,
+  BrollPlate,
   CapitalGateGraphic,
   EvidenceRail,
   FadeIn,
@@ -70,6 +71,11 @@ function HookScene({ brollSrc }: { brollSrc?: string }) {
   return (
     <SceneShell eyebrow="brand film" title="See through the reasoning.">
       <OptionalBroll src={brollSrc} />
+      <BrollPlate
+        src={brollSrc}
+        accent={COLORS.trader}
+        style={{ left: 510, right: "auto", bottom: 190, width: 900, height: 500, opacity: 0.28 }}
+      />
       <div style={{ marginTop: 42 }}>
         <PrismMark size={210} />
       </div>
@@ -102,7 +108,11 @@ function ProblemScene() {
 function MechanismScene({ brollSrc }: { brollSrc?: string }) {
   return (
     <SceneShell eyebrow="mechanism" title="The trader proposes. The sentinel attacks.">
-      <OptionalBroll src={brollSrc} />
+      <BrollPlate
+        src={brollSrc}
+        accent={COLORS.trader}
+        style={{ right: 86, bottom: 84, width: 520, height: 292, opacity: 0.62 }}
+      />
       <div style={{ display: "flex", alignItems: "center", gap: 54, marginTop: 58 }}>
         <AgentBeam label="Claude / Mirascope" detail="Trader writes a Trading-R1 trace" color={COLORS.trader} side="left" delay={14} />
         <div style={{ width: 170, display: "flex", justifyContent: "center" }}>
@@ -122,7 +132,11 @@ function MechanismScene({ brollSrc }: { brollSrc?: string }) {
 function EvidenceScene({ brollSrc }: { brollSrc?: string }) {
   return (
     <SceneShell eyebrow="evidence" title="Evidence becomes a receipt.">
-      <OptionalBroll src={brollSrc} />
+      <BrollPlate
+        src={brollSrc}
+        accent={COLORS.verified}
+        style={{ left: 82, right: "auto", bottom: 68, width: 500, height: 280, opacity: 0.48 }}
+      />
       <EvidenceRail />
       <div style={{ display: "flex", gap: 18, marginTop: 48 }}>
         <ProofCard title="Search provider" value="Exa MCP" accent={COLORS.sentinel} delay={56} />
@@ -142,7 +156,11 @@ function EvidenceScene({ brollSrc }: { brollSrc?: string }) {
 function CapitalGateScene({ brollSrc }: { brollSrc?: string }) {
   return (
     <SceneShell eyebrow="capital gate" title="If the proof fails, capital waits.">
-      <OptionalBroll src={brollSrc} />
+      <BrollPlate
+        src={brollSrc}
+        accent={COLORS.warn}
+        style={{ right: 110, bottom: 80, width: 470, height: 265, opacity: 0.34, filter: "blur(0.4px)" }}
+      />
       <CapitalGateGraphic />
       <FadeIn delay={72}>
         <div style={{ ...captionStyle, marginTop: 18 }}>
@@ -156,7 +174,11 @@ function CapitalGateScene({ brollSrc }: { brollSrc?: string }) {
 function SettlementScene({ brollSrc }: { brollSrc?: string }) {
   return (
     <SceneShell eyebrow="settlement" title="Agents can pay. Anyone can verify.">
-      <OptionalBroll src={brollSrc} />
+      <BrollPlate
+        src={brollSrc}
+        accent={COLORS.arc}
+        style={{ right: 72, bottom: 72, width: 500, height: 280, opacity: 0.56 }}
+      />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22, marginTop: 56 }}>
         <ProofCard title="x402 paid validation" value={SHOWCASE_PROOF.x402Tx} accent={COLORS.usdc} delay={14} />
         <ProofCard title="Verdict IPFS" value={SHOWCASE_PROOF.verdictCid} accent={COLORS.arc} delay={28} />

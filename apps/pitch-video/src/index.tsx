@@ -71,6 +71,15 @@ export const prismShowcaseSchema = z.object({
 
 const defaultProps = prismPitchSchema.parse({});
 const defaultShowcaseProps = prismShowcaseSchema.parse({});
+const defaultShowcaseBrollProps = prismShowcaseSchema.parse({
+  broll: {
+    refractionSrc: "broll/refraction.mp4",
+    traceAssemblySrc: "broll/trace-assembly.mp4",
+    urlVerificationSrc: "broll/url-verification.mp4",
+    capitalGateSrc: "broll/capital-gate.mp4",
+    arcAnchorSrc: "broll/arc-anchor.mp4",
+  },
+});
 
 const RemotionRoot: React.FC = () => {
   return (
@@ -94,6 +103,16 @@ const RemotionRoot: React.FC = () => {
         height={1080}
         schema={prismShowcaseSchema}
         defaultProps={defaultShowcaseProps}
+      />
+      <Composition
+        id="PrismShowcaseBroll"
+        component={PrismShowcase}
+        durationInFrames={2100}
+        fps={30}
+        width={1920}
+        height={1080}
+        schema={prismShowcaseSchema}
+        defaultProps={defaultShowcaseBrollProps}
       />
     </>
   );
