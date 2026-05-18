@@ -1,6 +1,10 @@
 # Prism Pitch Video
 
-90-second pitch video for the Canteen × Circle Agora Agents hackathon, built with [Remotion](https://remotion.dev).
+Remotion video workspace for Prism.
+
+- `PrismPitch` — original 90-second hackathon pitch composition.
+- `PrismShowcase` — 70-second premium brand-film experiment for creative testing. This is separate from the official founder-led judge demo.
+- `exports/prism-showcase-production.mp4` — committed preview MP4 for easy sharing from this branch.
 
 ## Quick Start
 
@@ -9,11 +13,90 @@ cd apps/pitch-video
 pnpm install          # install dependencies
 pnpm dev              # open Remotion Studio at http://localhost:3001
 pnpm build            # render MP4 to out/prism-pitch.mp4
+pnpm render:showcase  # render creative showcase to out/prism-showcase.mp4
 ```
 
 > **Port 3001, not 3000.** The dashboard dev server owns port 3000. This project's `dev`/`studio` scripts use `--port 3001` to avoid conflicts.
 
-## Parameterized Composition
+## Creative Showcase Composition
+
+`PrismShowcase` is the new brand-film draft for testing a more premium Prism visual language. It uses deterministic Remotion graphics for the truth layer and optional b-roll slots for Higgsfield-generated clips.
+
+Render it locally:
+
+```bash
+cd apps/pitch-video
+pnpm render:showcase
+pnpm still:showcase
+```
+
+### Higgsfield b-roll pipeline
+
+The prompt pack lives at `higgsfield/broll-prompts.json`; the guarded generator is `scripts/generate-higgsfield-broll.mjs`.
+
+Preflight cost/credits without creating jobs:
+
+```bash
+cd apps/pitch-video
+pnpm higgsfield:broll:dry
+```
+
+Generate and download all b-roll clips after reviewing the estimate:
+
+```bash
+cd apps/pitch-video
+HIGGSFIELD_MAX_CREDITS=60 pnpm higgsfield:broll
+```
+
+The script:
+
+- checks `higgsfield account status`;
+- estimates each clip with `higgsfield generate cost`;
+- blocks if credits are insufficient or the estimate exceeds `HIGGSFIELD_MAX_CREDITS`;
+- creates jobs with `--wait`;
+- downloads videos to `public/broll/`;
+- writes `public/broll/showcase-broll-props.json` for Remotion.
+
+Render with generated b-roll and the procedural sound bed:
+
+```bash
+pnpm render:showcase:production
+```
+
+Copy the latest render into the committed preview slot:
+
+```bash
+cp out/prism-showcase-production.mp4 exports/prism-showcase-production.mp4
+```
+
+`PrismShowcaseBroll` is a convenience composition that points at the generated `public/broll/*.mp4` files and `public/audio/prism-showcase-bed.wav`. The audio bed is generated locally by `pnpm audio:showcase`, so it is reproducible and royalty-free. Use `PrismShowcase` when you want the deterministic Remotion-only cut.
+
+Optional local assets can also be placed under `apps/pitch-video/public/` and passed as props manually:
+
+```bash
+pnpm render:showcase -- --props='{
+  "musicSrc":"audio/prism-ambient.mp3",
+  "voiceoverSrc":"audio/prism-vo.mp3",
+  "broll":{
+    "refractionSrc":"broll/refraction.mp4",
+    "traceAssemblySrc":"broll/trace-assembly.mp4",
+    "urlVerificationSrc":"broll/url-verification.mp4",
+    "capitalGateSrc":"broll/capital-gate.mp4",
+    "arcAnchorSrc":"broll/arc-anchor.mp4"
+  }
+}'
+```
+
+Guidance:
+
+- Use Higgsfield for short abstract b-roll only: prism refraction, evidence receipts, capital gates, x402 packets, Arc anchors.
+- Keep real hashes, source URLs, tx proof, and stats in Remotion overlays — never baked into generated video.
+- Avoid AI avatars or fake founder footage for the official submission.
+- Keep the official judge demo founder-led and receipt-backed.
+
+Local creative brief: `../../.local/showcase-video-creative-brief.md`.
+
+## Parameterized Pitch Composition
 
 The `PrismPitch` composition is registered in `src/index.tsx` with a Zod schema that defines all swappable props. This enables visual editing in Remotion Studio and programmatic rendering with custom props.
 

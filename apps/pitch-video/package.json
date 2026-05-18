@@ -8,7 +8,14 @@
     "build": "remotion render src/index.tsx PrismPitch out/prism-pitch.mp4 --concurrency=1",
     "render": "remotion render src/index.tsx PrismPitch out/prism-pitch.mp4",
     "render:quick": "remotion render src/index.tsx PrismPitch out/prism-pitch.mp4 --concurrency=1",
-    "still": "remotion still src/index.tsx PrismPitch out/thumbnail.png"
+    "render:showcase": "remotion render src/index.tsx PrismShowcase out/prism-showcase.mp4 --concurrency=1",
+    "audio:showcase": "node scripts/generate-showcase-audio.mjs",
+    "render:showcase:broll": "pnpm audio:showcase && remotion render src/index.tsx PrismShowcaseBroll out/prism-showcase-broll.mp4 --concurrency=1",
+    "render:showcase:production": "pnpm audio:showcase && remotion render src/index.tsx PrismShowcaseBroll out/prism-showcase-production.mp4 --concurrency=1",
+    "higgsfield:broll:dry": "node scripts/generate-higgsfield-broll.mjs --dry-run",
+    "higgsfield:broll": "node scripts/generate-higgsfield-broll.mjs --yes",
+    "still": "remotion still src/index.tsx PrismPitch out/thumbnail.png",
+    "still:showcase": "remotion still src/index.tsx PrismShowcase out/showcase-thumbnail.png"
   },
   "dependencies": {
     "@remotion/cli": "4.0.0",
