@@ -70,6 +70,27 @@ def _is_onchain() -> bool:
     return os.environ.get("PRISM_ONCHAIN", "").strip().lower() in ("1", "true", "yes")
 
 
+def _internal_resolution_max_rounds(request: Request) -> int | None:
+    """Limit evidence-tool resolution for unpaid internal /validate calls.
+
+    The autonomous trader calls /validate through the internal bypass channel.
+    Those high-frequency background validations should not spend scarce external
+    evidence-provider quota. Paid x402/MCP callers still use the normal global
+    ADVERSARIAL_RESOLUTION_MAX_ROUNDS setting unless this env var is explicitly
+    overridden.
+    """
+    payment_tx_hash = getattr(request.state, "x402_payment_tx_hash", None)
+    requester_address = getattr(request.state, "x402_payer_address", None)
+    if payment_tx_hash or requester_address:
+        return None
+    raw = os.environ.get("SENTINEL_INTERNAL_RESOLUTION_MAX_ROUNDS", "0")
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logger.warning("invalid_internal_resolution_max_rounds", raw=raw, fallback=0)
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # x402 Payment Middleware (configuration retained at module level)
 # ---------------------------------------------------------------------------
@@ -234,6 +255,7 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
             request_hash=request_hash,
             trace_id=trace_id,
             sentinel_agent_id=sentinel_agent_id,
+            max_rounds=_internal_resolution_max_rounds(http_request),
         )
     except Exception as exc:
         logger.error("verdict_generation_failed", error=str(exc))

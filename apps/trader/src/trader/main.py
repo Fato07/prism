@@ -319,6 +319,25 @@ def _is_scheduling() -> bool:
     return _pipeline_task is not None and not _pipeline_task.done()
 
 
+def _trade_skip_reason(
+    *,
+    trace: TradingR1Trace,
+    validation_status: str,
+    validation: dict | None,
+) -> str | None:
+    """Return None when a trace may trade, otherwise a stable skip reason."""
+    if validation_status != "success":
+        return f"validation_status={validation_status}"
+    if validation is None:
+        return "validation_missing"
+    verdict_label = validation.get("verdict_label", "N/A")
+    if verdict_label != "PASS":
+        return f"verdict_label={verdict_label}"
+    if trace.action == "HOLD":
+        return "action=HOLD"
+    return None
+
+
 async def _pipeline_loop(interval_minutes: int) -> None:
     """Background loop that runs the pipeline every *interval_minutes*."""
     logger.info("pipeline_loop_started", interval_minutes=interval_minutes)
@@ -470,8 +489,13 @@ async def _run_pipeline_internal() -> PipelineResponse:
         validation_status = "error"
         logger.error("pipeline_validation_error", error=str(exc))
 
-    # Step 5: Trade via Polymarket gateway (only if sentinel verdict is PASS)
-    if validation_status == "success" and validation and validation.get("verdict_label") == "PASS":
+    # Step 5: Trade via Polymarket gateway (only if sentinel verdict is PASS and action is BUY/SELL)
+    trade_skip_reason = _trade_skip_reason(
+        trace=trace,
+        validation_status=validation_status,
+        validation=validation,
+    )
+    if trade_skip_reason is None:
         # Treasury hook: unpark before trade if yield mode is park/smart
         try:
             from decimal import Decimal as _Dec
@@ -548,12 +572,7 @@ async def _run_pipeline_internal() -> PipelineResponse:
         except Exception as exc:
             logger.error("pipeline_trade_error", error=str(exc))
     else:
-        reason = (
-            f"validation_status={validation_status}"
-            if validation_status != "success"
-            else f"verdict_label={validation.get('verdict_label', 'N/A') if validation else 'N/A'}"
-        )
-        logger.info("pipeline_trade_skipped", reason=reason, trace_id=trace.trace_id)
+        logger.info("pipeline_trade_skipped", reason=trade_skip_reason, trace_id=trace.trace_id)
 
     # Treasury hook: park residual USDC after trace+verdict flow
     try:
@@ -568,11 +587,7 @@ async def _run_pipeline_internal() -> PipelineResponse:
         # Estimate residual: wallet cap minus trade size (if trade executed)
         # or full cap minus zero (if trade skipped). This is a conservative
         # approximation — a real balance query would be more precise.
-        trade_executed = (
-            validation_status == "success"
-            and validation is not None
-            and validation.get("verdict_label") == "PASS"
-        )
+        trade_executed = trade_skip_reason is None
         estimated_residual = _Dec(str(_wallet_balance_cap())) - (
             _Dec(str(trace.size_usdc)) if trade_executed else _Dec("0")
         )
