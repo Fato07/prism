@@ -18,6 +18,7 @@ import json
 import os
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -115,6 +116,28 @@ def _make_verdict(
 
 class TestValidateEndpoint:
     """Tests for POST /validate endpoint."""
+
+    def test_internal_validate_defaults_to_zero_resolution_rounds(self) -> None:
+        """Internal trader calls should not spend external evidence-provider quota."""
+        from sentinel.main import _internal_resolution_max_rounds
+
+        request = SimpleNamespace(
+            state=SimpleNamespace(x402_payment_tx_hash=None, x402_payer_address=None)
+        )
+        with patch.dict(os.environ, {}, clear=False):
+            assert _internal_resolution_max_rounds(request) == 0
+
+    def test_paid_validate_uses_global_resolution_rounds(self) -> None:
+        """Paid requests should keep the normal resolution-loop configuration."""
+        from sentinel.main import _internal_resolution_max_rounds
+
+        request = SimpleNamespace(
+            state=SimpleNamespace(
+                x402_payment_tx_hash="0xabc",
+                x402_payer_address="0x123",
+            )
+        )
+        assert _internal_resolution_max_rounds(request) is None
 
     @patch.dict(os.environ, {"X402_BYPASS": "1"})
     def test_validate_with_valid_payload_returns_200_or_202(self) -> None:

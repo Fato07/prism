@@ -37,6 +37,8 @@ from trader.trading_r1 import (
     MAX_TRADE_SIZE,
     WALLET_BALANCE_CAP,
     clamp_size,
+    evidence_all_stale,
+    generate_and_post_process,
 )
 
 # ---------------------------------------------------------------------------
@@ -512,3 +514,73 @@ class TestTradeSizeCap:
             assert clamped <= max_allowed, (
                 f"Clamped size {clamped} exceeds max {max_allowed} for balance {balance}"
             )
+
+
+# ===========================================================================
+# Trader evidence freshness and HOLD safeguards
+# ===========================================================================
+
+
+class TestEvidenceFreshnessSafeguards:
+    """Tests for stale-evidence and HOLD trading safeguards."""
+
+    def test_evidence_all_stale_detects_all_old_evidence(self) -> None:
+        """All evidence older than 365 days is detected as stale."""
+        trace = _make_trace(
+            evidence=[
+                Evidence(
+                    source="historical source",
+                    claim="Historical claim",
+                    confidence=0.8,
+                    timestamp=datetime(2024, 1, 15, tzinfo=UTC),
+                )
+            ]
+        )
+        assert evidence_all_stale(trace, created_at=datetime(2026, 5, 18, tzinfo=UTC))
+
+    @pytest.mark.asyncio
+    async def test_generated_buy_sell_with_all_stale_evidence_is_forced_to_hold(self) -> None:
+        """Post-processing refuses BUY/SELL when every cited evidence item is stale."""
+        stale_trace = _make_trace(
+            action="SELL",
+            size_usdc=1.0,
+            price_limit=0.2,
+            raw_probability=0.15,
+            final_probability=0.1,
+            evidence=[
+                Evidence(
+                    source="Box Office Performance",
+                    claim="A 2009 box-office result supports current Netflix ranking odds.",
+                    confidence=0.9,
+                    timestamp=datetime(2024, 1, 15, tzinfo=UTC),
+                )
+            ],
+        )
+        response = MagicMock()
+        response.parse.return_value = stale_trace
+
+        with patch("trader.trading_r1.generate_trace", return_value=response):
+            trace = await generate_and_post_process(
+                market_id="0xmarket",
+                market_question="Will an old movie be #1 on Netflix this week?",
+            )
+
+        assert trace.action == "HOLD"
+        assert trace.size_usdc == 0.0
+        assert trace.price_limit == 0.5
+        assert trace.final_probability == 0.5
+        assert "all cited evidence is stale" in trace.rationale
+
+    def test_hold_pass_verdict_is_not_trade_eligible(self) -> None:
+        """A PASS verdict must not cause a HOLD trace to be sent as a SELL order."""
+        from trader.main import _trade_skip_reason
+
+        trace = _make_trace(action="HOLD", size_usdc=0.0, price_limit=0.5)
+        assert (
+            _trade_skip_reason(
+                trace=trace,
+                validation_status="success",
+                validation={"verdict_label": "PASS"},
+            )
+            == "action=HOLD"
+        )

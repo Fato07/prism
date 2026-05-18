@@ -32,6 +32,7 @@ MAX_TRADE_SIZE = 2.0  # USDC
 # edge-case rejections from the exchange.
 _PROB_MIN = 0.01
 _PROB_MAX = 0.99
+_STALE_EVIDENCE_DAYS = 365
 
 
 def _model_id() -> str:
@@ -70,19 +71,43 @@ def clamp_size(size_usdc: float, wallet_balance: float = WALLET_BALANCE_CAP) -> 
     return clamped
 
 
+def _as_utc(dt: datetime) -> datetime:
+    """Return a timezone-aware UTC datetime for evidence age checks."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def evidence_all_stale(
+    trace: TradingR1Trace,
+    *,
+    created_at: datetime,
+    stale_days: int = _STALE_EVIDENCE_DAYS,
+) -> bool:
+    """Return true when every evidence item is older than the stale threshold."""
+    if not trace.evidence:
+        return False
+    created = _as_utc(created_at)
+    return all((created - _as_utc(item.timestamp)).days > stale_days for item in trace.evidence)
+
+
 @llm.call(_model_id(), format=TradingR1Trace)
 def generate_trace(market_id: str, market_question: str) -> str:
     """Generate a Trading-R1 reasoning trace for a market question.
 
     Returns a Mirascope Response; use ``.parse()`` to get TradingR1Trace.
     """
+    now = datetime.now(UTC).isoformat()
     return (
         f"SYSTEM: {TRADING_R1_SYSTEM}\n\n"
-        f"USER: Market ID: {market_id}\n"
+        f"USER: Current UTC time: {now}\n"
+        f"Market ID: {market_id}\n"
         f"Market Question: {market_question}\n\n"
         "Produce a complete Trading-R1 reasoning trace for this market. "
         "Include thesis composition, evidence collection, "
-        "volatility-adjusted probability, and your final decision."
+        "volatility-adjusted probability, and your final decision. Use the "
+        "current UTC time above when judging evidence freshness. If you lack "
+        "current, market-specific evidence, choose HOLD."
     )
 
 
@@ -120,6 +145,37 @@ async def generate_and_post_process(
             final_clamped=clamped_final,
         )
 
+    created_at = datetime.now(UTC)
+    action = trace.action
+    size_usdc = clamp_size(trace.size_usdc, wallet_balance)
+    price_limit = trace.price_limit
+    rationale = trace.rationale
+    volatility_adjustment = trace.volatility_adjustment
+
+    if action == "HOLD":
+        size_usdc = 0.0
+        price_limit = 0.5
+
+    if action != "HOLD" and evidence_all_stale(trace, created_at=created_at):
+        logger.warning(
+            "trace_action_forced_hold_stale_evidence",
+            original_action=action,
+            evidence_count=len(trace.evidence),
+            stale_days=_STALE_EVIDENCE_DAYS,
+        )
+        action = "HOLD"
+        size_usdc = 0.0
+        price_limit = 0.5
+        clamped_raw = 0.5
+        clamped_final = 0.5
+        volatility_adjustment = 0.0
+        rationale = (
+            f"{rationale}\n\n"
+            "Prism post-process guard: all cited evidence is stale relative to "
+            "trace creation, so the autonomous trader changed the action to HOLD "
+            "instead of routing BUY/SELL capital."
+        )
+
     # Override auto-generated fields with deterministic values.
     trace = trace.model_copy(
         update={
@@ -128,10 +184,14 @@ async def generate_and_post_process(
             "market_question": market_question,
             "model_family": "anthropic-claude",
             "model_name": _model_name_short(),
-            "created_at": datetime.now(UTC),
-            "size_usdc": clamp_size(trace.size_usdc, wallet_balance),
+            "created_at": created_at,
+            "size_usdc": size_usdc,
             "raw_probability": clamped_raw,
+            "volatility_adjustment": volatility_adjustment,
             "final_probability": clamped_final,
+            "action": action,
+            "price_limit": price_limit,
+            "rationale": rationale,
         }
     )
 
