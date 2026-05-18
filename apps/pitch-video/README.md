@@ -1,6 +1,9 @@
 # Prism Pitch Video
 
-90-second pitch video for the Canteen × Circle Agora Agents hackathon, built with [Remotion](https://remotion.dev).
+Remotion video workspace for Prism.
+
+- `PrismPitch` — original 90-second hackathon pitch composition.
+- `PrismShowcase` — 70-second premium brand-film experiment for creative testing. This is separate from the official founder-led judge demo.
 
 ## Quick Start
 
@@ -9,11 +12,49 @@ cd apps/pitch-video
 pnpm install          # install dependencies
 pnpm dev              # open Remotion Studio at http://localhost:3001
 pnpm build            # render MP4 to out/prism-pitch.mp4
+pnpm render:showcase  # render creative showcase to out/prism-showcase.mp4
 ```
 
 > **Port 3001, not 3000.** The dashboard dev server owns port 3000. This project's `dev`/`studio` scripts use `--port 3001` to avoid conflicts.
 
-## Parameterized Composition
+## Creative Showcase Composition
+
+`PrismShowcase` is the new brand-film draft for testing a more premium Prism visual language. It uses deterministic Remotion graphics for the truth layer and optional b-roll slots for Higgsfield-generated clips.
+
+Render it locally:
+
+```bash
+cd apps/pitch-video
+pnpm render:showcase
+pnpm still:showcase
+```
+
+Optional local assets can be placed under `apps/pitch-video/public/` and passed as props:
+
+```bash
+pnpm render:showcase -- --props='{
+  "musicSrc":"audio/prism-ambient.mp3",
+  "voiceoverSrc":"audio/prism-vo.mp3",
+  "broll":{
+    "refractionSrc":"broll/refraction.mp4",
+    "traceAssemblySrc":"broll/trace-assembly.mp4",
+    "urlVerificationSrc":"broll/url-verification.mp4",
+    "capitalGateSrc":"broll/capital-gate.mp4",
+    "arcAnchorSrc":"broll/arc-anchor.mp4"
+  }
+}'
+```
+
+Guidance:
+
+- Use Higgsfield for short abstract b-roll only: prism refraction, evidence receipts, capital gates, x402 packets, Arc anchors.
+- Keep real hashes, source URLs, tx proof, and stats in Remotion overlays — never baked into generated video.
+- Avoid AI avatars or fake founder footage for the official submission.
+- Keep the official judge demo founder-led and receipt-backed.
+
+Local creative brief: `../../.local/showcase-video-creative-brief.md`.
+
+## Parameterized Pitch Composition
 
 The `PrismPitch` composition is registered in `src/index.tsx` with a Zod schema that defines all swappable props. This enables visual editing in Remotion Studio and programmatic rendering with custom props.
 
