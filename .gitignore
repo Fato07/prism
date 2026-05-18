@@ -65,6 +65,7 @@ packages/research-*.md
 apps/pitch-video/out/*.mp4
 apps/pitch-video/out/*.webm
 apps/pitch-video/out/*.png
+apps/pitch-video/public/audio/
 apps/pitch-video/public/broll/
 
 # Local agent loop state

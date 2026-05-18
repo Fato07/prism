@@ -39,7 +39,7 @@ export const PrismShowcase: React.FC<PrismShowcaseProps> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: COLORS.bg }}>
       <RefractionBackdrop />
-      {musicSrc && <AudioTrack src={audioSource(musicSrc)} volume={0.12} loop />}
+      {musicSrc && <AudioTrack src={audioSource(musicSrc)} volume={voiceoverSrc ? 0.18 : 0.62} loop />}
       {voiceoverSrc && <AudioTrack src={audioSource(voiceoverSrc)} volume={1} />}
 
       <Sequence from={0} durationInFrames={6 * fps}>

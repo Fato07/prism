@@ -72,6 +72,7 @@ export const prismShowcaseSchema = z.object({
 const defaultProps = prismPitchSchema.parse({});
 const defaultShowcaseProps = prismShowcaseSchema.parse({});
 const defaultShowcaseBrollProps = prismShowcaseSchema.parse({
+  musicSrc: "audio/prism-showcase-bed.wav",
   broll: {
     refractionSrc: "broll/refraction.mp4",
     traceAssemblySrc: "broll/trace-assembly.mp4",

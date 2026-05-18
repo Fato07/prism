@@ -224,21 +224,6 @@ export function BrollPlate({
             "linear-gradient(180deg, rgba(5,7,11,0.04), rgba(5,7,11,0.34)), linear-gradient(90deg, rgba(5,7,11,0.18), transparent)",
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          left: 18,
-          top: 16,
-          fontFamily: FONT.mono,
-          fontSize: 13,
-          letterSpacing: "0.14em",
-          textTransform: "uppercase",
-          color: accent,
-          opacity: 0.78,
-        }}
-      >
-        generated b-roll
-      </div>
     </div>
   );
 }
