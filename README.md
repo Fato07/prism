@@ -4,7 +4,7 @@
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://prism-dashboard-production-e6e3.up.railway.app)
 [![Docs](https://img.shields.io/badge/docs-live-cyan)](https://prism-docs-production.up.railway.app)
-[![Pitch Video](https://img.shields.io/badge/pitch_video-coming_soon-lightgrey)](#-pitch-video-3-min)
+[![Pitch Video](https://img.shields.io/badge/pitch_video-YouTube-red)](https://youtu.be/6gjfT9GchYo)
 [![Showcase Film](https://img.shields.io/badge/showcase_film-local_MP4-ffbd4a)](apps/pitch-video/exports/prism-showcase-production.mp4)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Arc Testnet](https://img.shields.io/badge/chain-Arc_Testnet_(5042002)-purple)](https://docs.arc.network/)
@@ -315,7 +315,9 @@ Latest receipt: [`docs/demos/external-call-20260517T203104+0000.md`](./docs/demo
 
 ## 📹 Pitch Video (3 min)
 
-_Coming soon — the founder pitch will go up on YouTube before the May 25 hackathon submission. Slide animations are scaffolded with [Remotion](https://remotion.dev) in `apps/pitch-video/`._
+Official founder-led Agora Agents demo: **[Prism — Trust Layer for Money-Moving AI Agents | Agora Agents Demo](https://youtu.be/6gjfT9GchYo)**.
+
+Companion showcase film: [`apps/pitch-video/exports/prism-showcase-production.mp4`](apps/pitch-video/exports/prism-showcase-production.mp4). Remotion source lives in `apps/pitch-video/`.
 
 ---
 
