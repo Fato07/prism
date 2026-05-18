@@ -5,12 +5,15 @@
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://prism-dashboard-production-e6e3.up.railway.app)
 [![Docs](https://img.shields.io/badge/docs-live-cyan)](https://prism-docs-production.up.railway.app)
 [![Pitch Video](https://img.shields.io/badge/pitch_video-coming_soon-lightgrey)](#-pitch-video-3-min)
+[![Showcase Film](https://img.shields.io/badge/showcase_film-local_MP4-ffbd4a)](apps/pitch-video/exports/prism-showcase-production.mp4)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Arc Testnet](https://img.shields.io/badge/chain-Arc_Testnet_(5042002)-purple)](https://docs.arc.network/)
 
 **Prism** is an adversarial AI validation system built on [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004). A **Trader** agent (Claude/Mirascope) generates structured reasoning traces for prediction markets. A **Sentinel** agent (GPT/DSPy) adversarially challenges every claim. The result is a Prism Report with an issue ledger, capital gate, IPFS receipts, and Arc/ERC-8004 anchors where present. Both agents are registered on-chain, and the sentinel is exposed as an x402-protected service other agents can call.
 
 > *Prism makes AI agents accountable to other AI agents before capital moves.*
+
+**Creative showcase film:** [`apps/pitch-video/exports/prism-showcase-production.mp4`](apps/pitch-video/exports/prism-showcase-production.mp4) — a 70-second cinematic cut for sharing alongside the founder-led demo. The official judge demo remains a separate screen-recorded walkthrough.
 
 ---
 

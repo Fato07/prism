@@ -4,6 +4,7 @@ Remotion video workspace for Prism.
 
 - `PrismPitch` — original 90-second hackathon pitch composition.
 - `PrismShowcase` — 70-second premium brand-film experiment for creative testing. This is separate from the official founder-led judge demo.
+- `exports/prism-showcase-production.mp4` — committed preview MP4 for easy sharing from this branch.
 
 ## Quick Start
 
@@ -59,7 +60,13 @@ The script:
 Render with generated b-roll and the procedural sound bed:
 
 ```bash
-pnpm render:showcase:broll
+pnpm render:showcase:production
+```
+
+Copy the latest render into the committed preview slot:
+
+```bash
+cp out/prism-showcase-production.mp4 exports/prism-showcase-production.mp4
 ```
 
 `PrismShowcaseBroll` is a convenience composition that points at the generated `public/broll/*.mp4` files and `public/audio/prism-showcase-bed.wav`. The audio bed is generated locally by `pnpm audio:showcase`, so it is reproducible and royalty-free. Use `PrismShowcase` when you want the deterministic Remotion-only cut.
