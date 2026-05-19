@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   },
   description:
     'Developer documentation for Prism: adversarial AI validation, x402 payments, MCP, CLI reports, and receipt verification.',
-  metadataBase: new URL('https://prism-dashboard-production-e6e3.up.railway.app'),
+  metadataBase: new URL('https://prism-docs-production.up.railway.app'),
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
