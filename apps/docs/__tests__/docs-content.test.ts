@@ -9,6 +9,21 @@ function read(relativePath: string): string {
   return readFileSync(join(root, relativePath), 'utf8');
 }
 
+// Shared banned-phrase set (VAL-CROSS-009). Each bigram is checked
+// case-insensitively. The phrases are crafted so that disclaimers like
+// "Prism does not guarantee complete security" are still permitted.
+const BANNED_PHRASES = [
+  'guarantees truth',
+  'guarantees profit',
+  'guarantees security',
+  'guarantees complete security',
+  'guarantees legal compliance',
+  'guarantees perfect security',
+  'proves correctness',
+  'always safe',
+  'legally compliant',
+];
+
 describe('Prism docs content', () => {
   it('keeps sidebar navigation focused and grouped', () => {
     const meta = JSON.parse(read('content/docs/meta.json')) as { pages: string[] };
@@ -115,5 +130,84 @@ describe('Prism docs content', () => {
     expect(openapi).toContain('/api/public/history');
     expect(openapi).toContain('/api/public/traces/{id}/report');
     expect(openapi).not.toContain('/mcp/');
+  });
+});
+
+describe('Verification guarantees page', () => {
+  it('verification-guarantees page is registered in meta.json under Verify group', () => {
+    const meta = JSON.parse(read('content/docs/meta.json')) as { pages: string[] };
+
+    expect(meta.pages).toContain('verification-guarantees');
+
+    const verifyIdx = meta.pages.indexOf('---Verify---');
+    const guIdx = meta.pages.indexOf('verification-guarantees');
+    const refIdx = meta.pages.indexOf('---Reference---');
+
+    expect(verifyIdx).not.toBe(-1);
+    expect(guIdx).not.toBe(-1);
+    expect(guIdx).toBeGreaterThan(verifyIdx);
+    if (refIdx !== -1) {
+      expect(guIdx).toBeLessThan(refIdx);
+    }
+  });
+
+  it('verification-guarantees.mdx contains both required headings in correct order', () => {
+    const body = read('content/docs/verification-guarantees.mdx');
+
+    expect(body).toMatch(/##\s+What Prism guarantees/i);
+    expect(body).toMatch(/##\s+What Prism does NOT guarantee/i);
+
+    const guIdx = body.indexOf('What Prism guarantees');
+    const notIdx = body.indexOf('What Prism does NOT guarantee');
+
+    expect(guIdx).toBeGreaterThan(-1);
+    expect(notIdx).toBeGreaterThan(-1);
+    expect(guIdx).toBeLessThan(notIdx);
+  });
+
+  it('verification-guarantees.mdx enumerates all eight Prism guarantees', () => {
+    const body = read('content/docs/verification-guarantees.mdx');
+
+    // 8 guarantees per VAL-GUARANTEES-005
+    expect(body).toMatch(/provenance/i);
+    expect(body).toMatch(/independent adversarial review/i);
+    expect(body).toMatch(/source\s+URL\s+verification/i);
+    expect(body).toMatch(/source\s+content\s+hashes/i);
+    expect(body).toMatch(/issue\s*[- ]?ledger\s+transparency/i);
+    expect(body).toMatch(/x402\s+receipts/i);
+    expect(body).toMatch(/\bArc\b/);
+    expect(body).toMatch(/ERC[-\s]?8004/);
+    expect(body).toMatch(/fail[-\s]?closed\s+capital\s+gate/i);
+  });
+
+  it('verification-guarantees.mdx enumerates all five NOT-guarantees', () => {
+    const body = read('content/docs/verification-guarantees.mdx');
+
+    // 5 NOT-guarantees per VAL-GUARANTEES-007 — each as a distinct disclaimer
+    expect(body).toMatch(/\bTruth\b/);
+    expect(body).toMatch(/\bProfit\b/);
+    expect(body).toMatch(/complete\s+security/i);
+    expect(body).toMatch(/legal\s+compliance/i);
+    expect(body).toMatch(/PASS.*not.*instruction.*execute/i);
+  });
+
+  it('verification-guarantees.mdx links to canonical examples', () => {
+    const body = read('content/docs/verification-guarantees.mdx');
+
+    // Canonical PASS trace URL
+    expect(body).toContain('/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24');
+    // Canonical CLI x402 receipt
+    expect(body).toContain('cli-paid-validation-20260516T214837Z');
+    // Cross-links to security and receipts pages
+    expect(body).toMatch(/\/docs\/security/);
+    expect(body).toMatch(/\/docs\/receipts/);
+  });
+
+  it('verification-guarantees.mdx contains zero banned overclaim phrases', () => {
+    const body = read('content/docs/verification-guarantees.mdx').toLowerCase();
+
+    for (const phrase of BANNED_PHRASES) {
+      expect(body).not.toContain(phrase);
+    }
   });
 });
