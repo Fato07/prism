@@ -1093,4 +1093,119 @@ describe('Protocol documentation', () => {
     expect(guHits).toHaveLength(5);
     expect(protoHits).toHaveLength(5);
   });
+
+  // -----------------------------------------------------------------------
+  // Oracle protocol hardening (m2-protocol-oracle-hardening)
+  // -----------------------------------------------------------------------
+
+  it('prism-protocol-v0.md has normative content-hash canonicalization section (RFC 8785, UTF-8, Keccak-256, 0x prefix, self-reference, generated_at, test vector)', () => {
+    const body = read(protocolDocPath);
+
+    // Must mention RFC 8785 or JCS or canonical JSON or deterministic JSON
+    expect(body).toMatch(/RFC\s*8785|JCS|canonical\s+JSON|deterministic\s+JSON/i);
+
+    // Must mention UTF-8 encoding
+    expect(body).toMatch(/UTF[- ]?8/);
+
+    // Must mention Keccak-256 or hash algorithm
+    expect(body).toMatch(/Keccak[- ]?256|hash\s+algorithm/i);
+
+    // Must mention 0x prefix
+    expect(body).toMatch(/0x[-\s]?prefixed|prefixed\s+with\s+`?0x`?|0x[- ]?prefix/i);
+
+    // Must handle self-referential report_json_hash (omit or sentinel)
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/report_json_hash/);
+    expect(lower).toMatch(/omitted|remov|excluded|exclud|sentinel|null.*before|before.*null/);
+
+    // Must state whether generated_at participates in the hash
+    expect(body).toMatch(/generated_at/);
+
+    // Must contain a minimal worked example or test vector
+    expect(body).toMatch(/example|test\s*vector|work(?:ed)?\s*example/);
+  });
+
+  it('prism-protocol-v0.md defines raw/capped/display verdict score semantics with capped <= raw', () => {
+    const body = read(protocolDocPath);
+
+    // Must mention all three score fields
+    expect(body).toMatch(/raw_verdict_score/);
+    expect(body).toMatch(/capped_verdict_score/);
+    expect(body).toMatch(/verdict_score/);
+
+    // Must state that capped <= raw
+    expect(body).toMatch(/capped.*<=.*raw|capped_verdict_score\s*(?:<=|≤|must be less than or equal to|must not exceed)\s*raw_verdict_score/i);
+
+    // Must define what verdict_score represents (display/alias/capped)
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/verdict_score.*display|verdict_score.*alias|verdict_score.*capped/);
+  });
+
+  it('prism-protocol-v0.md states exact fail-closed criteria and that REVIEW is not fail-closed', () => {
+    const body = read(protocolDocPath);
+
+    // Must mention BLOCK, REJECT, and unresolved_blocking_count as fail-closed criteria
+    expect(body).toMatch(/\bBLOCK\b/);
+    expect(body).toMatch(/\bREJECT\b/);
+    expect(body).toMatch(/unresolved_blocking_count/);
+
+    // Must state that REVIEW is NOT fail-closed
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/\breview\b.*not.*fail[-\s]?closed|fail[-\s]?closed.*\breview\b|review.*distinct.*state|review.*separate/);
+  });
+
+  it('prism-protocol-v0.md defines tool_receipt vs evidence_receipts[] relationship', () => {
+    const body = read(protocolDocPath);
+
+    // Must mention both tool_receipt and evidence_receipts
+    expect(body).toMatch(/tool_receipt/);
+    expect(body).toMatch(/evidence_receipts/);
+
+    // Must define relationship: subset, reference, or informational
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/reference|subset|informational|backward|legacy|canonical|should\s+prefer/);
+  });
+
+  it('prism-protocol-v0.md defines readiness enum semantics with capital-gate correlations', () => {
+    const body = read(protocolDocPath);
+
+    // Must mention all three readiness values
+    expect(body).toMatch(/usable/);
+    expect(body).toMatch(/needs_review/);
+    expect(body).toMatch(/not_ready/);
+
+    // Must define correlations with capital gate
+    expect(body).toMatch(/capital_gate|capital\s+gate/);
+  });
+
+  it('prism-protocol-v0.md reserved oneOf wording clarifies v0 consumers reject richer future payloads', () => {
+    const body = read(protocolDocPath);
+
+    // Must mention that richer payloads require new schema_version
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/schema_version/);
+
+    // Must mention rejection behavior for v0 consumers
+    expect(lower).toMatch(/reject|will\s+not\s+accept|should\s+reject|must\s+reject|intended\s+behavior/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Receipt Verification — oracle hardening consistency
+// ---------------------------------------------------------------------------
+
+describe('Receipt verification — oracle hardening', () => {
+  const receiptVerificationPath = '../../docs/protocol/receipt-verification-v0.md';
+
+  it('receipt-verification-v0.md is consistent with canonicalization procedure (self-reference, generated_at)', () => {
+    const body = read(receiptVerificationPath);
+
+    // Must mention report_json_hash self-reference handling
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/report_json_hash/);
+    expect(lower).toMatch(/omit|remov|exclude|sentinel|null\s*before|before\s*null/);
+
+    // Must mention generated_at participation
+    expect(body).toMatch(/generated_at/);
+  });
 });
