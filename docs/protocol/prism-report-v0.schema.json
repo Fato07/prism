@@ -56,17 +56,22 @@
           "minLength": 1
         },
         "market_question": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "action": {
           "type": "string",
           "minLength": 1
         },
         "raw_probability": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         },
         "final_probability": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         },
         "ipfs_cid": {
           "type": "string",
@@ -120,7 +125,9 @@
       "additionalProperties": false,
       "required": [
         "verdict_score",
-        "verdict_label"
+        "verdict_label",
+        "raw_verdict_score",
+        "capped_verdict_score"
       ],
       "properties": {
         "verdict_score": {
@@ -146,14 +153,12 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 100,
-          "description": "The verdict score after policy clamping (e.g., floor/cap by readiness or issue-ledger gates)."
-        },
-        "request_hash": {
-          "type": "string",
-          "pattern": "^0x[0-9a-fA-F]{64}$"
+          "description": "The verdict score after policy clamping (e.g., floor/cap by readiness or issue-ledger gates). The invariant capped_verdict_score <= raw_verdict_score MUST hold."
         },
         "response_uri": {
-          "type": "string"
+          "type": "string",
+          "format": "uri",
+          "description": "URI pointing to the ERC-8004 validation response offchain artifact (IPFS gateway URL or equivalent)."
         }
       }
     },
@@ -208,7 +213,9 @@
           "minimum": 0
         },
         "avg_evidence_confidence": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         },
         "probability_delta": {
           "type": "number",
@@ -229,7 +236,8 @@
     "warnings": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     },
     "issue_ledger": {
@@ -287,7 +295,24 @@
             }
           }
         },
-        "resolution_metadata": {},
+        "resolution_metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "policy_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "resolution_strategy": {
+              "type": "string",
+              "minLength": 1
+            },
+            "applied_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
         "issues": {
           "type": "array",
           "items": {
@@ -344,11 +369,65 @@
               "tool_provider": {
                 "type": "string"
               },
-              "tool_receipt": {},
+              "tool_receipt": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source_content_hash",
+                  "retrieved_at",
+                  "provider"
+                ],
+                "properties": {
+                  "source_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "source_content_hash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{64}$"
+                  },
+                  "retrieved_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "provider": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "source_title": {
+                    "type": "string"
+                  },
+                  "source_excerpt": {
+                    "type": "string"
+                  }
+                }
+              },
               "resolved_by_evidence_tool": {
                 "type": "boolean"
               },
-              "latest_resolution": {}
+              "latest_resolution": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "status",
+                  "resolved_at"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "resolved_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "evidence_receipt_ref": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-fA-F]{64}$",
+                    "description": "Content hash reference into evidence_receipts[], linking to the evidence that backs this resolution."
+                  }
+                }
+              }
             }
           }
         }
@@ -533,19 +612,26 @@
           ]
         },
         "size_usdc": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{1,6})?$"
         },
         "builder_code": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "raw_probability": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         },
         "final_probability": {
-          "type": "number"
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         },
         "rationale": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -606,20 +692,24 @@
           "pattern": "^0x[0-9a-fA-F]{64}$"
         },
         "amount_usdc": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]{1,6})?$"
         },
         "network": {
           "type": "string",
           "minLength": 1
         },
         "chain_id": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1
         },
         "payer": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
         },
         "payee": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
         }
       }
     },
