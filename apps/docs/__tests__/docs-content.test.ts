@@ -205,6 +205,14 @@ describe('Verification guarantees page', () => {
     expect(body).toMatch(/\/docs\/receipts/);
   });
 
+  it('verification-guarantees.mdx links to v0 protocol artifacts', () => {
+    // VAL-GUARANTEES-022: page must link to the protocol doc and schema
+    const body = read('content/docs/verification-guarantees.mdx');
+
+    expect(body).toContain('docs/protocol/prism-protocol-v0.md');
+    expect(body).toContain('docs/protocol/prism-report-v0.schema.json');
+  });
+
   it('verification-guarantees.mdx contains zero banned overclaim phrases', () => {
     const body = read('content/docs/verification-guarantees.mdx').toLowerCase();
 
@@ -1207,5 +1215,155 @@ describe('Receipt verification — oracle hardening', () => {
 
     // Must mention generated_at participation
     expect(body).toMatch(/generated_at/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Protocol README
+// ---------------------------------------------------------------------------
+
+describe('Protocol README', () => {
+  const readmePath = '../../docs/protocol/README.md';
+
+  it('docs/protocol/README.md exists and is non-empty', () => {
+    const body = read(readmePath);
+    expect(body.length).toBeGreaterThan(0);
+  });
+
+  it('README links to all five required protocol artifacts', () => {
+    // VAL-PROTOCOL-023: links to prism-protocol-v0.md, prism-report-v0.schema.json,
+    // receipt-verification-v0.md, fixtures/, and oracle-review.md
+    const body = read(readmePath);
+
+    expect(body).toContain('prism-protocol-v0.md');
+    expect(body).toContain('prism-report-v0.schema.json');
+    expect(body).toContain('receipt-verification-v0.md');
+    expect(body).toContain('fixtures');
+    expect(body).toContain('oracle-review.md');
+  });
+
+  it('README documents three python -m json.tool smoke commands', () => {
+    // VAL-PROTOCOL-024: all three smoke commands present
+    const body = read(readmePath);
+
+    expect(body).toContain('python -m json.tool docs/protocol/prism-report-v0.schema.json');
+    expect(body).toContain('python -m json.tool docs/protocol/fixtures/pass-report.json');
+    expect(body).toContain('python -m json.tool docs/protocol/fixtures/fail-closed-report.json');
+  });
+
+  it('README identifies pnpm --dir apps/docs test as canonical gate and python commands as smoke', () => {
+    // VAL-PROTOCOL-025: vitest is the canonical/authoritative gate; python commands are smoke/convenience
+    const body = read(readmePath);
+
+    expect(body).toContain('pnpm --dir apps/docs test');
+    // Must contain canonical/authoritative gate language
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/canonical|authoritative|test gate|single ci gate/);
+    // Python commands described as smoke / convenience / not the gate
+    expect(lower).toMatch(/smoke|convenience|not the gate/);
+  });
+
+  it('README documents live-vs-v0 drift canary as operator smoke', () => {
+    // VAL-PROTOCOL-026: drift canary curl+jq command for canonical PASS trace
+    const body = read(readmePath);
+
+    // Must contain the canonical live API URL
+    expect(body).toContain('https://prism-dashboard-production-e6e3.up.railway.app/api/public/traces/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24/report');
+    // Must contain curl + jq
+    expect(body).toMatch(/curl/);
+    expect(body).toMatch(/jq/);
+    // Must be marked as operator smoke, not CI
+    const lower = body.toLowerCase();
+    expect(lower).toMatch(/operator.*smoke|smoke.*operator|not.*ci|not a ci/);
+  });
+
+  it('README lists reserved action_intent literals consistently with schema and protocol doc', () => {
+    // VAL-CROSS-007: reserved set {payment_batch, defi_rebalance, treasury_move}
+    // appears consistently in README, protocol doc, and schema
+    const readmeBody = read(readmePath).toLowerCase();
+
+    // README must mention all three reserved action_intent types
+    expect(readmeBody).toMatch(/\bpayment_batch\b/);
+    expect(readmeBody).toMatch(/\bdefi_rebalance\b/);
+    expect(readmeBody).toMatch(/\btreasury_move\b/);
+
+    // Protocol doc must also list them as reserved
+    const protocolBody = read('../../docs/protocol/prism-protocol-v0.md').toLowerCase();
+    expect(protocolBody).toMatch(/\bpayment_batch\b/);
+    expect(protocolBody).toMatch(/\bdefi_rebalance\b/);
+    expect(protocolBody).toMatch(/\btreasury_move\b/);
+
+    // Schema must have them as action_intent.oneOf type const values
+    const schema = JSON.parse(read('../../docs/protocol/prism-report-v0.schema.json')) as Record<string, unknown>;
+    const ai = ((schema.properties as Record<string, unknown>)['action_intent'] as Record<string, unknown>);
+    const oneOf = ai.oneOf as Array<Record<string, unknown>>;
+    const resolvedTypes = new Set<string>();
+    for (const branch of oneOf) {
+      const defs = schema.$defs as Record<string, unknown>;
+      const ref = branch.$ref ? String(branch.$ref).replace('#/$defs/', '') : null;
+      const resolved = ref ? defs[ref] as Record<string, unknown> : branch;
+      const typeProp = (resolved.properties as Record<string, unknown>)['type'] as Record<string, unknown>;
+      resolvedTypes.add(typeProp.const as string);
+    }
+    expect(resolvedTypes).toContain('payment_batch');
+    expect(resolvedTypes).toContain('defi_rebalance');
+    expect(resolvedTypes).toContain('treasury_move');
+  });
+
+  it('README lists reserved payment receipt protocols consistently with schema and protocol doc', () => {
+    // VAL-CROSS-008: reserved set {mpp, ap2} plus implemented x402
+    // appears consistently in README, protocol doc, and schema
+    const readmeBody = read(readmePath).toLowerCase();
+
+    // README must mention all three payment receipt protocols
+    expect(readmeBody).toMatch(/\bx402\b/);
+    expect(readmeBody).toMatch(/\bmpp\b/);
+    expect(readmeBody).toMatch(/\bap2\b/);
+
+    // Protocol doc must also list mpp and ap2 as reserved
+    const protocolBody = read('../../docs/protocol/prism-protocol-v0.md').toLowerCase();
+    expect(protocolBody).toMatch(/\bmpp\b/);
+    expect(protocolBody).toMatch(/\bap2\b/);
+
+    // Schema must have them as payment_receipts.items.oneOf protocol const values
+    const schema = JSON.parse(read('../../docs/protocol/prism-report-v0.schema.json')) as Record<string, unknown>;
+    const pr = ((schema.properties as Record<string, unknown>)['payment_receipts'] as Record<string, unknown>);
+    const items = pr.items as Record<string, unknown>;
+    const oneOf = items.oneOf as Array<Record<string, unknown>>;
+    const resolvedProtocols = new Set<string>();
+    for (const branch of oneOf) {
+      const defs = schema.$defs as Record<string, unknown>;
+      const ref = branch.$ref ? String(branch.$ref).replace('#/$defs/', '') : null;
+      const resolved = ref ? defs[ref] as Record<string, unknown> : branch;
+      const protocolProp = (resolved.properties as Record<string, unknown>)['protocol'] as Record<string, unknown>;
+      resolvedProtocols.add(protocolProp.const as string);
+    }
+    expect(resolvedProtocols).toContain('x402');
+    expect(resolvedProtocols).toContain('mpp');
+    expect(resolvedProtocols).toContain('ap2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Oracle review substance
+// ---------------------------------------------------------------------------
+
+describe('Oracle review', () => {
+  const oracleReviewPath = '../../docs/protocol/oracle-review.md';
+
+  it('oracle-review.md exists, is substantive (>1 KB), and has required headings', () => {
+    // VAL-CROSS-011: oracle-review.md exists, size > 1 KB, has ## Findings
+    // and at least one ### Issue / ### Resolution pair
+    const body = read(oracleReviewPath);
+
+    // File must be non-trivial
+    expect(body.length).toBeGreaterThan(1024);
+
+    // Must have ## Findings heading
+    expect(body).toMatch(/^##\s+Findings/m);
+
+    // Must have at least one ### Issue and ### Resolution
+    expect(body).toMatch(/^###\s+Issue/m);
+    expect(body).toMatch(/^###\s+Resolution/m);
   });
 });
