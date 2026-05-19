@@ -60,6 +60,20 @@ describe('Prism docs content', () => {
     expect(page).toContain('get_tool_manifest');
   });
 
+  it('serves an llms.txt route with public Prism context', () => {
+    const route = read('app/llms.txt/route.ts');
+    const layout = read('app/layout.tsx');
+
+    expect(route).toContain("fumadocs-core/source/llms");
+    expect(route).toContain('https://prism-docs-production.up.railway.app');
+    expect(route).toContain('https://prism-dashboard-production-e6e3.up.railway.app');
+    expect(route).toContain('https://prism-sentinel-production.up.railway.app/mcp/');
+    expect(route).toContain('Prism does not guarantee truth, profit, legal compliance, or perfect security');
+    expect(route).toContain('Canonical URL-verified report');
+    expect(route).not.toContain('X-PAYMENT');
+    expect(layout).toContain("metadataBase: new URL('https://prism-docs-production.up.railway.app')");
+  });
+
   it('keeps paid validation explicit and capped', () => {
     const cli = read('content/docs/cli.mdx');
     const security = read('content/docs/security.mdx');
