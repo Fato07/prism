@@ -28,6 +28,7 @@ const NAV_ROUTES: readonly {
   { href: "/builder-fees", label: "Attribution", shortLabel: "Attrib", page: "builder-fees" },
   { href: "/stats", label: "Stats", shortLabel: "Stats", page: "stats" },
   { href: "/calibration", label: "Calibration", shortLabel: "Gate", page: "calibration" },
+  { href: "/operator", label: "Operator", shortLabel: "Operator", page: "operator" },
 ] as const;
 
 interface GlobalNavProps {
