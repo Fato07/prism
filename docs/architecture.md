@@ -858,4 +858,78 @@ Honest snapshot to keep posts and submissions grounded.
 
 ---
 
+## Operator Safety Control Plane
+
+The Operator Safety Control Plane gives the operator runtime
+observability and safe control over the trader without shell access.
+It turns "keep AUTO_PIPELINE=false" from an operator memory rule into
+product infrastructure: authenticated controls, read-only status, and
+an audit trail.
+
+### Purpose
+
+Make Prism's autonomous runtime observable and safely controllable.
+The operator must be able to answer: Is the scheduler running? What
+mode is the system in? When was the last tick? What was the last error?
+And crucially: who started or stopped the pipeline, and when?
+
+### Key components
+
+| Component | Location | Role |
+|---|---|---|
+| Trader `GET /status` | `apps/trader/src/trader/main.py` | Read-only runtime status: scheduler state (running/stopped), interval, auto-pipeline flag, trade mode, last/next tick, last error, version. No side effects. |
+| Dashboard admin auth | `apps/dashboard/app/lib/admin-auth.ts` | All operator mutation routes require `OPERATOR_ADMIN_TOKEN` via `Authorization: Bearer` header. Verified with `timingSafeEqual` to prevent timing attacks. |
+| Dashboard proxy routes | `apps/dashboard/app/api/operator/runtime/route.ts`, `apps/dashboard/app/api/operator/schedule/route.ts` | Server-side proxy from dashboard API to trader API. Adds admin auth check; forwards authenticated start/stop to trader. |
+| `/operator` page | `apps/dashboard/app/operator/page.tsx` | Read-only status card + start/stop mutation controls with confirmation dialog + audit events table. Client component with admin token in session. |
+| `operator_events` audit log | `infra/db/migrations/005_operator_events.sql`, Neon table | Every mutation attempt (start, stop, interval change) records actor, action, old state, new state, timestamp, result, and error. Includes unauthorized attempts. |
+
+### Safety invariants
+
+1. **Reading status never starts the scheduler.** The `GET /status`
+   endpoint is purely observational; it cannot trigger the auto-pipeline.
+2. **`trade_mode` is env-only.** Paper-to-live switching requires a
+   Railway env var change and redeploy — it cannot be flipped via API or
+   dashboard. The start mutation explicitly refuses to switch modes.
+3. **`AUTO_PIPELINE` remains locked to `false`.** The default and
+   production value. The operator must explicitly start the scheduler
+   each time; it does not auto-start on deploy.
+4. **Start cannot switch paper → live.** If `PRISM_TRADE_MODE=paper`,
+   the start action starts in paper mode only. There is no API path to
+   change trade mode at runtime.
+5. **Stop cancels background tasks.** The stop action cancels the
+   running `asyncio` scheduler task, ensuring the loop does not
+   continue in the background after a stop command.
+6. **Confirmation required in UI.** The dashboard's start/stop buttons
+   require explicit user confirmation via a dialog before the mutation
+   is submitted.
+
+### Data flow
+
+```mermaid
+flowchart LR
+    Op["Operator<br/>(browser)"]
+    DashAPI["Dashboard API<br/>/api/operator/*"]
+    TraderAPI["Trader API<br/>GET /status, POST /start, DELETE /stop"]
+    Neon[("Neon<br/>operator_events")]
+
+    Op -- "AUTH: Bearer token" --> DashAPI
+    DashAPI -- "timingSafeEqual check" --> DashAPI
+    DashAPI -- "proxy + auth" --> TraderAPI
+    DashAPI -- "INSERT audit event" --> Neon
+
+    subgraph "Read path (no side effects)"
+        Op2["Operator"] --> DashAPI2["Dashboard API"]
+        DashAPI2 --> TraderAPI2["Trader GET /status"]
+        TraderAPI2 -- "JSON status" --> DashAPI2
+        DashAPI2 -- "status card" --> Op2
+    end
+```
+
+The read path (status card) fetches from the trader's `GET /status`
+with no side effects. The mutation path (start/stop) authenticates via
+`OPERATOR_ADMIN_TOKEN`, proxies the request to the trader, and writes
+an audit event to `operator_events` in Neon.
+
+---
+
 *Last updated: May 20, 2026 (Day 9 of the @CanteenApp × @BuildOnArc hackathon).*

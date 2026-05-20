@@ -93,6 +93,7 @@ Latest URL-verified MCP validation on 2026-05-17 settled at <https://sepolia.bas
 | `/builder-fees` | Execution attribution — Prism trade receipts with Polymarket-compatible builder codes; fee totals appear only when fill-price data is present |
 | `/stats` | Receipt-linked activity stats — validations, Arc anchors, x402 calls, builder attribution, latency, calibration |
 | `/calibration` | Sentinel calibration evidence — startup discrimination gate plus private corpus summary |
+| `/operator` | Operator Safety Control Plane — trader status card, start/stop scheduler with confirmation dialog, audit events table (requires `OPERATOR_ADMIN_TOKEN`) |
 
 ### Infrastructure
 
@@ -103,7 +104,7 @@ Latest URL-verified MCP validation on 2026-05-17 settled at <https://sepolia.bas
 - **Dual x402 facilitator scaffold** — public x402 payments settle on Base Sepolia today; Arc Testnet Circle-facilitator mode is implemented behind `X402_FACILITATOR_MODE` and remains off until Circle publishes a stable Arc facilitator endpoint.
 - **@prism/builder-codes** — shared workspace package for HMAC-based builder code extraction from ERC-8004 agent IDs
 - **Remotion pitch video** — 90s parameterized composition at `apps/pitch-video/`, served on port 3001
-- **3 Neon migrations** — `001_fill_price`, `002_requester_address`, `003_treasury_events`
+- **5 Neon migrations** — `001_fill_price`, `002_requester_address`, `003_treasury_events`, `004_tool_connectors`, `005_operator_events`
 
 ### External x402 + MCP Endpoint
 
@@ -184,6 +185,37 @@ uv run python -m prism_calibration.cli --help
 | DSPy `TraceAdversary` signature | |
 | Treasury dry-run scaffold (USYC park/unpark path) | |
 | Calibration CLI + schemas (8 commands, 149 tests) | |
+
+---
+
+## Operator Safety Control Plane
+
+Runtime observability and safe control for Prism's autonomous trader — read status, start/stop scheduler with auth, audit trail for all mutations.
+
+### Key Components
+
+| Component | Description |
+|-----------|-------------|
+| **Trader `GET /status`** | Read-only endpoint returning 8 fields: `scheduler_running`, `interval_minutes`, `auto_pipeline_enabled`, `trade_mode`, `last_tick_timestamp`, `next_tick`, `last_error`, `service_version`. Reading status **never** starts the scheduler. |
+| **Dashboard operator-admin auth** | All admin routes gated by `OPERATOR_ADMIN_TOKEN` (Bearer header). Verified via `timingSafeEqual` (separate from `CONNECTOR_ADMIN_TOKEN`). Invalid or missing token → 401 + audit row with `result=unauthorized`. |
+| **Dashboard admin API routes** | `GET /api/admin/runtime`, `POST /api/admin/schedule/start`, `POST /api/admin/schedule/stop`, `GET /api/admin/audit` — proxy to the trader with auth enforcement. |
+| **Operator page (`/operator`)** | Read-only status card + start/stop mutation buttons with confirmation dialog + live audit events table. Requires admin auth. |
+| **`operator_events` audit log** | Append-only Postgres table (`infra/db/migrations/005_operator_events.sql`). Every mutation attempt (success, failure, unauthorized) writes a row. No UPDATE or DELETE issued by application code. |
+
+### Key Safety Invariants
+
+- **Reading status never starts the scheduler.** The `GET /status` endpoint is purely observational.
+- **`PRISM_TRADE_MODE` is read-only (env-only).** The API cannot switch between `paper` and `live`. To change trade mode, update the environment variable and redeploy.
+- **`AUTO_PIPELINE=false` is the default and cannot be changed via API.** The scheduler must be explicitly started by an authenticated operator action; start only activates the tick scheduler, not auto-pipeline.
+- **Start cannot switch paper→live.** If `PRISM_TRADE_MODE=paper`, the start endpoint only starts in paper mode. No runtime escalation.
+- **Stop cancels background tasks.** The stop endpoint cancels the scheduler's asyncio background task and sets `scheduler_running=false`.
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPERATOR_ADMIN_TOKEN` | Bearer token for admin API routes and `/operator` page access. Must be set in both trader and dashboard services. Verified via `timingSafeEqual` — separate from `CONNECTOR_ADMIN_TOKEN`. |
+| `TRADER_INTERNAL_URL` | Internal URL where the dashboard reaches the trader service (e.g. `http://prism-trader.railway.internal:3201` for Railway private networking). |
 
 ---
 
@@ -347,11 +379,11 @@ Companion showcase film: **[Prism showcase film](https://youtu.be/ZmSStvqNgIo)**
 
 | Service | Stack | Key Endpoints |
 |---------|-------|---------------|
-| **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health`, `POST /treasury/park`, `POST /treasury/unpark` |
+| **Trader** | Python, FastAPI, Mirascope | `POST /trigger`, `GET /health`, `GET /status`, `POST /schedule`, `DELETE /schedule`, `POST /treasury/park`, `POST /treasury/unpark` |
 | **Sentinel** | Python, FastAPI, DSPy | `POST /validate`, `GET /health` |
 | **Polymarket Gateway** | Node, Hono, V2 SDK | `GET /markets`, `GET /markets/recommended`, `GET /markets/resolve`, `POST /trade`, `GET /health` |
 | **MCP Server** | Python, FastMCP | Live at sentinel `/mcp` — validation, stats, manifest, issue-ledger, receipt verification, and verdict explanation tools |
-| **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report` |
+| **Dashboard** | Next.js 16, React 19 | Public routes + `/api/public/stats`, `/api/public/history`, `/api/public/traces/[id]/report`, `/api/admin/runtime`, `/api/admin/schedule/start`, `/api/admin/schedule/stop`, `/api/admin/audit`, `/operator` |
 | **CLI** | Python, Typer | `prism doctor`, `prism demo`, `prism inspect`, `prism stats`, `prism history`, `prism report`, `prism markets`, `prism market resolve`, `prism quote`, `prism validate` |
 | **Pitch Video** | Remotion | `apps/pitch-video/` — parameterized 90s composition on port 3001 |
 
@@ -393,6 +425,8 @@ cp .env.example .env
 #   - X402_FACILITATOR_MODE (public or circle — public Base Sepolia is live; circle is scaffolded)
 #   - X402_ARC_RECIPIENT_ADDRESS (USDC recipient on Arc Testnet when facilitator mode is circle)
 #   - USYC_ARC_TESTNET_ADDRESS (optional USYC token contract address; empty = treasury dry-run)
+#   - OPERATOR_ADMIN_TOKEN (Bearer token for operator admin routes and /operator page)
+#   - TRADER_INTERNAL_URL (internal URL for dashboard → trader proxy, e.g. http://prism-trader.railway.internal:3201)
 
 # 3. Install Python dependencies
 uv sync
@@ -401,11 +435,13 @@ uv sync
 pnpm install
 
 # 5. Run database migrations
-#    Apply the three Neon migrations in order:
+#    Apply the five Neon migrations in order:
 uv run python -m prism_schemas.migrations 001_fill_price
 uv run python -m prism_schemas.migrations 002_requester_address
 uv run python -m prism_schemas.migrations 003_treasury_events
-#    Or apply all at once via Neon's SQL editor / psql using the SQL files in packages/schemas-python/migrations/
+uv run python -m prism_schemas.migrations 004_tool_connectors
+uv run python -m prism_schemas.migrations 005_operator_events
+#    Or apply all at once via Neon's SQL editor / psql using the SQL files in infra/db/migrations/
 ```
 
 ### Running Services
@@ -439,14 +475,14 @@ cd apps/dashboard && pnpm test
 
 | Suite | Tests |
 |-------|-------|
-| Dashboard | 475 |
+| Dashboard | 650 |
 | CLI | 10 |
 | Polymarket Gateway | 93 |
 | Sentinel | 118 |
-| Trader | 156 |
+| Trader | 237 |
 | Calibration | 149 |
 | Docs (protocol + fixtures) | 82 |
-| **Total** | **1,083** |
+| **Total** | **1,339** |
 
 ---
 
@@ -530,15 +566,17 @@ pnpm --dir apps/docs test
 
 ## Database Migrations
 
-Three Neon migrations ship with the traction sprint:
+Five Neon migrations ship with the traction sprint:
 
 | Migration | Description |
 |-----------|-------------|
 | `001_fill_price` | Adds `fill_price` column to trades table for tracking paper/live fill prices |
 | `002_requester_address` | Adds `requester_address` column to validations table for wallet-connected attribution |
 | `003_treasury_events` | Creates `treasury_events` table for USYC park/unpark audit trail |
+| `004_tool_connectors` | Creates `tool_connectors` table for Connector Passport MCP-first evidence connector registry |
+| `005_operator_events` | Creates `operator_events` append-only audit log for scheduler start/stop/update_interval actions |
 
-Apply them in order via the migration runner or directly through Neon's SQL editor using the files in `packages/schemas-python/migrations/`.
+Apply them in order via the migration runner or directly through Neon's SQL editor using the SQL files in `infra/db/migrations/`.
 
 ---
 
