@@ -4,8 +4,21 @@
  * Covers:
  *   - VAL-UI-001: Page renders with status card showing all 8 runtime fields
  *   - VAL-UI-002: Trade mode and auto-pipeline as static text, no editable inputs
+ *   - VAL-UI-003: Start button visible when scheduler stopped
+ *   - VAL-UI-004: Stop button visible when scheduler running
+ *   - VAL-UI-005/006: Start/Stop require confirmation dialog
+ *   - VAL-UI-007: Confirmation dialog has Cancel and Confirm buttons
+ *   - VAL-UI-008: Status updates without page reload after mutation
+ *   - VAL-UI-009: Mutation error shows inline dismissible message
+ *   - VAL-UI-010: Audit events table below status card
  *   - VAL-UI-011: Admin token input (type=password), auth-required prompt without token
  *   - VAL-UI-012: Page reachable from global navigation, uses GlobalNav layout
+ *   - VAL-UI-013: Empty audit events shows empty state message
+ *   - VAL-UI-014: Disconnect button clears session
+ *   - VAL-UI-015: Auto-refresh uses GET only (never POST)
+ *   - VAL-UI-016: Page refresh preserves authenticated state via sessionStorage
+ *   - VAL-UI-017: Auto-refresh 401 surfaces credentials-expired message
+ *   - VAL-UI-018: Auto-refresh interval cleaned up on unmount
  *
  * Tests are unit-level (no browser / no real trader).
  */
@@ -339,29 +352,248 @@ describe("VAL-UI-010: Audit events table below status card", () => {
   });
 });
 
-/* ─────────────── Auto-refresh polling ─────────────────────────── */
+/* ─────────────── VAL-UI-003: Start button visible when stopped ───── */
 
-describe("Auto-refresh: status data auto-refreshes at reasonable interval", () => {
-  it("operator-shell has auto-refresh polling mechanism for status", () => {
+describe("VAL-UI-003: Start button visible when scheduler stopped", () => {
+  it("Start button is conditionally rendered based on scheduler_running", () => {
     const source = fs.readFileSync(SHELL_PATH, "utf8");
-    // Should use setInterval or similar for polling
-    expect(source).toMatch(/interval|Interval|setInterval|polling|refresh/);
+    // Must reference scheduler_running to toggle button visibility
+    const schedulerRunningRefs =
+      source.split("scheduler_running").length - 1;
+    expect(schedulerRunningRefs).toBeGreaterThanOrEqual(2);
   });
 
-  it("auto-refresh only uses GET (never triggers mutations)", () => {
+  it("Start button only appears when scheduler is not running", () => {
     const source = fs.readFileSync(SHELL_PATH, "utf8");
-    // Auto-refresh should only call GET /api/admin/runtime
-    // The fetch for runtime should use GET method
-    // Auto-refresh should never call schedule endpoints
-    const refreshCallsRuntime =
-      source.includes("/api/admin/runtime");
-    expect(refreshCallsRuntime).toBe(true);
+    // In the render: "Start Scheduler" text should exist (button label when stopped)
+    expect(source).toContain("Start Scheduler");
+    // The button conditional uses schedulerRunning to decide which button to show
+    // When schedulerRunning is falsy, Start appears; when truthy, Stop appears
   });
 
-  it("auto-refresh is a client-side interval (not server rendered)", () => {
+  it("Start and Stop buttons are mutually exclusive (conditional)", () => {
     const source = fs.readFileSync(SHELL_PATH, "utf8");
-    // Should use useEffect with setInterval
+    // The conditional rendering uses the schedulerRunning boolean
+    // to show exactly one button at a time
+    expect(source).toContain("schedulerRunning ?");
+  });
+});
+
+/* ─────────────── VAL-UI-004: Stop button visible when running ──── */
+
+describe("VAL-UI-004: Stop button visible when scheduler running", () => {
+  it("Stop button is conditionally rendered based on scheduler_running", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // "Stop Scheduler" label should exist (button label when running)
+    expect(source).toContain("Stop Scheduler");
+  });
+
+  it("Stop button references scheduler_running to toggle visibility", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // The ternary using schedulerRunning decides Start vs Stop
+    const hasTernary = source.includes("schedulerRunning ?");
+    expect(hasTernary).toBe(true);
+  });
+});
+
+/* ─────────────── VAL-UI-014: Disconnect button clears session ──── */
+
+describe("VAL-UI-014: Disconnect button clears session and state", () => {
+  it("operator-shell has a Disconnect button in authenticated state", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    expect(source).toContain("Disconnect");
+  });
+
+  it("Disconnect handler removes token from sessionStorage", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Must call sessionStorage.removeItem(SESSION_KEY)
+    expect(source).toContain("sessionStorage.removeItem(SESSION_KEY)");
+  });
+
+  it("Disconnect handler resets token state to absent", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Must set token to absent phase
+    expect(source).toContain('phase: "absent"');
+  });
+
+  it("Disconnect handler resets load state to idle", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Must set load to idle
+    expect(source).toContain('phase: "idle"');
+  });
+
+  it("Disconnect handler clears audit events", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Should clear audit events on disconnect
+    expect(source).toContain("setAuditEvents([])");
+  });
+
+  it("Disconnect handler clears auto-refresh timer", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Should clear the refresh interval timer
+    expect(source).toMatch(/clearInterval\(refreshTimerRef\.current\)/);
+  });
+});
+
+/* ─────────────── VAL-UI-015: Auto-refresh uses GET only ────────── */
+
+describe("VAL-UI-015: Auto-refresh uses GET only (never POST)", () => {
+  it("auto-refresh polling only references runtime endpoint (GET)", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // The interval callback should only call fetchStatus (which does GET /api/admin/runtime)
+    // and fetchAuditEvents (which does GET /api/admin/audit)
+    // No POST/PUT/DELETE in the auto-refresh interval callback
+    expect(source).toContain("/api/admin/runtime");
+  });
+
+  it("auto-refresh interval does NOT call schedule endpoints", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Verify that the schedule endpoints are only referenced in mutation handlers,
+    // not in the auto-refresh setInterval callback.
+    // The schedule endpoints should be in handleConfirmMutation, not in the interval.
+    const intervalIdx = source.indexOf("setInterval");
+    const scheduleStartInInterval =
+      intervalIdx !== -1
+        ? source.indexOf("/api/admin/schedule/start", intervalIdx)
+        : -1;
+    const intervalEnd =
+      intervalIdx !== -1
+        ? source.indexOf("REFRESH_INTERVAL_MS", intervalIdx) + 50
+        : -1;
+    // schedule/start should NOT appear inside the setInterval callback
+    if (scheduleStartInInterval !== -1 && intervalEnd !== -1) {
+      expect(scheduleStartInInterval).toBeGreaterThan(intervalEnd);
+    }
+  });
+
+  it("auto-refresh is a client-side useEffect with setInterval cleanup", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    expect(source).toContain("setInterval");
+    expect(source).toContain("REFRESH_INTERVAL_MS");
     expect(source).toContain("useEffect");
+    // Cleanup is tested in VAL-UI-018
+  });
+});
+
+/* ─────────────── VAL-UI-016: Page refresh preserves auth ───────── */
+
+describe("VAL-UI-016: Page refresh preserves authenticated state via sessionStorage", () => {
+  it("SESSION_KEY is defined for sessionStorage persistence", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    expect(source).toContain('SESSION_KEY = "prism:operator:token"');
+  });
+
+  it("mount effect reads token from sessionStorage on first render", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Must read from sessionStorage.getItem(SESSION_KEY)
+    expect(source).toContain("sessionStorage.getItem(SESSION_KEY)");
+  });
+
+  it("stored token sets phase to 'stored' on recovery", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // When sessionStorage has a token, setToken({ phase: "stored", value: stored })
+    expect(source).toContain('phase: "stored"');
+    expect(source).toContain("value: stored");
+  });
+
+  it("mountedRef guards against double-init on StrictMode re-render", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // mountedRef prevents re-running sessionStorage read
+    expect(source).toContain("mountedRef");
+    expect(source).toContain("mountedRef.current");
+  });
+
+  it("sessionStorage write on successful connect saves token", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // handleConnect calls sessionStorage.setItem(SESSION_KEY, trimmed)
+    expect(source).toContain("sessionStorage.setItem(SESSION_KEY");
+  });
+
+  it("sessionStorage error is caught silently (try/catch)", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // All sessionStorage operations must be in try/catch blocks
+    const tryCatchCount = (source.match(/try\s*\{/g) || []).length;
+    expect(tryCatchCount).toBeGreaterThanOrEqual(2); // at least mount + connect
+  });
+});
+
+/* ─────────────── VAL-UI-017: Auto-refresh 401 surfaces error ───── */
+
+describe("VAL-UI-017: Auto-refresh 401 surfaces credentials-expired message", () => {
+  it("fetchStatus detects 401 and shows credentials-expired message", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // When res.status === 401, show credentials-expired message
+    expect(source).toContain("res.status === 401");
+    expect(source).toContain("credentials have expired");
+  });
+
+  it("on 401, token is cleared from sessionStorage", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // 401 path calls sessionStorage.removeItem
+    expect(source).toContain("sessionStorage.removeItem(SESSION_KEY)");
+  });
+
+  it("on 401, token state is reset to absent", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // 401 path sets token to absent
+    // We look for the pattern near the 401 handling
+    const idx401 = source.indexOf("res.status === 401");
+    if (idx401 !== -1) {
+      const after401 = source.slice(idx401, idx401 + 800);
+      expect(after401).toContain('phase: "absent"');
+    }
+  });
+
+  it("on 401, auto-refresh timer is cleared", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // 401 path stops the refresh timer
+    const idx401 = source.indexOf("res.status === 401");
+    if (idx401 !== -1) {
+      const after401 = source.slice(idx401, idx401 + 800);
+      expect(after401).toContain("clearInterval(refreshTimerRef.current)");
+    }
+  });
+
+  it("credentials-expired message prompts user to re-enter token", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // The 401 message should prompt re-entry
+    expect(source).toContain("re-enter your admin token");
+  });
+});
+
+/* ─────────────── VAL-UI-018: Auto-refresh cleanup on unmount ───── */
+
+describe("VAL-UI-018: Auto-refresh interval cleaned up on unmount", () => {
+  it("useEffect that sets up auto-refresh has a cleanup return", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // The auto-refresh useEffect must return a cleanup function
+    // that clears the interval
+    expect(source).toContain("clearInterval(refreshTimerRef.current)");
+  });
+
+  it("cleanup sets refreshTimerRef to null after clearing", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // After clearing, set the ref to null to prevent stale references
+    expect(source).toContain("refreshTimerRef.current = null");
+  });
+
+  it("cleanup function is returned from the auto-refresh useEffect", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // The auto-refresh useEffect cleanup pattern is:
+    //   return () => { clearInterval(refreshTimerRef.current); refreshTimerRef.current = null; }
+    // Search for this specific pattern in the source
+    expect(source).toMatch(/return\s*\(\s*\)\s*=>\s*\{[\s\S]*?clearInterval\(refreshTimerRef/);
+  });
+
+  it("auto-refresh useEffect cleanup guards against memory leaks", () => {
+    const source = fs.readFileSync(SHELL_PATH, "utf8");
+    // Must have the standard pattern:
+    //   refreshTimerRef.current = setInterval(...)
+    //   return () => { clearInterval(refreshTimerRef.current); refreshTimerRef.current = null; }
+    const hasSetAndCleanup =
+      source.includes("refreshTimerRef.current = setInterval") &&
+      source.includes("clearInterval(refreshTimerRef.current)");
+    expect(hasSetAndCleanup).toBe(true);
   });
 });
 

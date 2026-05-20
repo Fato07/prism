@@ -169,13 +169,33 @@ export function OperatorShell() {
       if (res.ok) {
         const data: RuntimeStatus = await res.json();
         setLoad({ phase: "ready", data });
+      } else if (res.status === 401) {
+        // Credentials no longer valid — clear token, show auth prompt
+        setLoad({
+          phase: "error",
+          message:
+            "Your credentials have expired or are no longer valid. Please re-enter your admin token to continue.",
+        });
+        // Disconnect: clear token from sessionStorage and reset state
+        try {
+          sessionStorage.removeItem(SESSION_KEY);
+        } catch {
+          /* ignore */
+        }
+        setToken({ phase: "absent" });
+        setAuditEvents([]);
+        // Stop auto-refresh polling
+        if (refreshTimerRef.current) {
+          clearInterval(refreshTimerRef.current);
+          refreshTimerRef.current = null;
+        }
       } else {
         const body = await res.json().catch(() => ({}));
         setLoad({
           phase: "error",
           message:
-            body.error === "operator_admin_required"
-              ? "Invalid admin token. Check your credentials and try again."
+            body.error === "trader_unreachable"
+              ? "Unable to reach the runtime service. Is the trader running?"
               : `Request failed (${res.status}). Try again.`,
         });
       }
