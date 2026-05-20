@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { describe, expect, it, beforeEach } from "vitest";
 
 import { isOperatorAdminRequest, operatorAdminTokenFromRequest } from "@/lib/operator-auth";
@@ -113,5 +115,91 @@ describe("isOperatorAdminRequest", () => {
     process.env.CONNECTOR_ADMIN_TOKEN = CONNECTOR_TOKEN;
     const req = buildRequest({ authorization: "Bearer " });
     expect(isOperatorAdminRequest(req)).toBe(false);
+  });
+
+  // ── VAL-ADMIN-019: whitespace-only token treated as missing ──
+
+  it("returns false for Bearer header with only whitespace after Bearer (VAL-ADMIN-019)", () => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    const req = buildRequest({ authorization: "Bearer    " });
+    expect(isOperatorAdminRequest(req)).toBe(false);
+  });
+
+  it("returns false for X-Prism-Admin-Token header that is whitespace-only (VAL-ADMIN-019)", () => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    const req = buildRequest({ "x-prism-admin-token": "   " });
+    expect(isOperatorAdminRequest(req)).toBe(false);
+  });
+
+  it("returns false when Bearer token is whitespace-only and X-Prism-Admin-Token is also whitespace-only (VAL-ADMIN-019)", () => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    const req = buildRequest({
+      authorization: "Bearer \t ",
+      "x-prism-admin-token": "\n  ",
+    });
+    expect(isOperatorAdminRequest(req)).toBe(false);
+  });
+
+  it("returns false when Bearer token is a tab character (VAL-ADMIN-019)", () => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    const req = buildRequest({ authorization: "Bearer \t" });
+    expect(isOperatorAdminRequest(req)).toBe(false);
+  });
+
+  it("returns false for Authorization header with only the word Bearer (no space, no token) (VAL-ADMIN-019)", () => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    const req = buildRequest({ authorization: "Bearer" });
+    // "Bearer" without trailing space → startsWith("bearer ") is false → falls through
+    expect(isOperatorAdminRequest(req)).toBe(false);
+  });
+});
+
+// ── VAL-ADMIN-021: constant-time token comparison ──
+describe("VAL-ADMIN-021: constant-time comparison", () => {
+  /**
+   * Reads and inspects the operator-auth.ts source to verify that token
+   * comparison uses crypto.timingSafeEqual and never uses string equality
+   * operators (=== or ==).
+   */
+  const sourcePath = resolve(__dirname, "../app/lib/operator-auth.ts");
+
+  it("imports timingSafeEqual from crypto", () => {
+    const source = readFileSync(sourcePath, "utf-8");
+    // Must import timingSafeEqual (case-insensitive match for safety)
+    expect(source).toMatch(/timingSafeEqual/);
+  });
+
+  it("never uses === for comparing the configured token against the supplied token (VAL-ADMIN-021)", () => {
+    const source = readFileSync(sourcePath, "utf-8");
+    
+    // Strip single-line and multi-line comments to avoid false positives
+    // from explanatory comments like "NEVER use ==="
+    const noComments = source
+      .replace(/\/\/.*$/gm, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // Search for patterns that compare 'configured' or 'supplied' with === or ==
+    // after stripping whitespace from the comment-stripped source
+    const stripped = noComments.replace(/\s+/g, " ");
+    
+    // Any occurrence of 'configured ===' or 'supplied ===' would be a vulnerability
+    expect(stripped).not.toMatch(/configured\s*={2,3}\s*(supplied|configured)/);
+    expect(stripped).not.toMatch(/supplied\s*={2,3}\s*(configured|supplied)/);
+  });
+
+  it("uses constantTimeEquals wrapper that calls timingSafeEqual with length check (VAL-ADMIN-021)", () => {
+    const source = readFileSync(sourcePath, "utf-8");
+    
+    // The constantTimeEquals function must check buffer lengths before
+    // calling timingSafeEqual to prevent the error that timingSafeEqual
+    // throws for differing-length buffers
+    const functionBody = source.slice(
+      source.indexOf("function constantTimeEquals"),
+      source.indexOf("function constantTimeEquals") + 300,
+    );
+    
+    expect(functionBody).toContain("Buffer.from");
+    expect(functionBody).toContain("timingSafeEqual");
+    expect(functionBody).toContain(".length");
   });
 });
