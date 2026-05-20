@@ -303,7 +303,7 @@ class TestParkDryRun:
         log = park_logs[0]
         assert log["wallet_id"] == WALLET_ID
         assert log["usdc_amount"] == "5.0"
-        assert "gap_doc" in log
+        assert "gap_reason" in log
 
 
 # ===========================================================================
