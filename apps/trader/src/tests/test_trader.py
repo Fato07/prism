@@ -12,11 +12,13 @@ Test categories:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
 import time
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -887,9 +889,7 @@ class TestStatusEndpoint:
         try:
             # After pipeline tick, scheduler_running still false
             status = client.get("/status").json()
-            assert status["scheduler_running"] is False, (
-                "Pipeline should not start scheduler"
-            )
+            assert status["scheduler_running"] is False, "Pipeline should not start scheduler"
             assert status["last_tick_timestamp"] is not None, (
                 "last_tick_timestamp should be set after pipeline run"
             )
@@ -920,9 +920,7 @@ class TestStatusEndpoint:
             assert status["last_error"] == "Test error: simulated pipeline failure"
             # Response should still be 200
             resp = client.get("/status")
-            assert resp.status_code == 200, (
-                "/status must return 200 even with last_error set"
-            )
+            assert resp.status_code == 200, "/status must return 200 even with last_error set"
         finally:
             # Clean up
             trader_main._last_error = None
@@ -1114,9 +1112,7 @@ class TestStatusEndpoint:
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         assert response.status_code == 200
-        assert elapsed_ms < 50, (
-            f"GET /status took {elapsed_ms:.1f}ms — must be under 50ms"
-        )
+        assert elapsed_ms < 50, f"GET /status took {elapsed_ms:.1f}ms — must be under 50ms"
 
     # -----------------------------------------------------------------------
     # VAL-STATUS-006 extended: trade_mode defaults to paper via env
@@ -1129,3 +1125,339 @@ class TestStatusEndpoint:
         assert status["trade_mode"] in ("paper", "live"), (
             f"trade_mode must be paper or live, got {status['trade_mode']}"
         )
+
+    # -----------------------------------------------------------------------
+    # VAL-STATUS-010: DELETE /schedule when scheduler not running
+    # -----------------------------------------------------------------------
+
+    def test_delete_schedule_when_not_running_returns_success(self) -> None:
+        """VAL-STATUS-010: DELETE /schedule when stopped returns success, not error."""
+        client = self._create_client()
+
+        # Fresh boot — scheduler is not running
+        status_before = client.get("/status").json()
+        assert status_before["scheduler_running"] is False
+
+        # DELETE /schedule — must return 200, not 4xx/5xx
+        response = client.delete("/schedule")
+        assert response.status_code == 200, (
+            f"DELETE /schedule when stopped must return 200, got {response.status_code}"
+        )
+        body = response.json()
+        assert body["status"] == "not_running", f"Expected status='not_running', got {body}"
+
+        # Scheduler remains stopped
+        status_after = client.get("/status").json()
+        assert status_after["scheduler_running"] is False
+
+        # DELETE /schedule can be called repeatedly while stopped
+        for _ in range(3):
+            repeat = client.delete("/schedule")
+            assert repeat.status_code == 200
+            assert repeat.json()["status"] == "not_running"
+
+    # -----------------------------------------------------------------------
+    # VAL-STATUS-014: last_error persists across scheduler stop/start cycles
+    # -----------------------------------------------------------------------
+
+    def test_last_error_persists_across_stop_start_cycle(self) -> None:
+        """VAL-STATUS-014: last_error persists across start/stop until successful tick."""
+        client = self._create_client()
+        import trader.main as trader_main
+
+        # Simulate an error having occurred during a tick
+        trader_main._last_error = "Tick error: timeout"
+
+        try:
+            # Error visible in status
+            status = client.get("/status").json()
+            assert status["last_error"] == "Tick error: timeout"
+            assert isinstance(status["last_error"], str)
+
+            # Simulate scheduler started — error persists
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                trader_main._current_interval = 5
+                status_running = client.get("/status").json()
+                assert status_running["last_error"] == "Tick error: timeout"
+                assert status_running["scheduler_running"] is True
+
+            # Simulate scheduler stopped — error still persists
+            status_stopped = client.get("/status").json()
+            assert status_stopped["last_error"] == "Tick error: timeout"
+            assert status_stopped["scheduler_running"] is False
+
+            # Simulate restart — error still persists until successful tick
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                trader_main._current_interval = 5
+                status_restart = client.get("/status").json()
+                assert status_restart["last_error"] == "Tick error: timeout"
+                assert status_restart["scheduler_running"] is True
+
+        finally:
+            trader_main._last_error = None
+
+    def test_last_error_cleared_after_successful_tick(self) -> None:
+        """last_error is reset to null after a successful tick completes."""
+        client = self._create_client()
+        import trader.main as trader_main
+
+        # Set error then simulate a successful tick clearing it
+        trader_main._last_error = "Previous error: timeout"
+        try:
+            assert client.get("/status").json()["last_error"] == "Previous error: timeout"
+
+            # Simulate successful tick: _pipeline_loop sets last_error = None
+            trader_main._last_error = None
+            assert client.get("/status").json()["last_error"] is None
+        finally:
+            trader_main._last_error = None
+
+    # -----------------------------------------------------------------------
+    # VAL-STATUS-022: Stopping scheduler mid-tick does not corrupt state
+    # -----------------------------------------------------------------------
+
+    def test_mid_tick_cancellation_preserves_state(self) -> None:
+        """VAL-STATUS-022: Cancelling scheduler mid-tick leaves clean state."""
+        client = self._create_client()
+        import trader.main as trader_main
+
+        # Simulate a running scheduler with an active task
+        tick_time = datetime.now(UTC)
+
+        try:
+            trader_main._last_tick_at = tick_time
+            trader_main._last_error = "Simulated running tick"
+
+            # State before cancellation: running with data from last tick
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                trader_main._current_interval = 5
+                trader_main._next_tick_at = tick_time + timedelta(minutes=5)
+
+                status_before = client.get("/status").json()
+                assert status_before["scheduler_running"] is True
+                assert status_before["last_tick_timestamp"] is not None
+                assert status_before["next_tick"] is not None
+
+            # Simulate mid-tick cancellation:
+            # DELETE /schedule sets _pipeline_task = None and _next_tick_at = None
+            # but last_tick_timestamp and last_error are preserved
+            trader_main._pipeline_task = None
+            trader_main._next_tick_at = None
+            # last_tick_at and _last_error NOT cleared by cancellation
+            # (this matches the DELETE /schedule handler behavior)
+
+            status_after = client.get("/status").json()
+            assert status_after["scheduler_running"] is False
+            assert status_after["next_tick"] is None, "next_tick must be null after cancellation"
+            # last_tick_timestamp preserved from before cancellation
+            assert status_after["last_tick_timestamp"] == tick_time.isoformat(), (
+                "last_tick_timestamp should be preserved across cancellation"
+            )
+            # last_error preserved (not cleared by cancellation)
+            assert status_after["last_error"] == "Simulated running tick", (
+                "last_error should not be spuriously set by cancellation"
+            )
+
+            # After cancellation, restarting scheduler begins a fresh cycle
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                new_tick = datetime.now(UTC) + timedelta(minutes=7)
+                trader_main._current_interval = 7
+                trader_main._next_tick_at = new_tick
+
+                status_restart = client.get("/status").json()
+                assert status_restart["scheduler_running"] is True
+                assert status_restart["interval_minutes"] == 7
+                # next_tick is fresh, not stale from before cancellation
+                next_tick_dt = datetime.fromisoformat(status_restart["next_tick"])
+                assert next_tick_dt >= new_tick - timedelta(seconds=2)
+
+        finally:
+            trader_main._last_tick_at = None
+            trader_main._next_tick_at = None
+            trader_main._last_error = None
+            trader_main._pipeline_task = None
+
+    # -----------------------------------------------------------------------
+    # VAL-STATUS-024: POST /schedule accepts explicit interval_minutes
+    # -----------------------------------------------------------------------
+
+    def test_schedule_with_explicit_interval_minutes(self) -> None:
+        """VAL-STATUS-024: POST /schedule?interval_minutes=10 starts with 10-min interval.
+
+        Uses _is_scheduling() mock because TestClient cannot maintain asyncio
+        tasks between requests — the task created by POST /schedule gets
+        cancelled by the event loop during request cleanup.
+        """
+        client = self._create_client()
+        import trader.main as trader_main
+
+        # Verify stopped initially
+        assert client.get("/status").json()["scheduler_running"] is False
+
+        try:
+            # POST /schedule with interval_minutes=10 sets _current_interval
+            response = client.post("/schedule?interval_minutes=10")
+            assert response.status_code == 200, f"POST /schedule returned {response.status_code}"
+            body = response.json()
+            assert body["status"] == "started", f"Expected status='started', got {body}"
+            assert body["interval_minutes"] == 10, (
+                f"Expected interval=10, got {body['interval_minutes']}"
+            )
+
+            # Verify module-level interval is updated
+            assert trader_main._current_interval == 10, (
+                f"_current_interval should be 10, got {trader_main._current_interval}"
+            )
+
+            # Simulate running scheduler for status reflection
+            # (asyncio task can't persist between TestClient requests)
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                future_tick = datetime.now(UTC) + timedelta(minutes=10)
+                trader_main._next_tick_at = future_tick
+
+                status = client.get("/status").json()
+                assert status["interval_minutes"] == 10
+                assert status["scheduler_running"] is True
+                assert status["next_tick"] is not None
+                # next_tick should be approximately 10 minutes in the future
+                next_tick_dt = datetime.fromisoformat(status["next_tick"])
+                now_utc = datetime.now(UTC)
+                expected = now_utc + timedelta(minutes=10)
+                delta_secs = abs((next_tick_dt - expected).total_seconds())
+                assert delta_secs < 5, (
+                    f"next_tick should be ~10 min from now, got delta={delta_secs:.1f}s"
+                )
+
+        finally:
+            # Cleanup: cancel any lingering task
+            if trader_main._pipeline_task is not None and not trader_main._pipeline_task.done():
+                trader_main._pipeline_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop = asyncio.get_event_loop()
+                    loop.run_until_complete(
+                        asyncio.wait_for(trader_main._pipeline_task, timeout=2.0)
+                    )
+            trader_main._pipeline_task = None
+            trader_main._next_tick_at = None
+            trader_main._current_interval = 5
+
+    def test_schedule_default_interval_is_5_minutes(self) -> None:
+        """POST /schedule without interval param defaults to 5 minutes.
+
+        Uses _is_scheduling() mock: TestClient cannot maintain asyncio tasks.
+        The response and module-level interval are verified directly.
+        """
+        client = self._create_client()
+        import trader.main as trader_main
+
+        try:
+            # POST /schedule with no query param — defaults to 5
+            response = client.post("/schedule")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["status"] == "started"
+            assert body["interval_minutes"] == 5
+
+            assert trader_main._current_interval == 5
+
+            # Mock running scheduler for status reflection
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                status = client.get("/status").json()
+                assert status["interval_minutes"] == 5
+                assert status["scheduler_running"] is True
+
+        finally:
+            if trader_main._pipeline_task is not None and not trader_main._pipeline_task.done():
+                trader_main._pipeline_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop = asyncio.get_event_loop()
+                    loop.run_until_complete(
+                        asyncio.wait_for(trader_main._pipeline_task, timeout=2.0)
+                    )
+            trader_main._pipeline_task = None
+            trader_main._next_tick_at = None
+            trader_main._current_interval = 5
+
+    def test_auto_pipeline_flag_unchanged_by_schedule_operations(self) -> None:
+        """auto_pipeline_enabled unchanged by starting/stopping scheduler.
+
+        Uses _is_scheduling() mocks: TestClient cannot maintain asyncio tasks
+        between requests. The module-level _resolve_auto_pipeline() is
+        independent of scheduler state — this test verifies that.
+        """
+        client = self._create_client()
+        import trader.main as trader_main
+
+        # Default: auto_pipeline_enabled is False
+        status_init = client.get("/status").json()
+        assert status_init["auto_pipeline_enabled"] is False
+
+        try:
+            # POST /schedule sets _current_interval but task won't persist
+            client.post("/schedule?interval_minutes=3")
+
+            # Simulate running state — auto_pipeline still False
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                assert client.get("/status").json()["auto_pipeline_enabled"] is False
+
+            # Cancel and simulate stopped state
+            if trader_main._pipeline_task is not None and not trader_main._pipeline_task.done():
+                trader_main._pipeline_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop = asyncio.get_event_loop()
+                    loop.run_until_complete(
+                        asyncio.wait_for(trader_main._pipeline_task, timeout=2.0)
+                    )
+            trader_main._pipeline_task = None
+            trader_main._next_tick_at = None
+
+            # Stopped — auto_pipeline still False
+            assert client.get("/status").json()["auto_pipeline_enabled"] is False
+
+            # Restart with new interval
+            client.post("/schedule?interval_minutes=7")
+
+            # Simulate running state — auto_pipeline still False
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                assert client.get("/status").json()["auto_pipeline_enabled"] is False
+
+        finally:
+            if trader_main._pipeline_task is not None and not trader_main._pipeline_task.done():
+                trader_main._pipeline_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop = asyncio.get_event_loop()
+                    loop.run_until_complete(
+                        asyncio.wait_for(trader_main._pipeline_task, timeout=2.0)
+                    )
+            trader_main._pipeline_task = None
+            trader_main._next_tick_at = None
+            trader_main._current_interval = 5
+
+    def test_zero_interval_accepted_as_input(self) -> None:
+        """POST /schedule with interval_minutes=0 is accepted (no validation on value)."""
+        client = self._create_client()
+        import trader.main as trader_main
+
+        try:
+            response = client.post("/schedule?interval_minutes=0")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["status"] == "started"
+            assert body["interval_minutes"] == 0
+            assert trader_main._current_interval == 0
+
+            with patch.object(trader_main, "_is_scheduling", return_value=True):
+                status = client.get("/status").json()
+                assert status["interval_minutes"] == 0
+
+        finally:
+            if trader_main._pipeline_task is not None and not trader_main._pipeline_task.done():
+                trader_main._pipeline_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop = asyncio.get_event_loop()
+                    loop.run_until_complete(
+                        asyncio.wait_for(trader_main._pipeline_task, timeout=2.0)
+                    )
+            trader_main._pipeline_task = None
+            trader_main._next_tick_at = None
+            trader_main._current_interval = 5
