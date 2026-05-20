@@ -783,7 +783,7 @@ describe('Prism Report v0 Schema', () => {
             retrieved_at: '2026-05-19T12:00:00Z',
             provider: 'test',
             // api_key field should be rejected by additionalProperties:false
-            api_key: 'sk-secret-leaked-key-should-fail',
+            api_key: 'forbidden-field-should-reject',
           },
           resolved_by_evidence_tool: false,
           latest_resolution: {
