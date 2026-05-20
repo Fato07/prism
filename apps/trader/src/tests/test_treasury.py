@@ -20,9 +20,8 @@ from __future__ import annotations
 
 import contextlib
 import os
-from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Generator
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,7 +29,7 @@ import structlog
 from prism_schemas.treasury import TreasuryEventResult
 
 from trader.treasury import (
-    InsufficientUsycBalance,
+    InsufficientUsycBalanceError,
     YieldMode,
     park_idle_usdc,
     resolve_yield_mode,
@@ -39,6 +38,8 @@ from trader.treasury import (
     unpark_for_trade,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
@@ -289,15 +290,15 @@ class TestParkDryRun:
         with (
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": ""}),
             patch("trader.treasury._persist_treasury_event", side_effect=_mock_persist),
+            structlog_testing_capture_logs() as logs,
         ):
-            with structlog_testing_capture_logs() as logs:
                 await park_idle_usdc(
                     wallet_id=WALLET_ID,
                     usdc_amount=Decimal("5.0"),
                     rationale="manual-test",
                 )
 
-        park_logs = [l for l in logs if l.get("event") == "treasury_park_dry_run"]
+        park_logs = [log for log in logs if log.get("event") == "treasury_park_dry_run"]
         assert len(park_logs) == 1
         log = park_logs[0]
         assert log["wallet_id"] == WALLET_ID
@@ -374,7 +375,7 @@ class TestUnparkInsufficientBalance:
 
     @pytest.mark.asyncio
     async def test_unpark_insufficient_raises_typed_exception(self) -> None:
-        """unpark_for_trade raises InsufficientUsycBalance when balance < target."""
+        """unpark_for_trade raises InsufficientUsycBalanceError when balance < target."""
         mock_chain = MagicMock()
         mock_chain.get_wallet_balance = AsyncMock(
             return_value={"USYC": 3.0, "USDC": 97.0}
@@ -384,8 +385,8 @@ class TestUnparkInsufficientBalance:
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": "0xUsycContract"}),
             patch("trader.chain.CircleChain", return_value=mock_chain),
             patch("trader.treasury._persist_treasury_event", side_effect=_mock_persist),
+            pytest.raises(InsufficientUsycBalanceError),
         ):
-            with pytest.raises(InsufficientUsycBalance):
                 await unpark_for_trade(
                     wallet_id=WALLET_ID,
                     usdc_target=Decimal("10.0"),
@@ -403,8 +404,8 @@ class TestUnparkInsufficientBalance:
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": "0xUsycContract"}),
             patch("trader.chain.CircleChain", return_value=mock_chain),
             patch("trader.treasury._persist_treasury_event", side_effect=_mock_persist),
+            pytest.raises(InsufficientUsycBalanceError),
         ):
-            with pytest.raises(InsufficientUsycBalance):
                 await unpark_for_trade(
                     wallet_id=WALLET_ID,
                     usdc_target=Decimal("10.0"),
@@ -424,8 +425,8 @@ class TestUnparkInsufficientBalance:
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": "0xUsycContract"}),
             patch("trader.chain.CircleChain", return_value=mock_chain),
             patch("trader.treasury._persist_treasury_event") as mock_persist,
+            pytest.raises(InsufficientUsycBalanceError),
         ):
-            with pytest.raises(InsufficientUsycBalance):
                 await unpark_for_trade(
                     wallet_id=WALLET_ID,
                     usdc_target=Decimal("10.0"),
@@ -448,8 +449,8 @@ class TestTreasuryStructuredLogs:
         with (
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": ""}),
             patch("trader.treasury._persist_treasury_event", side_effect=_mock_persist),
+            structlog_testing_capture_logs() as logs,
         ):
-            with structlog_testing_capture_logs() as logs:
                 await park_idle_usdc(
                     wallet_id=WALLET_ID,
                     usdc_amount=Decimal("5.0"),
@@ -457,7 +458,7 @@ class TestTreasuryStructuredLogs:
                 )
 
         treasury_logs = [
-            l for l in logs if str(l.get("event", "")).startswith("treasury_")
+            log for log in logs if str(log.get("event", "")).startswith("treasury_")
         ]
         assert len(treasury_logs) >= 1
         # Check required keys per VAL-TREASURY-006
@@ -470,15 +471,15 @@ class TestTreasuryStructuredLogs:
         with (
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": ""}),
             patch("trader.treasury._persist_treasury_event", side_effect=_mock_persist),
+            structlog_testing_capture_logs() as logs,
         ):
-            with structlog_testing_capture_logs() as logs:
                 await unpark_for_trade(
                     wallet_id=WALLET_ID,
                     usdc_target=Decimal("5.0"),
                 )
 
         unpark_logs = [
-            l for l in logs if l.get("event") == "treasury_unpark_dry_run"
+            log for log in logs if log.get("event") == "treasury_unpark_dry_run"
         ]
         assert len(unpark_logs) >= 1
 
@@ -500,8 +501,8 @@ class TestTreasuryStructuredLogs:
             patch.dict(os.environ, {"USYC_ARC_TESTNET_ADDRESS": "0xUsycContract"}),
             patch("trader.chain.CircleChain", return_value=mock_chain),
             patch("trader.treasury._persist_treasury_event", side_effect=_mock_persist),
+            structlog_testing_capture_logs() as logs,
         ):
-            with structlog_testing_capture_logs() as logs:
                 await park_idle_usdc(
                     wallet_id=WALLET_ID,
                     usdc_amount=Decimal("5.0"),
@@ -509,7 +510,7 @@ class TestTreasuryStructuredLogs:
                 )
 
         complete_logs = [
-            l for l in logs if l.get("event") == "treasury_park_complete"
+            log for log in logs if log.get("event") == "treasury_park_complete"
         ]
         assert len(complete_logs) >= 1
         log = complete_logs[0]
@@ -678,9 +679,11 @@ class TestYieldModeInvalid:
     )
     def test_invalid_value_raises_value_error(self, invalid_value: str) -> None:
         """Invalid TRADER_YIELD_MODE raises ValueError."""
-        with patch.dict(os.environ, {"TRADER_YIELD_MODE": invalid_value}):
-            with pytest.raises(ValueError, match="TRADER_YIELD_MODE"):
-                resolve_yield_mode()
+        with (
+            patch.dict(os.environ, {"TRADER_YIELD_MODE": invalid_value}),
+            pytest.raises(ValueError, match="TRADER_YIELD_MODE"),
+        ):
+            resolve_yield_mode()
 
     def test_case_insensitive_values_accepted(self) -> None:
         """PARK, Smart, OFF (with whitespace) are accepted after normalization."""

@@ -22,7 +22,6 @@ from typing import Any, Literal
 
 import psycopg
 import structlog
-
 from prism_schemas.treasury import TreasuryEventCreate, TreasuryEventResult
 
 logger = structlog.get_logger("prism.trader.treasury")
@@ -96,7 +95,7 @@ def _wallet_address() -> str:
 # ---------------------------------------------------------------------------
 
 
-class InsufficientUsycBalance(Exception):
+class InsufficientUsycBalanceError(Exception):
     """Raised when the wallet's USYC balance is insufficient for unpark."""
 
 
@@ -301,7 +300,7 @@ async def unpark_for_trade(
         TreasuryEventResult with the persisted event details.
 
     Raises:
-        InsufficientUsycBalance: If the wallet's USYC balance is below
+        InsufficientUsycBalanceError: If the wallet's USYC balance is below
             the implied USDC target and not in dry-run mode.
     """
     dry_run = _is_dry_run()
@@ -322,7 +321,7 @@ async def unpark_for_trade(
             event_type="unpark",
             usdc_amount=usdc_target,
             usyc_amount=None,
-            rationale=f"unpark for trade (dry_run)",
+            rationale="unpark for trade (dry_run)",
             tx_hash=None,
         )
         event_id = _persist_treasury_event(event)
@@ -344,7 +343,7 @@ async def unpark_for_trade(
         balances = await chain.get_wallet_balance(wallet_id)
     except Exception as exc:
         logger.error("treasury_unpark_balance_check_failed", error=str(exc))
-        raise InsufficientUsycBalance(
+        raise InsufficientUsycBalanceError(
             f"Cannot check USYC balance: {exc}"
         ) from exc
 
@@ -352,7 +351,7 @@ async def unpark_for_trade(
     # USYC:USDC is roughly 1:1 (yield-accruing stablecoin).
     # For simplicity, we check if USYC balance ≥ usdc_target.
     if usyc_balance < usdc_target:
-        raise InsufficientUsycBalance(
+        raise InsufficientUsycBalanceError(
             f"Wallet USYC balance ({usyc_balance}) < target USDC ({usdc_target})"
         )
 
