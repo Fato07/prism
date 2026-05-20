@@ -7,6 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+from prism_calibration.braintrust_sync import braintrust_project
 from prism_calibration.eval import (
     EvalCaseResult,
     EvalRunError,
@@ -41,7 +42,7 @@ def _freeze_pilot(root: Path) -> Path:
 def _query_experiments_via_cli() -> list[dict]:
     """List Braintrust experiments via the bt CLI."""
     result = subprocess.run(
-        ["bt", "experiments", "list", "-p", "Prism", "--json"],
+        ["bt", "experiments", "list", "-p", braintrust_project(), "--json"],
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,
