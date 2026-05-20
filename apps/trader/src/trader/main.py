@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -311,15 +312,69 @@ def _gateway_url() -> str:
 
 
 # ---------------------------------------------------------------------------
+# StatusResponse schema
+# ---------------------------------------------------------------------------
+
+
+class StatusResponse(BaseModel):
+    """GET /status response — 8-field runtime status object.
+
+    All fields are in-memory only (no DB, no LLM, no network).
+    Fields with no value use None rather than being absent.
+    """
+
+    scheduler_running: bool = Field(
+        ..., description="Whether the periodic pipeline task is active"
+    )
+    interval_minutes: int = Field(..., description="Configured pipeline interval in minutes")
+    auto_pipeline_enabled: bool = Field(
+        ..., description="Whether AUTO_PIPELINE env var is true"
+    )
+    trade_mode: str = Field(
+        ..., description="PRISM_TRADE_MODE env var ('paper' or 'live')"
+    )
+    last_tick_timestamp: str | None = Field(
+        None, description="ISO-8601 timestamp of last pipeline tick"
+    )
+    next_tick: str | None = Field(
+        None, description="ISO-8601 timestamp of next scheduled tick"
+    )
+    last_error: str | None = Field(
+        None, description="Error message from most recent pipeline failure"
+    )
+    service_version: str = Field(..., description="Deployed service version string")
+
+
+# ---------------------------------------------------------------------------
 # Background scheduler state
 # ---------------------------------------------------------------------------
 
 _pipeline_task: asyncio.Task | None = None
+_last_tick_at: datetime | None = None
+_next_tick_at: datetime | None = None
+_last_error: str | None = None
+_current_interval: int = int(os.environ.get("PIPELINE_INTERVAL_MINUTES", "5"))
 
 
 def _is_scheduling() -> bool:
     """Whether the periodic pipeline task is currently running."""
     return _pipeline_task is not None and not _pipeline_task.done()
+
+
+def _resolve_trade_mode() -> str:
+    """Return the current trade mode from PRISM_TRADE_MODE env var.
+
+    Always returns 'paper' or 'live'. Defaults to 'paper'.
+    """
+    raw = os.environ.get("PRISM_TRADE_MODE", "paper").strip().lower()
+    if raw == "live":
+        return "live"
+    return "paper"
+
+
+def _resolve_auto_pipeline() -> bool:
+    """Return whether AUTO_PIPELINE env var is enabled."""
+    return os.environ.get("AUTO_PIPELINE", "").strip().lower() in ("1", "true", "yes")
 
 
 def _trade_skip_reason(
@@ -343,17 +398,25 @@ def _trade_skip_reason(
 
 async def _pipeline_loop(interval_minutes: int) -> None:
     """Background loop that runs the pipeline every *interval_minutes*."""
+    global _last_tick_at, _next_tick_at, _last_error  # noqa: PLW0603
     logger.info("pipeline_loop_started", interval_minutes=interval_minutes)
     while True:
         try:
+            # Compute next tick time before sleep
+            _next_tick_at = datetime.now(UTC) + timedelta(minutes=interval_minutes)
             await asyncio.sleep(interval_minutes * 60)
             logger.info("pipeline_loop_tick")
             # Reuse the same logic as /pipeline — errors are logged, not raised.
             await _run_pipeline_internal()
+            # Successful tick: update last_tick_at, clear last_error
+            _last_tick_at = datetime.now(UTC)
+            _last_error = None
         except asyncio.CancelledError:
+            _next_tick_at = None
             logger.info("pipeline_loop_cancelled")
             return
         except Exception as exc:
+            _last_error = str(exc)
             logger.error("pipeline_loop_error", error=str(exc))
 
 
@@ -635,6 +698,25 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "service": "prism-trader"}
 
 
+
+@app.get("/status", response_model=StatusResponse)
+async def status() -> StatusResponse:
+    """Return 8-field in-memory runtime status. Zero side effects.
+
+    Never starts the scheduler. Never touches the DB, LLM, or network.
+    All fields are always present — null for values that do not apply.
+    """
+    return StatusResponse(
+        scheduler_running=_is_scheduling(),
+        interval_minutes=_current_interval,
+        auto_pipeline_enabled=_resolve_auto_pipeline(),
+        trade_mode=_resolve_trade_mode(),
+        last_tick_timestamp=_last_tick_at.isoformat() if _last_tick_at else None,
+        next_tick=_next_tick_at.isoformat() if _next_tick_at else None,
+        last_error=_last_error,
+        service_version=app.version,
+    )
+
 @app.post("/trigger", response_model=TriggerResponse)
 async def trigger(request: TriggerRequest) -> TriggerResponse:
     """Generate a Trading-R1 trace for a market question.
@@ -748,12 +830,19 @@ async def run_pipeline() -> PipelineResponse:
 
     The trace is persisted even if the sentinel is unreachable or
     returns a non-success response (e.g. HTTP 402 when x402 is active).
+    Updates _last_tick_at on success and _last_error on failure.
     """
+    global _last_tick_at, _last_error  # noqa: PLW0603
+
     logger.info("pipeline_endpoint_called")
 
     try:
-        return await _run_pipeline_internal()
+        result = await _run_pipeline_internal()
+        _last_tick_at = datetime.now(UTC)
+        _last_error = None
+        return result
     except Exception as exc:
+        _last_error = str(exc)
         logger.error("pipeline_endpoint_failed", error=str(exc))
         raise HTTPException(status_code=502, detail=f"Pipeline failed: {exc}") from exc
 
@@ -766,10 +855,12 @@ async def start_schedule(interval_minutes: int = 5) -> ScheduleResponse:
     Only one schedule can be active at a time — call DELETE /schedule first
     to change the interval.
     """
-    global _pipeline_task  # noqa: PLW0603
+    global _pipeline_task, _current_interval  # noqa: PLW0603
 
     if _is_scheduling():
-        return ScheduleResponse(status="already_running", interval_minutes=interval_minutes)
+        return ScheduleResponse(status="already_running", interval_minutes=_current_interval)
+
+    _current_interval = interval_minutes
 
     _pipeline_task = asyncio.create_task(_pipeline_loop(interval_minutes))
     logger.info("schedule_started", interval_minutes=interval_minutes)
@@ -779,8 +870,7 @@ async def start_schedule(interval_minutes: int = 5) -> ScheduleResponse:
 @app.delete("/schedule", response_model=ScheduleResponse)
 async def stop_schedule() -> ScheduleResponse:
     """Stop the periodic pipeline task."""
-    global _pipeline_task  # noqa: PLW0603
-
+    global _pipeline_task, _next_tick_at  # noqa: PLW0603
     if not _is_scheduling():
         return ScheduleResponse(status="not_running", interval_minutes=0)
 
@@ -792,5 +882,6 @@ async def stop_schedule() -> ScheduleResponse:
     with suppress(asyncio.CancelledError):
         await task
     _pipeline_task = None
+    _next_tick_at = None
     logger.info("schedule_stopped")
     return ScheduleResponse(status="stopped", interval_minutes=0)
