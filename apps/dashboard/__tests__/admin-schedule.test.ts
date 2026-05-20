@@ -265,6 +265,40 @@ describe("POST /api/admin/schedule/start", () => {
     }
   });
 
+  it("does not forward interval_minutes to trader (VAL-ADMIN-018)", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    // Send a body with interval_minutes — it should NOT be forwarded to the trader
+    await POST(
+      adminRequest("/api/admin/schedule/start", VALID_TOKEN, {
+        interval_minutes: 123,
+      }) as never,
+    );
+
+    // Verify the POST to trader /schedule does NOT contain interval_minutes
+    const scheduleCall = mockFetch.mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === "string" &&
+        (call[0] as string).endsWith("/schedule") &&
+        (call[1] as Record<string, unknown> | undefined)?.method === "POST",
+    );
+    expect(scheduleCall).toBeDefined();
+
+    // Verify no body was sent to the trader — the route sends an empty body
+    const fetchOptions = scheduleCall![1] as Record<string, unknown>;
+    expect(fetchOptions.body).toBeUndefined();
+
+    // Double-check: JSON.stringify of the call args should not contain interval_minutes
+    const callStr = JSON.stringify(scheduleCall);
+    expect(callStr).not.toContain("interval_minutes");
+  });
+
   it("does not forward OPERATOR_ADMIN_TOKEN to trader (VAL-ADMIN-012)", async () => {
     const mockFetch = vi
       .fn()
@@ -344,7 +378,7 @@ describe("POST /api/admin/schedule/start", () => {
     expect(response.status).toBe(502);
   });
 
-  it("sets Cache-Control: no-store on all responses", async () => {
+  it("sets Cache-Control: no-store on all responses (VAL-ADMIN-014)", async () => {
     // Unauthorized
     const { POST } = await import("@/api/admin/schedule/start/route");
     const unauthResponse = await POST(

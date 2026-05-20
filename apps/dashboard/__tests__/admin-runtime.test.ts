@@ -123,7 +123,7 @@ describe("GET /api/admin/runtime", () => {
     expect(response.status).toBe(502);
   });
 
-  it("sets Cache-Control: no-store on all responses", async () => {
+  it("sets Cache-Control: no-store on all responses (VAL-ADMIN-014)", async () => {
     // Test unauthorized response
     const unauthResponse = await GET(adminRequest() as never);
     expect(unauthResponse.headers.get("Cache-Control")).toBe("no-store");
@@ -142,6 +142,41 @@ describe("GET /api/admin/runtime", () => {
     process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
     const errorResponse = await GET(adminRequest(VALID_TOKEN) as never);
     expect(errorResponse.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("returns Cache-Control: no-store on 401 and 502 error responses (VAL-ADMIN-020)", async () => {
+    // 401 response must include Cache-Control: no-store
+    const unauthResponse = await GET(adminRequest() as never);
+    expect(unauthResponse.status).toBe(401);
+    expect(unauthResponse.headers.get("Cache-Control")).toBe("no-store");
+
+    // 401 with wrong token must include Cache-Control: no-store
+    const wrongTokenResponse = await GET(adminRequest(WRONG_TOKEN) as never);
+    expect(wrongTokenResponse.status).toBe(401);
+    expect(wrongTokenResponse.headers.get("Cache-Control")).toBe("no-store");
+
+    // 502 when TRADER_INTERNAL_URL is not set must include Cache-Control: no-store
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    const noUrlResponse = await GET(adminRequest(VALID_TOKEN) as never);
+    expect(noUrlResponse.status).toBe(502);
+    expect(noUrlResponse.headers.get("Cache-Control")).toBe("no-store");
+
+    // 502 when trader fetch rejects must include Cache-Control: no-store
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+    const mockFetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    globalThis.fetch = mockFetch;
+    const fetchErrorResponse = await GET(adminRequest(VALID_TOKEN) as never);
+    expect(fetchErrorResponse.status).toBe(502);
+    expect(fetchErrorResponse.headers.get("Cache-Control")).toBe("no-store");
+
+    // 502 when trader returns non-2xx must include Cache-Control: no-store
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("Internal Server Error", { status: 500 }),
+    );
+    const non2xxResponse = await GET(adminRequest(VALID_TOKEN) as never);
+    expect(non2xxResponse.status).toBe(502);
+    expect(non2xxResponse.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("does not forward OPERATOR_ADMIN_TOKEN to the trader (VAL-ADMIN-012)", async () => {
