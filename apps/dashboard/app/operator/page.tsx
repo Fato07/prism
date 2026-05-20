@@ -9,7 +9,8 @@
  * This is a server component shell.  Auth handling and data fetching are
  * client‑side in <OperatorShell>.
  *
- * No mutation buttons yet — read‑only surface only.
+ * Includes mutation controls (Start/Stop) with confirmation dialog and
+ * audit events table.
  */
 
 import type { Metadata } from "next";
