@@ -111,7 +111,7 @@ The sentinel is a paid public service: any external agent can pay $0.01 USDC and
 
 ### Developer Docs + CLI
 
-Developer docs are live at <https://prism-docs-production.up.railway.app>. They cover the quickstart, CLI, x402/MCP validation, public APIs, receipts, security model, and architecture.
+Developer docs are live at <https://prism-docs-production.up.railway.app>. They cover the quickstart, CLI, x402/MCP validation, public APIs, receipts, security model, architecture, and the verification-guarantees page ([/docs/verification-guarantees](https://prism-docs-production.up.railway.app/docs/verification-guarantees) — 8 guarantees, 5 NOT-guarantees, trust assumptions, fail-closed behavior).
 
 The CLI is the developer-facing surface for pulling Prism metrics without opening the dashboard. It supports trace inspection, public stats/history, trace reports, market surfacing, token resolution, wallet funding guidance, and x402 validation orchestration. It never reads private keys: `prism validate` either submits an externally signed `X-PAYMENT` header or asks Circle CLI to sign the EIP-712 authorization with a Circle wallet.
 
@@ -445,7 +445,8 @@ cd apps/dashboard && pnpm test
 | Sentinel | 118 |
 | Trader | 156 |
 | Calibration | 149 |
-| **Total** | **1,001** |
+| Docs (protocol + fixtures) | 82 |
+| **Total** | **1,083** |
 
 ---
 
@@ -466,7 +467,9 @@ prism/
 │   ├── builder-codes/           # HMAC-based builder code extraction from ERC-8004 agent IDs
 │   └── calibration-python/      # Calibration corpus CLI — build, harvest, label, freeze, sync, eval, inspect, validate
 ├── tests/                        # E2E pipeline integration
-├── docs/                         # Architecture, demo receipts, puzzle submissions
+├── docs/
+│   ├── protocol/                 # Prism Report v0 protocol artifacts (schema, spec, fixtures, oracle review)
+│   └── …                         # Architecture, demo receipts, puzzle submissions
 └── infra/                        # Circle setup, Arc CLI wrappers
 ```
 
@@ -493,6 +496,35 @@ prism/
 **Sentinel Verdict** (Sentinel → On-chain): `request_hash` (on-chain), `evidence_challenges`, `thesis_challenges`, `calibration_critique`, `verdict_score` (0–100), `verdict_label` (REJECT/WARN/PASS/ENDORSE), `dialogue_messages`
 
 Full Pydantic models in [`packages/schemas-python/`](packages/schemas-python/).
+
+---
+
+## Prism Report v0 Protocol
+
+`prism.report.v0` is the portable, receipt-backed interchange format for adversarial validation reports. It defines the JSON envelope that the sentinel produces: trace metadata, issue ledger, capital gate, payment receipts, and Arc/ERC-8004 anchors. The format uses discriminated unions, strict object closure, and fail-closed semantics — any unknown field or missing required field causes rejection.
+
+**Entry point:** [`docs/protocol/README.md`](docs/protocol/README.md) — artifact index, smoke commands, canonical test gate, drift canary, and reserved-type tables.
+
+**Protocol artifacts:**
+
+| Artifact | Description |
+|----------|-------------|
+| [`prism-report-v0.schema.json`](docs/protocol/prism-report-v0.schema.json) | JSON Schema Draft 2020-12 — 15 required top-level fields, discriminated unions, strict closure |
+| [`prism-protocol-v0.md`](docs/protocol/prism-protocol-v0.md) | Human-readable protocol spec — onchain-forbidden rules, canonicalization, fail-closed semantics |
+| [`receipt-verification-v0.md`](docs/protocol/receipt-verification-v0.md) | Receipt verification walkthrough — IPFS CID, Base Sepolia x402, Arc validation tx, content-hash recomputation |
+| [`oracle-review.md`](docs/protocol/oracle-review.md) | Independent schema + protocol audit findings (10 issues/resolutions) |
+| [`fixtures/pass-report.json`](docs/protocol/fixtures/pass-report.json) | Canonical PASS conformance fixture from live API (trace `d6cdd60f-…`) |
+| [`fixtures/fail-closed-report.json`](docs/protocol/fixtures/fail-closed-report.json) | Canonical fail-closed conformance fixture from real BLOCK trace (`50b93a7b-…`) |
+
+**Canonical test gate:**
+
+```bash
+pnpm --dir apps/docs test
+```
+
+82 vitest tests cover schema compilation (ajv 2020-12), fixture validation, tampered-fixture rejection, cross-receipt consistency, banned-phrase enforcement, score-to-label invariants, and secrets scans. The Python `json.tool` smoke commands in the protocol README are convenience checks only — they do not replace the vitest gate.
+
+**Verification guarantees:** The public docs page [*What does Prism guarantee?*](https://prism-docs-production.up.railway.app/docs/verification-guarantees) lists 8 guarantees, 5 NOT-guarantees, trust assumptions, and fail-closed behavior. Source: [`apps/docs/content/docs/verification-guarantees.mdx`](apps/docs/content/docs/verification-guarantees.mdx).
 
 ---
 
