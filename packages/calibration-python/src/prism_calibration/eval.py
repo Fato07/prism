@@ -387,10 +387,6 @@ def _log_to_braintrust(
                 "score": case_result.score,
                 "passed": case_result.passed,
             },
-            expected={
-                "verdict_band": case_result.verdict_band,
-                "confidence": case_result.confidence,
-            },
             scores={"rubric_alignment": case_result.score},
             metadata={
                 "lineage_id": row.provenance.lineage_id,
