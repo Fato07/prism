@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 
 import { isOperatorAdminRequest, operatorAdminTokenFromRequest } from "@/lib/operator-auth";
 
-const VALID_TOKEN = "op-secret-token-123";
+const VALID_TOKEN = "op-fixture-token-abc";
 const WRONG_TOKEN = "wrong-token-456";
 const CONNECTOR_TOKEN = "connector-token-789";
 
