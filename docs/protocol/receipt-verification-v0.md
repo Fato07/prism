@@ -24,9 +24,8 @@ https://dweb.link/ipfs/<CID>
 
 **Canonical PASS example:**
 
-```
-https://ipfs.io/ipfs/QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8
-```
+- [View canonical PASS trace on IPFS](https://ipfs.io/ipfs/QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8) — resolves `ipfs://QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8` through a public gateway.
+- Bare gateway URL: `https://ipfs.io/ipfs/QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8`
 
 ### Verification steps
 
