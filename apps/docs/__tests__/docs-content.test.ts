@@ -1367,3 +1367,300 @@ describe('Oracle review', () => {
     expect(body).toMatch(/^###\s+Resolution/m);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Conformance Fixtures (Milestone 3)
+// ---------------------------------------------------------------------------
+
+// Boundaries from apps/dashboard/app/lib/public-api.ts: <=25 REJECT, <=50 WARN, <=75 PASS, >=76 ENDORSE
+function verdictLabelFromScore(score: number): string {
+  if (score <= 25) return 'REJECT';
+  if (score <= 50) return 'WARN';
+  if (score <= 75) return 'PASS';
+  return 'ENDORSE';
+}
+
+const CANONICAL_IPFS_CID = 'QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8';
+const CANONICAL_TRACE_JSON_HASH = '0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb';
+const CANONICAL_X402_TX = '0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1';
+const CANONICAL_ARC_TX = '0x5adb156fa8de6c1cf7e0d50c2197d8315eb9a501da2c00ffbf52996d2407d786';
+
+describe('Conformance fixtures', () => {
+  const passFixturePath = '../../docs/protocol/fixtures/pass-report.json';
+  const failClosedFixturePath = '../../docs/protocol/fixtures/fail-closed-report.json';
+
+  function loadPassFixture(): Record<string, unknown> {
+    return JSON.parse(read(passFixturePath)) as Record<string, unknown>;
+  }
+
+  function loadFailClosedFixture(): Record<string, unknown> {
+    return JSON.parse(read(failClosedFixturePath)) as Record<string, unknown>;
+  }
+
+  function loadCompiledValidator(): ReturnType<typeof Ajv2020.prototype.compile> {
+    const schema = JSON.parse(read('../../docs/protocol/prism-report-v0.schema.json')) as Record<string, unknown>;
+    const ajv = new Ajv2020({ strict: true, allErrors: true });
+    addFormats(ajv);
+    return ajv.compile(schema);
+  }
+
+  // VAL-TESTS-013 / VAL-FIXTURES-006 / VAL-CROSS-001
+  it('PASS fixture validates against the compiled v0 schema', () => {
+    const validate = loadCompiledValidator();
+    const passReport = loadPassFixture();
+    const valid = validate(passReport);
+    expect(valid, `ajv errors: ${JSON.stringify(validate.errors)}`).toBe(true);
+    expect(validate.errors).toBeNull();
+  });
+
+  // VAL-TESTS-014 / VAL-FIXTURES-013 / VAL-CROSS-002
+  it('fail-closed fixture validates against the compiled v0 schema and satisfies canonical criteria', () => {
+    const validate = loadCompiledValidator();
+    const failClosed = loadFailClosedFixture();
+    const valid = validate(failClosed);
+    expect(valid, `ajv errors: ${JSON.stringify(validate.errors)}`).toBe(true);
+    expect(validate.errors).toBeNull();
+
+    // Canonical fail-closed criteria: at least one of BLOCK, REJECT, unresolved_blocking_count > 0
+    const capitalGate = failClosed.capital_gate as Record<string, unknown>;
+    const verdict = failClosed.verdict as Record<string, unknown>;
+    const issueLedger = failClosed.issue_ledger as Record<string, unknown>;
+    const summary = issueLedger.summary as Record<string, unknown>;
+
+    const isBlock = capitalGate.status === 'BLOCK';
+    const isReject = verdict.verdict_label === 'REJECT';
+    const hasUnresolvedBlocking = (summary.unresolved_blocking_count as number) > 0;
+
+    expect(isBlock || isReject || hasUnresolvedBlocking).toBe(true);
+    // This specific trace is BLOCK
+    expect(capitalGate.status).toBe('BLOCK');
+  });
+
+  // VAL-TESTS-015 / VAL-FIXTURES-016: tampered — missing schema_version
+  it('tampered PASS fixture (missing schema_version) is rejected', () => {
+    const validate = loadCompiledValidator();
+    const tampered = structuredClone(loadPassFixture());
+    delete (tampered as Record<string, unknown>).schema_version;
+    const valid = validate(tampered);
+    expect(valid).toBe(false);
+    expect(validate.errors).toBeTruthy();
+    expect(validate.errors!.some(
+      (e) => e.instancePath === '' && (e.message ?? '').includes('schema_version'),
+    )).toBe(true);
+  });
+
+  // VAL-TESTS-015 / VAL-FIXTURES-017: tampered — invalid verdict_label
+  it('tampered PASS fixture (verdict_label="MAYBE") is rejected with enum keyword', () => {
+    const validate = loadCompiledValidator();
+    const tampered = structuredClone(loadPassFixture());
+    const verdict = tampered.verdict as Record<string, unknown>;
+    verdict.verdict_label = 'MAYBE';
+    const valid = validate(tampered);
+    expect(valid).toBe(false);
+    expect(validate.errors).toBeTruthy();
+    expect(validate.errors!.some(
+      (e) => e.keyword === 'enum' && e.instancePath.includes('verdict_label'),
+    )).toBe(true);
+  });
+
+  // VAL-TESTS-015 / VAL-FIXTURES-018: tampered — broken content_hashes
+  it('tampered PASS fixture (broken content_hashes) is rejected', () => {
+    const validate = loadCompiledValidator();
+    const tampered = structuredClone(loadPassFixture());
+    const contentHashes = tampered.content_hashes as Record<string, unknown>;
+    contentHashes.trace_json_hash = 'not-a-hex-digest';
+    const valid = validate(tampered);
+    expect(valid).toBe(false);
+    expect(validate.errors).toBeTruthy();
+    expect(validate.errors!.some(
+      (e) => e.instancePath.includes('content_hashes'),
+    )).toBe(true);
+  });
+
+  // VAL-TESTS-015 / VAL-FIXTURES-019: tampered fail-closed — missing capital_gate
+  it('tampered fail-closed fixture (missing capital_gate) is rejected with required keyword', () => {
+    const validate = loadCompiledValidator();
+    const tampered = structuredClone(loadFailClosedFixture());
+    delete (tampered as Record<string, unknown>).capital_gate;
+    const valid = validate(tampered);
+    expect(valid).toBe(false);
+    expect(validate.errors).toBeTruthy();
+    expect(validate.errors!.some(
+      (e) => e.keyword === 'required' && (e.params as Record<string, unknown>).missingProperty === 'capital_gate',
+    )).toBe(true);
+  });
+
+  // VAL-TESTS-016 / VAL-CROSS-006: cross-receipt consistency
+  it('PASS fixture cross-receipt consistency with canonical CLI receipt', () => {
+    const passReport = loadPassFixture();
+    const cliReceipt = JSON.parse(read('../../docs/demos/cli-paid-validation-20260516T214837Z.json')) as Record<string, unknown>;
+
+    // trace.ipfs_cid must match canonical
+    const trace = passReport.trace as Record<string, unknown>;
+    expect(trace.ipfs_cid).toBe(CANONICAL_IPFS_CID);
+
+    // content_hashes.trace_json_hash must match canonical
+    const contentHashes = passReport.content_hashes as Record<string, unknown>;
+    expect(contentHashes.trace_json_hash).toBe(CANONICAL_TRACE_JSON_HASH);
+
+    // trace_id must match CLI receipt
+    expect(trace.trace_id).toBe(cliReceipt.trace_id);
+  });
+
+  // VAL-FIXTURES-024 / VAL-TESTS-021: score↔label invariant
+  it('PASS fixture verdict_score is consistent with verdict_label via verdictLabelFromScore boundaries', () => {
+    const passReport = loadPassFixture();
+    const verdict = passReport.verdict as Record<string, unknown>;
+    const score = verdict.verdict_score as number;
+    const label = verdict.verdict_label as string;
+
+    const expectedLabel = verdictLabelFromScore(score);
+    expect(expectedLabel).toBe(label);
+
+    // PASS label implies score in (50, 100]
+    if (label === 'PASS' || label === 'ENDORSE') {
+      expect(score).toBeGreaterThan(50);
+      expect(score).toBeLessThanOrEqual(100);
+    }
+  });
+
+  // VAL-FIXTURES-026: validator.model_family
+  it('PASS fixture validator.model_family is openai-gpt', () => {
+    const passReport = loadPassFixture();
+    const validator = passReport.validator as Record<string, unknown>;
+    expect(validator.model_family).toBe('openai-gpt');
+  });
+
+  // VAL-FIXTURES-027: evidence_receipts non-empty and well-formed
+  it('PASS fixture evidence_receipts is non-empty and well-formed', () => {
+    const passReport = loadPassFixture();
+    const er = passReport.evidence_receipts as Array<Record<string, unknown>>;
+    expect(Array.isArray(er)).toBe(true);
+    expect(er.length).toBeGreaterThanOrEqual(1);
+
+    for (const entry of er) {
+      expect(typeof entry.source_url).toBe('string');
+      expect(entry.source_url).toMatch(/^https?:\/\//);
+      expect(typeof entry.source_content_hash).toBe('string');
+      expect(entry.source_content_hash).toMatch(/^0x[0-9a-fA-F]{64}$/);
+      expect(typeof entry.retrieved_at).toBe('string');
+      // ISO-8601: contains T
+      expect(entry.retrieved_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      const provider = entry.provider as string;
+      expect(typeof provider).toBe('string');
+      expect(provider.length).toBeGreaterThan(0);
+      expect(Array.isArray(entry.adequacy_checks)).toBe(true);
+    }
+  });
+
+  // VAL-FIXTURES-028: payment_receipts contains canonical x402 tx
+  it('PASS fixture payment_receipts contains canonical x402 tx', () => {
+    const passReport = loadPassFixture();
+    const prs = passReport.payment_receipts as Array<Record<string, unknown>>;
+    expect(prs.length).toBeGreaterThanOrEqual(1);
+
+    const x402Entry = prs.find((p) => p.protocol === 'x402');
+    expect(x402Entry).toBeTruthy();
+    expect((x402Entry as Record<string, unknown>).tx_hash).toBe(CANONICAL_X402_TX);
+  });
+
+  // VAL-FIXTURES-029: onchain_receipts contains canonical Arc tx
+  it('PASS fixture onchain_receipts contains canonical Arc tx', () => {
+    const passReport = loadPassFixture();
+    const or = passReport.onchain_receipts as Record<string, unknown>;
+
+    const hasCanonicalArcTx =
+      or.trace_arc_tx === CANONICAL_ARC_TX ||
+      or.validation_arc_tx === CANONICAL_ARC_TX;
+
+    expect(hasCanonicalArcTx).toBe(true);
+    expect(or.trace_arc_tx).toBe(CANONICAL_ARC_TX);
+  });
+
+  // VAL-FIXTURES-021: no X-PAYMENT in fixtures
+  it('Fixtures contain no X-PAYMENT header values', () => {
+    const passText = read(passFixturePath);
+    const failText = read(failClosedFixturePath);
+
+    expect(passText).not.toMatch(/x-payment/i);
+    expect(failText).not.toMatch(/x-payment/i);
+  });
+
+  // VAL-FIXTURES-022: no API key patterns in fixtures
+  it('Fixtures contain no common API key patterns', () => {
+    const passText = read(passFixturePath);
+    const failText = read(failClosedFixturePath);
+
+    // sk- prefix keys
+    expect(passText).not.toMatch(/sk-[A-Za-z0-9_-]{10,}/);
+    expect(failText).not.toMatch(/sk-[A-Za-z0-9_-]{10,}/);
+
+    // Bearer tokens
+    expect(passText).not.toMatch(/\bBearer\s+[A-Za-z0-9_.\-]{16,}/i);
+    expect(failText).not.toMatch(/\bBearer\s+[A-Za-z0-9_.\-]{16,}/i);
+
+    // api_key / token / secret assignments
+    expect(passText).not.toMatch(/(api[_-]?key|token|secret)\s*[:=]\s*[A-Za-z0-9_-]{16,}/i);
+    expect(failText).not.toMatch(/(api[_-]?key|token|secret)\s*[:=]\s*[A-Za-z0-9_-]{16,}/i);
+  });
+
+  // VAL-FIXTURES-023: no private-key-labeled hex in fixtures
+  it('Fixtures contain no private-key or mnemonic material', () => {
+    const passReport = loadPassFixture();
+    const failClosed = loadFailClosedFixture();
+
+    function walkForSecrets(obj: unknown, path: string[] = []): void {
+      if (typeof obj !== 'object' || obj === null) return;
+
+      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+        const keyLower = key.toLowerCase();
+        // Check for private-key / secret-key / mnemonic named fields
+        if (keyLower.includes('private_key') || keyLower.includes('privkey') ||
+            keyLower.includes('secret_key') || keyLower.includes('mnemonic')) {
+          if (typeof value === 'string') {
+            // Must not be a 64-hex string
+            expect(value, `Secret-labeled field "${key}" at ${path.join('.')} must not be a 64-hex string`).not.toMatch(/^0x[a-fA-F0-9]{64}$/);
+          }
+        }
+        if (typeof value === 'object' && value !== null) {
+          walkForSecrets(value, [...path, key]);
+        }
+      }
+    }
+
+    walkForSecrets(passReport);
+    walkForSecrets(failClosed);
+  });
+
+  // VAL-FIXTURES-025: Optional stale-evidence fixture, if present, validates
+  it('optional stale-evidence fixture, if present, validates and demonstrates HOLD-like state', () => {
+    const stalePath = '../../docs/protocol/fixtures/stale-evidence-report.json';
+    let staleExists: boolean;
+    try {
+      read(stalePath);
+      staleExists = true;
+    } catch {
+      staleExists = false;
+    }
+
+    if (!staleExists) {
+      // Vacuously true — no stale fixture means no assertion needed
+      return;
+    }
+
+    const staleReport = JSON.parse(read(stalePath)) as Record<string, unknown>;
+    expect(staleReport.schema_version).toBe('prism.report.v0');
+
+    const validate = loadCompiledValidator();
+    const valid = validate(staleReport);
+    expect(valid, `stale-evidence fixture ajv errors: ${JSON.stringify(validate.errors)}`).toBe(true);
+
+    // Must demonstrate HOLD-like or needs_review state
+    const hasHoldIndicator =
+      (staleReport.readiness as string) === 'needs_review' ||
+      (staleReport.warnings as string[])?.some((w) => /stale|outdated|old|expired/i.test(w)) ||
+      (staleReport.capital_gate as Record<string, unknown>)?.status === 'REVIEW';
+
+    expect(hasHoldIndicator).toBe(true);
+  });
+});

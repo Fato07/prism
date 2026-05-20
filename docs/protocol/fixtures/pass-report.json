@@ -1,0 +1,124 @@
+{
+  "schema_version": "prism.report.v0",
+  "generated_at": "2026-05-20T06:44:31.144Z",
+  "trace": {
+    "trace_id": "d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24",
+    "agent_id": "4140",
+    "market_id": "0xeu_ai_regulation_2026",
+    "market_question": "Will the EU AI Act enforcement actions exceed 50 by end of 2026?",
+    "action": "SELL",
+    "raw_probability": 0.35,
+    "final_probability": 0.4,
+    "ipfs_cid": "QmNzqnPEEQUMn3GMbiEZANpKXZRPmTHxVwt5nNevR8iXt8",
+    "created_at": "2026-05-13 22:10:59.875889+00",
+    "dashboard_url": "https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24"
+  },
+  "action_intent": {
+    "type": "prediction_market",
+    "market_id": "0xeu_ai_regulation_2026",
+    "side": "NO",
+    "size_usdc": "5.00",
+    "raw_probability": 0.35,
+    "final_probability": 0.4
+  },
+  "validator": {
+    "sentinel_agent_id": "4148",
+    "model_family": "openai-gpt",
+    "model_name": "gpt-5"
+  },
+  "verdict": {
+    "verdict_score": 65,
+    "verdict_label": "PASS",
+    "raw_verdict_score": 65,
+    "capped_verdict_score": 65
+  },
+  "reasoning_metrics": {
+    "evidence_count": 5,
+    "source_diversity": 5,
+    "thesis_steps": 4,
+    "evidence_reference_count": 5,
+    "evidence_coverage": 1,
+    "invalid_evidence_refs": 0,
+    "unsupported_thesis_steps": 0,
+    "risk_factor_count": 9,
+    "avg_evidence_confidence": 0.81,
+    "probability_delta": 0.05,
+    "has_falsification_language": false
+  },
+  "readiness": "usable",
+  "warnings": [
+    "Trace does not state clear falsification or exit language."
+  ],
+  "issue_ledger": {
+    "summary": {
+      "total_issues": 0,
+      "resolved_count": 0,
+      "unresolved_blocking_count": 0,
+      "unresolved_material_count": 0,
+      "clean_pass_allowed": true,
+      "endorsement_allowed": true,
+      "active_policy_constraints": [
+        "Legacy receipt: no structured issue ledger was recorded."
+      ],
+      "explanation": "Sentinel returned PASS at 65/100. This legacy receipt has no structured issue ledger."
+    },
+    "issues": []
+  },
+  "evidence_receipts": [
+    {
+      "source_url": "https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24",
+      "source_content_hash": "0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb",
+      "retrieved_at": "2026-05-20T06:44:31.144Z",
+      "provider": "prism_dashboard",
+      "adequacy_checks": [
+        "report fetched from public API"
+      ]
+    },
+    {
+      "source_url": "https://polymarket.com/event/0xeu_ai_regulation_2026",
+      "source_content_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "retrieved_at": "2026-05-20T06:44:31.144Z",
+      "provider": "polymarket_market_lookup",
+      "adequacy_checks": [
+        "market exists and is active"
+      ]
+    }
+  ],
+  "capital_gate": {
+    "status": "REVIEW",
+    "label": "Review required",
+    "tone": "warn",
+    "recommended_action": "Keep this in review or paper mode until issues are resolved.",
+    "reason": "Legacy receipt: no structured issue ledger was recorded.",
+    "policy_constraints": [
+      "Legacy receipt: no structured issue ledger was recorded."
+    ],
+    "checks": {
+      "validation_present": true,
+      "trace_ready": true,
+      "clean_pass_allowed": false,
+      "endorsement_allowed": false
+    }
+  },
+  "payment_receipts": [
+    {
+      "protocol": "x402",
+      "tx_hash": "0xd6ab0cbba99dfa1162ab24ccf35c9e9544c1bb64a550a0e349e8033ebd4f43e1",
+      "amount_usdc": "0.01",
+      "network": "base-sepolia",
+      "chain_id": 84532,
+      "payer": "0x229d65c16eb0386ac9a759625836e7d2b9831c3e",
+      "payee": "0xaf131B054B08E57c20b31080A1Ffd406e429db6F"
+    }
+  ],
+  "onchain_receipts": {
+    "trace_arc_tx": "0x5adb156fa8de6c1cf7e0d50c2197d8315eb9a501da2c00ffbf52996d2407d786",
+    "validation_arc_tx": "0x5adb156fa8de6c1cf7e0d50c2197d8315eb9a501da2c00ffbf52996d2407d786",
+    "erc8004_request_hash": "0x7d228df4344cb9b58d846669ed2943f5c2a229d57768ba96b02c2cec6aede5b4"
+  },
+  "content_hashes": {
+    "trace_json_hash": "0x1a750011608a7480e9cb11f1d20587e32efb7a7dd433b85820f0dbfcdee19fdb",
+    "verdict_json_hash": "0xbc0d9dcc4745568136af1bbc46179e21509698c8f8d158b1a1927eb9f740fc41",
+    "report_json_hash": "0x71be2102714b592cacbf348105bbc9bcb962f2c05c2a741f9300fd4e41ec84a8"
+  }
+}
