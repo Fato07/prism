@@ -631,6 +631,84 @@ passed across 5 sealed milestones at implementation time.
 
 ---
 
+## Prism Report v0 — portable receipt format
+
+`prism.report.v0` is the interchange format for adversarial validation
+reports. It is the portable artifact that any verifier — dashboard,
+CLI, SDK, or third-party tool — can consume without trusting the
+Prism service. The schema is at
+[`docs/protocol/prism-report-v0.schema.json`](../docs/protocol/prism-report-v0.schema.json).
+
+### Key design choices
+
+- **Discriminated unions** on `action_intent` (currently `prediction_market`;
+  `payment_batch`, `defi_rebalance`, `treasury_move` reserved) and
+  `payment_receipts` (`x402` implemented; `mpp`, `ap2` reserved). Each
+  union branch is strict: implemented types require full receipt shape;
+  reserved types require only the discriminator literal and are open for
+  extension under a future `schema_version`.
+- **Strict object closure** (`additionalProperties: false`) on every
+  object in the schema. Any field not in the specification fails
+  validation.
+- **Fail-closed semantics** at the schema level: a report that does not
+  satisfy every required field and every union branch constraint is
+  invalid, period. No optional escape hatches for core fields.
+- **Onchain-forbidden rules** in the protocol spec: raw prompts,
+  private chain-of-thought, scraped page content, and secrets are
+  explicitly prohibited from onchain fields. They may appear in IPFS-pinned
+  content (offchain) but never in `validationResponse` arguments or
+  onchain receipts.
+
+### Conformance fixtures
+
+Two canonical fixtures are checked in:
+
+- `docs/protocol/fixtures/pass-report.json` — PASS report from live API,
+  trace `d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24`.
+- `docs/protocol/fixtures/fail-closed-report.json` — fail-closed report
+  from a real BLOCK trace (`50b93a7b-2d45-40d4-aee8-6c8c5ed1b02f`).
+
+Both fixtures validate against the schema. Tampered variants (altered
+score, removed field, injected extra field) are explicitly rejected by
+the test suite.
+
+### Canonical test gate
+
+```bash
+pnpm --dir apps/docs test
+```
+
+82 vitest tests covering schema compilation (ajv 2020-12 + ajv-formats),
+fixture validation, tampered-fixture rejection (4 cases), cross-receipt
+consistency, score-label invariants, banned-phrase enforcement, and
+structural assertions on every protocol artifact. 146/146 assertions
+pass.
+
+### Protocol artifacts
+
+| File | Description |
+|------|-------------|
+| `docs/protocol/prism-protocol-v0.md` | Human-readable protocol specification |
+| `docs/protocol/prism-report-v0.schema.json` | JSON Schema Draft 2020-12 definition |
+| `docs/protocol/receipt-verification-v0.md` | Step-by-step receipt verification walkthrough |
+| `docs/protocol/oracle-review.md` | Mission oracle review findings (10 issues/resolutions) |
+| `docs/protocol/README.md` | Protocol index, smoke commands, drift canary, reserved-type tables |
+| `docs/protocol/fixtures/` | PASS and fail-closed conformance fixtures |
+
+### How this fits the product strategy
+
+Prism's post-submission roadmap calls for becoming protocol-shaped
+before building a multi-validator marketplace. The Prism Report v0
+schema is the first concrete output of that direction: a stable,
+versioned, verifiable receipt format that external verifiers and SDKs
+can target without depending on Prism's internal service topology. The
+reserved union branches (`payment_batch`, `defi_rebalance`,
+`treasury_move`, `mpp`, `ap2`) are explicit forward-compatibility
+slots — they exist in the schema today so that later phases can add
+action types and payment rails without breaking v0 consumers.
+
+---
+
 ## Dashboard wallet connection (Reown AppKit)
 
 **Stack:** Reown AppKit + wagmi + ArcChainGuard component
@@ -780,4 +858,4 @@ Honest snapshot to keep posts and submissions grounded.
 
 ---
 
-*Last updated: May 15, 2026 (Day 4 of the @CanteenApp × @BuildOnArc hackathon).*
+*Last updated: May 20, 2026 (Day 9 of the @CanteenApp × @BuildOnArc hackathon).*

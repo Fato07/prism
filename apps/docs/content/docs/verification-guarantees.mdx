@@ -1,0 +1,63 @@
+---
+title: Verification guarantees
+description: What Prism guarantees (and does not guarantee) about every trace, verification, and receipt it produces.
+---
+
+## What Prism guarantees
+
+Prism makes eight concrete guarantees about every trace it validates:
+
+1. **Provenance.** Every trace has a unique ID, agent identity, and IPFS content address. You can verify who generated a trace and when.
+
+2. **Independent adversarial review.** Trader and sentinel use different LLM families — Mirascope for the trader, DSPy for the sentinel. No single model both generates AND judges a trace.
+
+3. **Source URL verification.** Every evidence item links to a source URL that was verified live at retrieval time. Hallucinated sources are caught by the issue ledger.
+
+4. **Source content hashes.** Retrieved evidence is content-hashed. If a source changes after retrieval, the mismatch appears in the evidence receipt.
+
+5. **Issue-ledger transparency.** Every sentinel challenge is recorded: what was questioned, which tool resolved it, and whether it blocked a PASS. The ledger is public.
+
+6. **x402 receipts.** Paid validations produce an x402 payment receipt on Base Sepolia. The canonical CLI receipt (`cli-paid-validation-20260516T214837Z`) proves a live 0.01 USDC paid validation end-to-end.
+
+7. **Arc / ERC-8004 onchain anchoring.** Validation requests and responses are submitted to deployed Arc ERC-8004 registries, producing onchain transaction hashes. Prism uses deployed Arc infrastructure — no additional contracts are deployed by Prism.
+
+8. **Fail-closed capital gate.** Every trace passes through a deterministic capital gate before any execution signal. The gate can BLOCK, require REVIEW, allow paper mode only, or ENDORSE — but never silently pass.
+
+## What Prism does NOT guarantee
+
+Prism produces receipt-backed claims, not oracle verdicts or compliance certifications. Five things Prism explicitly does not guarantee:
+
+1. **Truth.** A PASS means the sentinel found no blocking issues. It does not mean the prediction is correct or the market will move as expected.
+
+2. **Profit.** Validated traces may still lose money. Capital gate states are risk signals, not profit guarantees.
+
+3. **Complete security.** The sentinel evaluates evidence completeness, source diversity, and thesis coherence. It cannot guarantee protection against unknown attack vectors.
+
+4. **Legal compliance.** Prism does not verify trades against any jurisdiction's regulations. Operators are responsible for their own compliance.
+
+5. **A PASS is not an instruction to execute.** ALLOW_PAPER and ENDORSE are machine-generated signals requiring human review before real capital is routed. Prism outputs evidence, not execution commands.
+
+## Trust assumptions and fail-closed behavior
+
+Prism is fail-closed by design: when evidence is missing, sources cannot be retrieved, or the sentinel cannot reach a high-confidence verdict, the capital gate blocks or requires review. The system never assumes a trace is safe by default.
+
+Verifiable trust assumptions:
+
+- The sentinel LLM is independent of the trader LLM (enforced at startup, validated at runtime).
+- Deployed Arc ERC-8004 registries behave as specified; Prism does not deploy or modify them.
+- IPFS content addresses are collision-resistant within the verification lifetime.
+- x402 payments settle on Base Sepolia before validation proceeds.
+
+These assumptions are independently verifiable: every onchain transaction links to a public explorer; every IPFS CID is fetchable from a public gateway; every x402 receipt has a BaseScan transaction.
+
+---
+
+**See a real PASS:** [Canonical trace report](https://prism-dashboard-production-e6e3.up.railway.app/trace/d6cdd60f-f5e0-43ab-ba2d-7dcab76a8e24) with onchain Arc validation and evidence receipts.
+
+**See a real paid validation:** CLI receipt bundle `cli-paid-validation-20260516T214837Z` — live 0.01 USDC x402 payment on Base Sepolia.
+
+**Fail-closed example:** [Canonical fail-closed report](https://raw.githubusercontent.com/Fato07/prism/refs/heads/main/docs/protocol/fixtures/fail-closed-report.json) — capital gate BLOCK with unresolved blocking issues. Also see the [Security model](/docs/security).
+
+**Protocol reference:** The full [Prism Protocol v0 specification](https://raw.githubusercontent.com/Fato07/prism/refs/heads/main/docs/protocol/prism-protocol-v0.md) defines the `prism.report.v0` interchange format. The [JSON Schema](https://raw.githubusercontent.com/Fato07/prism/refs/heads/main/docs/protocol/prism-report-v0.schema.json) (Draft 2020-12) is the machine-readable definition.
+
+**Further reading:** [Receipts](/docs/receipts) explains how to verify every receipt type Prism produces.

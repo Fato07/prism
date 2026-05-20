@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from prism_calibration.braintrust_sync import braintrust_project
 from prism_calibration.eval import (
     EvalRunResult,
     run_regression,
@@ -276,7 +277,7 @@ def test_regression_creates_braintrust_experiment_when_available(
 
     # Verify via CLI
     bt_result = subprocess.run(
-        ["bt", "experiments", "list", "-p", "Prism", "--json"],
+        ["bt", "experiments", "list", "-p", braintrust_project(), "--json"],
         cwd=REPO_ROOT,
         check=False,
         capture_output=True,

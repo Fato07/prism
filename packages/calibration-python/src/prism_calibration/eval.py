@@ -197,27 +197,28 @@ def _compute_eval_id(
 def _evaluate_row(row: CalibrationRow) -> EvalCaseResult:
     """Evaluate a single calibration row against the rubric.
 
-    Uses the row's existing review label as the ground truth and
-    recomputes a score based on rubric alignment. For rows with
-    canonical labels, the score measures how well the row's quality
-    fields align with the expected verdict band. For unreviewed rows,
-    a neutral score is assigned.
+    Uses the row's canonical review label as the basis for scoring and
+    measures how well the row's quality fields align with its verdict band.
+
+    Raises:
+        EvalRunError: if the row has no canonical label. Rows reaching the
+            eval boundary must have completed prelabeling; an unlabeled row
+            indicates a corrupt export or a pipeline regression and must
+            not be silently scored.
     """
     label = row.review.canonical_label
-    if label is not None:
-        verdict_band = label.verdict_band
-        confidence = label.confidence
-        failure_tags = tuple(label.failure_tags)
-        reasoning_quality = label.reasoning_quality
-        evidence_quality = label.evidence_quality
-        calibration_quality = label.calibration_quality
-    else:
-        verdict_band = "WARN"
-        confidence = 0.5
-        failure_tags = tuple(row.review.failure_tags)
-        reasoning_quality = 50
-        evidence_quality = 50
-        calibration_quality = 50
+    if label is None:
+        raise EvalRunError(
+            f"Row {row.row_id} has no canonical label; eval requires every "
+            "row to be prelabeled. Re-run prelabel before freezing the slice."
+        )
+
+    verdict_band = label.verdict_band
+    confidence = label.confidence
+    failure_tags = tuple(label.failure_tags)
+    reasoning_quality = label.reasoning_quality
+    evidence_quality = label.evidence_quality
+    calibration_quality = label.calibration_quality
 
     # Score: normalized alignment between quality metrics and verdict band
     # PASS/ENDORSE → high scores expected; WARN → moderate; REJECT → low expected
@@ -386,10 +387,6 @@ def _log_to_braintrust(
                 "calibration_quality": case_result.calibration_quality,
                 "score": case_result.score,
                 "passed": case_result.passed,
-            },
-            expected={
-                "verdict_band": case_result.verdict_band,
-                "confidence": case_result.confidence,
             },
             scores={"rubric_alignment": case_result.score},
             metadata={
