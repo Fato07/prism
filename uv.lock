@@ -2208,6 +2208,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "prism-sentinel" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -2224,6 +2225,7 @@ requires-dist = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
     { name = "prism-schemas", editable = "packages/schemas-python" },
+    { name = "prism-sentinel", marker = "extra == 'dev'", editable = "apps/sentinel" },
     { name = "psycopg", extras = ["binary"] },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "pytest", marker = "extra == 'dev'" },

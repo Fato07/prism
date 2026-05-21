@@ -77,3 +77,6 @@ apps/docs/.source/
 
 # Prism CLI local receipts
 .prism/
+
+# Runtime logs
+*.log

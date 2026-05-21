@@ -24,6 +24,7 @@ dev = [
     "pytest-asyncio",
     "ruff",
     "mypy",
+    "prism-sentinel",
 ]
 
 [build-system]
@@ -35,6 +36,7 @@ packages = ["src/trader"]
 
 [tool.uv.sources]
 prism-schemas = { workspace = true }
+prism-sentinel = { workspace = true }
 
 [tool.ruff]
 target-version = "py312"
