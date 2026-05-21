@@ -40,7 +40,6 @@ from sentinel.x402_middleware import (
     reset_consumed_tokens_for_testing,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -449,7 +448,6 @@ class TestNoPrivateKeys:
     def test_no_from_private_key_in_middleware(self) -> None:
         """No fromPrivateKey or privateKeyToAccount in the middleware source."""
         import re
-
         from pathlib import Path
 
         source = Path(__file__).resolve().parents[1] / "sentinel" / "x402_middleware.py"
@@ -461,7 +459,6 @@ class TestNoPrivateKeys:
     def test_no_raw_hex_64_private_keys_in_middleware(self) -> None:
         """No 0x + 64 hex char literals that could be private keys."""
         import re
-
         from pathlib import Path
 
         source = Path(__file__).resolve().parents[1] / "sentinel" / "x402_middleware.py"

@@ -30,7 +30,6 @@ from prism_schemas.verdict import SentinelVerdict
 
 from sentinel.x402_middleware import reset_consumed_tokens_for_testing
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

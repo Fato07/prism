@@ -498,7 +498,7 @@ class TestLLMFamilyValidation:
 
     def test_gpt_model_validates_for_sentinel(self) -> None:
         """GPT model → llm_family_validated for sentinel."""
-        from trader.config import _is_gpt_family
+        from prism_schemas.startup import _is_gpt_family
 
         assert _is_gpt_family("gpt-4o-mini")
         assert _is_gpt_family("gpt-4o")
@@ -506,14 +506,14 @@ class TestLLMFamilyValidation:
 
     def test_claude_model_fails_for_sentinel(self) -> None:
         """Claude model → llm_family_mismatch for sentinel."""
-        from trader.config import _is_gpt_family
+        from prism_schemas.startup import _is_gpt_family
 
         assert not _is_gpt_family("claude-sonnet-4-20250514")
         assert not _is_gpt_family("anthropic/claude-3-opus")
 
     def test_sentinel_startup_with_gpt_model_succeeds(self) -> None:
         """GPT model in env → startup_check succeeds for sentinel."""
-        from trader.config import validate_env
+        from prism_schemas.startup import validate_env
 
         test_env = {
             "DATABASE_URL": "postgresql://test",
@@ -532,7 +532,7 @@ class TestLLMFamilyValidation:
 
     def test_sentinel_startup_with_claude_model_exits(self) -> None:
         """Claude model as SENTINEL_MODEL → startup exits with llm_family_mismatch."""
-        from trader.config import startup_check
+        from prism_schemas.startup import startup_check
 
         test_env = {
             "DATABASE_URL": "postgresql://test",

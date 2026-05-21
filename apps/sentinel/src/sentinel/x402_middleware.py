@@ -419,7 +419,7 @@ async def _settle_payment(
             resp = await client.post(settle_url, json=payload)
             if resp.status_code != 200:
                 logger.warning(
-                    "x402_facilitator_non_200",  # noqa: T201
+                    "x402_facilitator_non_200",
                     status=resp.status_code,
                     body=resp.text[:400],
                     **request_context,
