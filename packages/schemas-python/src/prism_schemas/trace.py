@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from prism_schemas.verdict import EvidenceToolReceipt
 
 
 class Evidence(BaseModel):
@@ -37,6 +38,11 @@ class TradingR1Trace(BaseModel):
 
     thesis: list[ThesisStep]
     evidence: list[Evidence]
+
+    # Tool-sourced evidence receipts — proves which evidence came from
+    # real tools (verifiable) vs which the LLM invented (unverifiable).
+    # Defaults to empty list for backward compatibility with old traces.
+    evidence_receipts: list[EvidenceToolReceipt] = Field(default_factory=list)
 
     raw_probability: float = Field(ge=0.0, le=1.0)
     volatility_adjustment: float

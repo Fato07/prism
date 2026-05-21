@@ -1,5 +1,12 @@
 """Trader prompt templates for Trading-R1 reasoning traces."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentinel.evidence_tools import EvidenceSearchResult
+
 TRADING_R1_SYSTEM = (
     "You are an expert prediction market trading agent using the "
     "Trading-R1 methodology.\n\n"
@@ -35,3 +42,58 @@ TRADING_R1_SYSTEM = (
     "- Be honest about uncertainty — do not manufacture high confidence "
     "where none exists"
 )
+
+
+def build_evidence_context(search_results: list[EvidenceSearchResult]) -> str:
+    """Build a tool-sourced evidence context section for the LLM prompt.
+
+    Formats a list of :class:`EvidenceSearchResult` objects into a structured
+    prompt section that instructs the LLM to use the provided real-world
+    evidence rather than fabricating sources from its training data.
+
+    Parameters:
+        search_results: Evidence results returned by the sentinel /evidence
+            endpoint (already validated and parsed).
+
+    Returns:
+        A formatted string suitable for injection into the Mirascope prompt.
+    """
+    if not search_results:
+        return ""
+
+    lines: list[str] = [
+        "TOOL-SOURCED EVIDENCE (do not fabricate — use this evidence below):",
+        "",
+        "The following evidence was retrieved by Prism's evidence tools before",
+        "trace generation. Use these sources to construct your evidence collection.",
+        "Cite the source titles, URLs, and snippets accurately. Do not invent",
+        "placeholder sources, URLs, or claims. If any evidence appears outdated",
+        "or low-confidence, note this in your volatility adjustment and rationale,",
+        "and prefer HOLD if evidence quality is insufficient.",
+        "",
+    ]
+
+    for i, result in enumerate(search_results, start=1):
+        lines.append(f"--- Evidence Item {i} ---")
+        lines.append(f"Title: {result.title}")
+        lines.append(f"URL: {result.url}")
+        lines.append(f"Snippet: {result.snippet}")
+        lines.append(f"Provider: {result.provider}")
+        if result.tool_name:
+            lines.append(f"Tool: {result.tool_name}")
+        if result.published_at:
+            lines.append(f"Published: {result.published_at}")
+        if result.retrieved_at:
+            lines.append(f"Retrieved at: {result.retrieved_at}")
+        lines.append(f"Confidence: {result.confidence}")
+        lines.append("")
+
+    lines.append(
+        "Produce a complete Trading-R1 reasoning trace using the tool-sourced "
+        "evidence above. Your evidence collection should reference these sources "
+        "directly. Your thesis steps should cite evidence IDs that correspond to "
+        "the numbered evidence items above. If the evidence does not support a "
+        "strong directional view, choose HOLD."
+    )
+
+    return "\n".join(lines)

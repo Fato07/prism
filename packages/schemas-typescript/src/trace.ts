@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod/v4";
+import { EvidenceToolReceiptSchema } from "./verdict";
 
 /** A single piece of evidence supporting the thesis. */
 export const EvidenceSchema = z.object({
@@ -32,6 +33,11 @@ export const TradingR1TraceSchema = z.object({
 
   thesis: z.array(ThesisStepSchema),
   evidence: z.array(EvidenceSchema),
+
+  // Tool-sourced evidence receipts — proves which evidence came from
+  // real tools (verifiable) vs which the LLM invented (unverifiable).
+  // Defaults to empty list for backward compatibility with old traces.
+  evidence_receipts: z.array(EvidenceToolReceiptSchema).default([]),
 
   raw_probability: z.number().min(0).max(1),
   volatility_adjustment: z.number(),
