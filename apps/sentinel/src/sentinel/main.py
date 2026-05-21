@@ -35,11 +35,20 @@ from fastapi import FastAPI, HTTPException, Request
 from prism_mcp.server import build_mcp_server
 from prism_schemas.db import run_migration
 from prism_schemas.startup import startup_check
-from prism_schemas.verdict import SentinelVerdict
+from prism_schemas.verdict import AdversarialChallenge, SentinelVerdict
 from pydantic import BaseModel, Field
 
 from sentinel.demo_evidence_mcp import build_demo_evidence_mcp_server
-from sentinel.evidence_tools import _read_evidence_budget
+from sentinel.evidence_tools import (
+    CacheAwareEvidenceProvider,
+    CircuitBreakerAwareEvidenceProvider,
+    EvidenceSearchRequest,
+    EvidenceSearchResult,
+    NoopEvidenceProvider,
+    _read_evidence_budget,
+    build_evidence_provider_stack,
+    evidence_provider_from_runtime,
+)
 from sentinel.ipfs import PinataClient
 from sentinel.market_evidence_mcp import build_market_evidence_mcp_server
 from sentinel.persistence import (
@@ -194,6 +203,30 @@ class ValidateResponse(BaseModel):
     payment_tx_hash: str | None = None
 
 
+class EvidenceApiRequest(BaseModel):
+    """Request body for POST /evidence — lightweight evidence retrieval.
+
+    This endpoint is free (not x402-protected) and does not run the DSPy
+    adversarial pipeline. It uses the same BudgetAware → CacheAware →
+    CircuitBreakerAware provider stack as the resolution loop.
+    """
+
+    market_question: str = Field(..., min_length=1, description="Market question being researched")
+    query: str = Field(..., min_length=1, description="Search query for the evidence provider")
+    max_results: int = Field(default=5, ge=1, le=20, description="Max results to return")
+
+
+class EvidenceApiResponse(BaseModel):
+    """Response body for POST /evidence."""
+
+    results: list[EvidenceSearchResult] = Field(default_factory=list)
+    budget_remaining: int = Field(ge=0, description="Remaining calls in current budget window")
+    from_cache: list[bool] = Field(
+        default_factory=list,
+        description="Whether each result came from cache (same length as results)",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -223,13 +256,9 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
 
     # Determine evidence budget: internal (bypass) vs paid (x402) callers
     if payment_tx_hash or requester_address:
-        evidence_budget = _read_evidence_budget(
-            "SENTINEL_EVIDENCE_BUDGET_PAID", default=10
-        )
+        evidence_budget = _read_evidence_budget("SENTINEL_EVIDENCE_BUDGET_PAID", default=10)
     else:
-        evidence_budget = _read_evidence_budget(
-            "SENTINEL_EVIDENCE_BUDGET_INTERNAL", default=3
-        )
+        evidence_budget = _read_evidence_budget("SENTINEL_EVIDENCE_BUDGET_INTERNAL", default=3)
 
     # Compute request_hash from the trace_uri and trace_hash
     request_hash = hashlib.sha256(f"{body.trace_uri}:{body.trace_hash}".encode()).hexdigest()
@@ -354,3 +383,129 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
         tx_hash=tx_hash,
         payment_tx_hash=payment_tx_hash,
     )
+
+
+@app.post("/evidence", response_model=EvidenceApiResponse)
+async def evidence(body: EvidenceApiRequest) -> EvidenceApiResponse:
+    """Lightweight evidence retrieval — free, no adversarial review.
+
+    Uses the same BudgetAware → CacheAware → CircuitBreakerAware provider
+    stack as the resolution loop. Does NOT run the DSPy pipeline — just
+    provider search + return. Provider errors are caught and returned as
+    empty results (never HTTP 500).
+    """
+    logger.info(
+        "evidence_received",
+        market_question=body.market_question[:100],
+        query=body.query[:100],
+        max_results=body.max_results,
+    )
+
+    # Get the raw evidence provider (from env or DB connector)
+    raw_provider = evidence_provider_from_runtime()
+
+    # Determine evidence budget — /evidence is always internal (free)
+    evidence_budget = _read_evidence_budget("SENTINEL_EVIDENCE_BUDGET_INTERNAL", default=3)
+
+    # Build the full wrapper stack (same as resolution loop)
+    provider = build_evidence_provider_stack(raw_provider, budget=evidence_budget)
+
+    # Construct a synthetic challenge for EvidenceSearchRequest compatibility
+    challenge = AdversarialChallenge(
+        id="evidence-query",
+        type="temporal",
+        severity="material",
+        question=body.query,
+        required_resolution="Retrieve current evidence.",
+        blocking_pass=False,
+    )
+
+    search_request = EvidenceSearchRequest(
+        market_question=body.market_question,
+        challenge=challenge,
+        query=body.query,
+        max_results=body.max_results,
+    )
+
+    # Determine cache state BEFORE the call
+    from_cache: list[bool]
+    cache_hits_before = 0
+
+    if not isinstance(provider, NoopEvidenceProvider):
+        # Unwrap: outermost is CircuitBreaker, inside is CacheAware
+        cache_provider = _unwrap_cache_provider(provider)
+        if cache_provider is not None:
+            cache_hits_before = cache_provider.hits
+
+    # Call the provider — catch all exceptions, never crash
+    try:
+        results = await provider.search(search_request)
+    except Exception as exc:
+        logger.warning(
+            "evidence_provider_failed",
+            error=type(exc).__name__,
+            detail=str(exc)[:200],
+        )
+        results = []
+
+    # Determine whether results came from cache
+    if isinstance(provider, NoopEvidenceProvider):
+        # Noop provider — no cache layer at all
+        from_cache = [False] * len(results)
+    else:
+        cache_provider = _unwrap_cache_provider(provider)
+        if cache_provider is not None and cache_provider.hits > cache_hits_before:
+            from_cache = [True] * len(results)
+        else:
+            from_cache = [False] * len(results)
+
+    # Budget remaining — if provider has remaining property
+    budget_remaining = _get_budget_remaining(provider)
+
+    logger.info(
+        "evidence_complete",
+        result_count=len(results),
+        budget_remaining=budget_remaining,
+        from_cache=from_cache,
+    )
+
+    return EvidenceApiResponse(
+        results=results,
+        budget_remaining=budget_remaining,
+        from_cache=from_cache,
+    )
+
+
+def _unwrap_cache_provider(provider: object) -> CacheAwareEvidenceProvider | None:
+    """Unwrap the composed provider stack to find the CacheAwareEvidenceProvider.
+
+    The stack from ``build_evidence_provider_stack`` is:
+    CircuitBreakerAware → CacheAware → BudgetAware → raw
+    """
+    wrapped = provider
+    # First unwrap circuit breaker (outermost)
+    if isinstance(wrapped, CircuitBreakerAwareEvidenceProvider):
+        wrapped = wrapped._provider
+    # Then check for cache
+    if isinstance(wrapped, CacheAwareEvidenceProvider):
+        return wrapped
+    return None
+
+
+def _get_budget_remaining(provider: object) -> int:
+    """Get the remaining budget from the composed provider stack.
+
+    The stack from ``build_evidence_provider_stack`` is:
+    CircuitBreakerAware → CacheAware → BudgetAware → raw
+    """
+    wrapped = provider
+    # First unwrap circuit breaker
+    if isinstance(wrapped, CircuitBreakerAwareEvidenceProvider):
+        wrapped = wrapped._provider
+    # Then unwrap cache
+    if isinstance(wrapped, CacheAwareEvidenceProvider):
+        wrapped = wrapped._provider
+    # Then check for budget
+    if hasattr(wrapped, "remaining"):
+        return wrapped.remaining  # type: ignore[no-any-return]
+    return 0
