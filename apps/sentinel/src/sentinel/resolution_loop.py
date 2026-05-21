@@ -46,6 +46,8 @@ from sentinel.evidence_tools import (
     EvidenceProvider,
     EvidenceSearchRequest,
     EvidenceSearchResult,
+    NoopEvidenceProvider,
+    build_evidence_provider_stack,
     evidence_provider_from_runtime,
     query_for_challenge,
 )
@@ -126,9 +128,23 @@ async def generate_verdict_with_resolution(
         return verdict
 
     trace = _parse_trace(trace_json)
-    provider = evidence_provider or evidence_provider_from_runtime()
-    if evidence_budget is not None:
-        provider = BudgetAwareEvidenceProvider(provider, evidence_budget)
+    raw_provider = evidence_provider or evidence_provider_from_runtime()
+
+    # Build the full wrapper stack when not a noop/injected provider.
+    # StaticEvidenceProvider injected directly in tests bypasses wrappers.
+    if isinstance(raw_provider, NoopEvidenceProvider):
+        provider: EvidenceProvider = raw_provider
+    elif evidence_provider is not None and not isinstance(evidence_provider, NoopEvidenceProvider):
+        # Explicitly injected provider (e.g. StaticEvidenceProvider from tests)
+        # — wrap with budget only if requested, skip cache/CB.
+        if evidence_budget is not None:
+            provider = BudgetAwareEvidenceProvider(raw_provider, evidence_budget)
+        else:
+            provider = raw_provider
+    else:
+        # Runtime provider — build full stack: CB → Cache → Budget → Provider
+        budget = evidence_budget if evidence_budget is not None else 0
+        provider = build_evidence_provider_stack(raw_provider, budget=budget)
     extractor = evidence_extractor or evidence_extractor_from_env()
     require_extraction = _resolve_require_evidence_extraction(require_evidence_extraction)
     challenge_resolutions = list(verdict.challenge_resolutions)
@@ -160,9 +176,7 @@ async def generate_verdict_with_resolution(
             _apply_resolution_to_challenge(challenge, resolution)
 
         challenge_resolutions.extend(round_resolutions)
-        resolved_ids = [
-            r.challenge_id for r in round_resolutions if r.status in _RESOLVED_STATUSES
-        ]
+        resolved_ids = [r.challenge_id for r in round_resolutions if r.status in _RESOLVED_STATUSES]
         resolution_rounds.append(
             ResolutionRound(
                 round_index=round_index,
@@ -239,9 +253,7 @@ def _open_material_or_blocking(
 
 def _open_blocking(challenges: list[AdversarialChallenge]) -> list[AdversarialChallenge]:
     return [
-        c
-        for c in challenges
-        if c.blocking_pass and c.resolution_status not in _RESOLVED_STATUSES
+        c for c in challenges if c.blocking_pass and c.resolution_status not in _RESOLVED_STATUSES
     ]
 
 
@@ -472,8 +484,7 @@ def _extracted_page_is_adequate(
     snippet_support = len(extracted_words & snippet_words) >= min(3, max(1, len(snippet_words)))
     title_support = len(extracted_words & title_words) >= min(2, max(1, len(title_words)))
     topic_support = (
-        len(extracted_words & issue_words) >= 2
-        or len(extracted_words & market_words) >= 2
+        len(extracted_words & issue_words) >= 2 or len(extracted_words & market_words) >= 2
     )
     return (snippet_support or title_support) and topic_support
 
@@ -486,12 +497,16 @@ def _tool_receipt_for_result(
 ) -> EvidenceToolReceipt:
     """Build a structured, queryable receipt for the evidence result used."""
     retrieved_at = result.retrieved_at or datetime.now(UTC).isoformat()
-    extraction_checks = _extraction_check_labels(
-        extraction=extraction,
-        result=result,
-        trace=trace,
-        challenge=challenge,
-    ) if extraction is not None else []
+    extraction_checks = (
+        _extraction_check_labels(
+            extraction=extraction,
+            result=result,
+            trace=trace,
+            challenge=challenge,
+        )
+        if extraction is not None
+        else []
+    )
     source_published_at = (
         extraction.published_at if extraction and extraction.published_at else result.published_at
     )
@@ -701,9 +716,7 @@ def _evidence_text(result: EvidenceSearchResult) -> str:
 
 def _evidence_content_text(result: EvidenceSearchResult) -> str:
     return " ".join(
-        part
-        for part in [result.title, result.snippet, result.published_at]
-        if part
+        part for part in [result.title, result.snippet, result.published_at] if part
     ).lower()
 
 
@@ -748,8 +761,7 @@ def _dialogue_for_round(
             {
                 "role": resolution.responder,
                 "content": (
-                    f"{resolution.challenge_id} → {resolution.status}: "
-                    f"{resolution.response}"
+                    f"{resolution.challenge_id} → {resolution.status}: {resolution.response}"
                 ),
             }
         )

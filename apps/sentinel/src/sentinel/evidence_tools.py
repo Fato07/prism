@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import enum
 import hashlib
 import json
 import os
 import re
+import time
 from collections.abc import Callable, Mapping
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
@@ -255,6 +257,147 @@ class CacheAwareEvidenceProvider:
     def disabled(self) -> bool:
         """Whether caching is entirely disabled (maxsize=0)."""
         return self._disabled
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker state machine
+# ---------------------------------------------------------------------------
+
+CircuitBreakerState = enum.Enum(
+    "CircuitBreakerState",
+    ["CLOSED", "OPEN", "HALF_OPEN"],
+)
+"""Circuit breaker state machine states.
+
+CLOSED: normal operation, requests flow through.
+OPEN: failing, requests return empty immediately (fail-closed).
+HALF_OPEN: trial state after cooldown, allows one test request.
+"""
+
+
+class CircuitBreakerAwareEvidenceProvider:
+    """Wraps any EvidenceProvider with a per-provider circuit breaker.
+
+    States:
+      - CLOSED: normal, delegates to the inner provider.
+      - OPEN: fail-closed, returns ``[]`` immediately without calling provider.
+      - HALF_OPEN: after cooldown, one trial call is allowed — success closes
+        the circuit, failure re-opens it.
+
+    Only **exceptions** (not empty result lists) count as failures.
+    Non-consecutive failures reset the counter on the next success.
+
+    Parameters:
+        provider: The underlying evidence provider to wrap.
+        provider_id: Stable identifier (used for per-provider isolation).
+        failure_threshold: Consecutive exceptions before circuit opens (default 3).
+        cooldown_seconds: Seconds before HALF-OPEN trial (default 60).
+    """
+
+    def __init__(
+        self,
+        provider: EvidenceProvider,
+        provider_id: str,
+        *,
+        failure_threshold: int = 3,
+        cooldown_seconds: float = 60.0,
+    ) -> None:
+        self._provider = provider
+        self._provider_id = provider_id
+        self._failure_threshold = max(1, failure_threshold)
+        self._cooldown_seconds = max(0.0, cooldown_seconds)
+        self._state: CircuitBreakerState = CircuitBreakerState.CLOSED
+        self._consecutive_failures: int = 0
+        self._opened_at: float | None = None
+        self._last_call_failed: bool = False
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Return evidence if circuit is CLOSED/HALF_OPEN, else ``[]``."""
+        now = time.monotonic()
+
+        if self._state is CircuitBreakerState.OPEN:
+            if self._opened_at is not None and (now - self._opened_at) >= self._cooldown_seconds:
+                self._state = CircuitBreakerState.HALF_OPEN
+                logger.info(
+                    "circuit_breaker_half_open",
+                    provider_id=self._provider_id,
+                    consecutive_failures=self._consecutive_failures,
+                )
+            else:
+                logger.warning(
+                    "circuit_breaker_open",
+                    provider_id=self._provider_id,
+                    consecutive_failures=self._consecutive_failures,
+                )
+                self._last_call_failed = False
+                return []
+
+        # CLOSED or HALF_OPEN: delegate to provider
+        try:
+            results = await self._provider.search(request)
+        except Exception as exc:
+            self._consecutive_failures += 1
+            self._last_call_failed = True
+            logger.warning(
+                "circuit_breaker_failure",
+                provider_id=self._provider_id,
+                consecutive_failures=self._consecutive_failures,
+                failure_threshold=self._failure_threshold,
+                error=type(exc).__name__,
+            )
+            if self._state is CircuitBreakerState.HALF_OPEN:
+                # HALF_OPEN failure → re-OPEN immediately
+                self._state = CircuitBreakerState.OPEN
+                self._opened_at = now
+                logger.warning(
+                    "circuit_breaker_half_open_failed",
+                    provider_id=self._provider_id,
+                )
+            elif self._consecutive_failures >= self._failure_threshold:
+                self._state = CircuitBreakerState.OPEN
+                self._opened_at = now
+                logger.warning(
+                    "circuit_breaker_opened",
+                    provider_id=self._provider_id,
+                    consecutive_failures=self._consecutive_failures,
+                )
+            return []
+
+        # Success: reset failure counter
+        self._last_call_failed = False
+        if self._consecutive_failures > 0:
+            self._consecutive_failures = 0
+            logger.info(
+                "circuit_breaker_failure_counter_reset",
+                provider_id=self._provider_id,
+            )
+        if self._state is CircuitBreakerState.HALF_OPEN:
+            self._state = CircuitBreakerState.CLOSED
+            logger.info(
+                "circuit_breaker_closed_after_half_open_success",
+                provider_id=self._provider_id,
+            )
+        return results
+
+    @property
+    def state(self) -> CircuitBreakerState:
+        """Current circuit breaker state."""
+        return self._state
+
+    @property
+    def consecutive_failures(self) -> int:
+        """Number of consecutive provider failures."""
+        return self._consecutive_failures
+
+    @property
+    def last_call_failed(self) -> bool:
+        """Whether the most recent ``search()`` call failed with an exception."""
+        return self._last_call_failed
+
+    @property
+    def provider_id(self) -> str:
+        """Stable identifier for per-provider isolation."""
+        return self._provider_id
 
 
 class McpEvidenceProvider:
@@ -906,12 +1049,148 @@ def evidence_provider_from_env() -> EvidenceProvider:
     return NoopEvidenceProvider()
 
 
-def evidence_provider_from_runtime(dsn: str | None = None) -> EvidenceProvider:
-    """Return active DB connector when armed, otherwise fall back to env config."""
-    provider = evidence_provider_from_active_connector(dsn=dsn)
-    if provider is not None:
-        return provider
-    return evidence_provider_from_env()
+# ---------------------------------------------------------------------------
+# Module-level singletons for persistence across validations
+# ---------------------------------------------------------------------------
+
+_shared_evidence_cache: TTLCache[tuple[str, str], list[EvidenceSearchResult]] | None = None
+"""Shared TTLCache instance persisted across /validate and /evidence invocations."""
+
+_circuit_breaker_registry: dict[str, CircuitBreakerAwareEvidenceProvider] = {}
+"""Per-provider circuit breaker instances persisted across validations."""
+
+
+def _get_shared_cache() -> TTLCache[tuple[str, str], list[EvidenceSearchResult]]:
+    """Return (or lazily create) the shared ``TTLCache`` instance.
+
+    The cache is created once at first access with TTL and maxsize read from
+    environment variables.  A ``maxsize`` of 0 means caching is disabled —
+    a dummy cache is returned in that case.
+    """
+    global _shared_evidence_cache
+    if _shared_evidence_cache is None:
+        maxsize = _read_cache_maxsize()
+        ttl = _read_cache_ttl()
+        if maxsize == 0:
+            # Dummy cache — never actually used (cache wrapper checks disabled flag).
+            _shared_evidence_cache = TTLCache(maxsize=1, ttl=1)
+        else:
+            _shared_evidence_cache = TTLCache(maxsize=maxsize, ttl=ttl)
+    return _shared_evidence_cache
+
+
+def _get_or_create_circuit_breaker(
+    inner_provider: EvidenceProvider,
+    provider_id: str,
+) -> CircuitBreakerAwareEvidenceProvider:
+    """Return an existing circuit breaker for *provider_id* or create a new one.
+
+    Circuit breaker state persists across validations — the same instance is
+    reused for the same provider identity.  The *inner_provider* argument is
+    only used when creating a new circuit breaker.
+    """
+    if provider_id in _circuit_breaker_registry:
+        return _circuit_breaker_registry[provider_id]
+    cb = CircuitBreakerAwareEvidenceProvider(
+        inner_provider,
+        provider_id,
+        failure_threshold=_read_circuit_breaker_threshold(),
+        cooldown_seconds=_read_circuit_breaker_cooldown(),
+    )
+    _circuit_breaker_registry[provider_id] = cb
+    return cb
+
+
+def evidence_provider_from_runtime(
+    dsn: str | None = None,
+) -> EvidenceProvider:
+    """Return the raw configured evidence provider (from DB connector or env).
+
+    This is the *raw* unevaluated provider.  The resolution loop is responsible
+    for composing the full wrapper stack (budget → cache → circuit breaker).
+
+    ``NoopEvidenceProvider`` is returned bare — the resolution loop must skip
+    wrappers when it receives a noop provider.
+    """
+    raw = evidence_provider_from_active_connector(dsn=dsn)
+    if raw is None:
+        raw = evidence_provider_from_env()
+    return raw
+
+
+def build_evidence_provider_stack(
+    raw_provider: EvidenceProvider,
+    *,
+    budget: int,
+) -> EvidenceProvider:
+    """Build the full evidence provider wrapper stack around *raw_provider*.
+
+    Layering order (outside-in):
+        CircuitBreakerAware → CacheAware → BudgetAware → *raw_provider*
+
+    This ensures:
+      - Cache hits short-circuit before budget check or circuit breaker.
+      - Circuit-open returns ``[]`` without consuming budget.
+      - Only actual provider invocations consume a budget unit.
+      - Failed provider calls do NOT populate the cache (exceptions propagate
+        before the cache's store line).
+
+    ``NoopEvidenceProvider`` is returned as-is (no wrappers applied).
+    """
+    if isinstance(raw_provider, NoopEvidenceProvider):
+        return raw_provider
+
+    provider_id = _provider_identity(raw_provider)
+
+    # Budget wrapper (innermost — only actual provider calls consume budget)
+    provider: EvidenceProvider = BudgetAwareEvidenceProvider(raw_provider, budget)
+
+    # Cache wrapper (shared cache across validations, sits above budget)
+    cache = _get_shared_cache()
+    maxsize = _read_cache_maxsize()
+    provider = CacheAwareEvidenceProvider(
+        provider,
+        provider_id=provider_id,
+        cache=cache,
+        ttl=_read_cache_ttl(),
+        maxsize=maxsize,
+    )
+
+    # Circuit breaker wrapper (outermost — catches exceptions from all layers)
+    provider = _get_or_create_circuit_breaker(provider, provider_id)
+
+    return provider
+
+
+def _provider_identity(raw: EvidenceProvider) -> str:
+    """Derive a stable identity string for the raw provider instance.
+
+    Used as a cache key prefix and circuit-breaker registry key.
+    """
+    # Use isinstance checks for reliable identity (class names change in tests)
+    if isinstance(raw, NoopEvidenceProvider):
+        return "noop"
+    if isinstance(raw, StaticEvidenceProvider):
+        return "static"
+
+    class_name = type(raw).__name__
+    # Map known provider class names to stable short IDs
+    if class_name == "BraveSearchEvidenceProvider":
+        return "brave_search"
+    if class_name == "ParallelSearchEvidenceProvider":
+        return "parallel_search"
+    if class_name == "TavilySearchEvidenceProvider":
+        return "tavily_search"
+    if class_name == "ExaSearchEvidenceProvider":
+        return "exa_search"
+    if class_name == "FirecrawlSearchEvidenceProvider":
+        return "firecrawl_search"
+    if class_name == "CustomWebhookEvidenceProvider":
+        return "custom_webhook"
+    if class_name == "McpEvidenceProvider":
+        return "mcp_evidence"
+    # Fallback: use class name lowercased
+    return class_name.lower()
 
 
 def evidence_provider_from_active_connector(dsn: str | None = None) -> EvidenceProvider | None:
@@ -1466,6 +1745,58 @@ def _float_env(name: str, default: float) -> float:
         )
         return default
     return parsed
+
+
+def _read_circuit_breaker_threshold() -> int:
+    """Read ``SENTINEL_EVIDENCE_CB_FAILURE_THRESHOLD`` with validation and default.
+
+    Returns the consecutive failure threshold (default 3).  Non-positive and
+    non-numeric values log a warning and fall back to the default.
+    """
+    raw = os.environ.get("SENTINEL_EVIDENCE_CB_FAILURE_THRESHOLD", "3")
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "invalid_cb_failure_threshold_non_numeric",
+            raw=raw,
+            fallback=3,
+        )
+        return 3
+    if value <= 0:
+        logger.warning(
+            "invalid_cb_failure_threshold_non_positive",
+            value=value,
+            fallback=3,
+        )
+        return 3
+    return value
+
+
+def _read_circuit_breaker_cooldown() -> float:
+    """Read ``SENTINEL_EVIDENCE_CB_COOLDOWN_SECONDS`` with validation and default.
+
+    Returns the cooldown in seconds (default 60).  Non-positive and non-numeric
+    values log a warning and fall back to the default.
+    """
+    raw = os.environ.get("SENTINEL_EVIDENCE_CB_COOLDOWN_SECONDS", "60")
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "invalid_cb_cooldown_non_numeric",
+            raw=raw,
+            fallback=60.0,
+        )
+        return 60.0
+    if value <= 0:
+        logger.warning(
+            "invalid_cb_cooldown_non_positive",
+            value=value,
+            fallback=60.0,
+        )
+        return 60.0
+    return value
 
 
 def _response_json_or_none(
