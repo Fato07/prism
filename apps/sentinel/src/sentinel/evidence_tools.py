@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
@@ -20,6 +21,7 @@ from urllib.parse import urlsplit
 import httpx
 import psycopg
 import structlog
+from cachetools import TTLCache
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastmcp import Client
@@ -163,6 +165,96 @@ class BudgetAwareEvidenceProvider:
     def budget(self) -> int:
         """Immutable per-invocation call cap."""
         return self._budget
+
+
+def _cache_key(provider_id: str, query: str) -> tuple[str, str]:
+    """Build a deterministic (provider-scoped, query-deterministic) cache key.
+
+    Returns ``(provider_id, sha256_hex_of_query)`` so that two different
+    providers searching the same query produce distinct entries while the
+    same provider + same query always maps to one entry.
+    """
+    query_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()
+    return (provider_id, query_hash)
+
+
+class CacheAwareEvidenceProvider:
+    """Wraps any EvidenceProvider with a ``cachetools.TTLCache`` for result caching.
+
+    Cache key is ``(provider_id, sha256(query))`` — provider-scoped and
+    query-deterministic.  Cache hits return stored results immediately without
+    calling the underlying provider.  Cache misses delegate to the provider and
+    store the result list (including empty lists) under the cache key.
+
+    Parameters:
+        provider: The underlying evidence provider to wrap.
+        provider_id: Stable identifier for this provider (e.g. ``"brave_search"``).
+        cache: Optional pre-built ``TTLCache`` instance (shared across wrappers).
+        ttl: Time-to-live in seconds (only used when *cache* is ``None``).
+        maxsize: Maximum cache entries (0 disables caching entirely).
+    """
+
+    def __init__(
+        self,
+        provider: EvidenceProvider,
+        provider_id: str,
+        *,
+        cache: TTLCache[tuple[str, str], list[EvidenceSearchResult]] | None = None,
+        ttl: int = 300,
+        maxsize: int = 256,
+    ) -> None:
+        """Wrap *provider* with an optional shared ``TTLCache``."""
+        self._provider = provider
+        self._provider_id = provider_id
+        self._cache: TTLCache[tuple[str, str], list[EvidenceSearchResult]] = (
+            cache if cache is not None else TTLCache(maxsize=maxsize, ttl=ttl)
+        )
+        self._hits = 0
+        self._misses = 0
+        self._disabled = maxsize == 0 and cache is None
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Return cached results if available, otherwise delegate to provider."""
+        if self._disabled:
+            self._misses += 1
+            return await self._provider.search(request)
+
+        key = _cache_key(self._provider_id, request.query)
+
+        if key in self._cache:
+            self._hits += 1
+            logger.info(
+                "evidence_cache_hit",
+                provider_id=self._provider_id,
+                query_hash=key[1],
+            )
+            return list(self._cache[key])
+
+        self._misses += 1
+        logger.info(
+            "evidence_cache_miss",
+            provider_id=self._provider_id,
+            query_hash=key[1],
+        )
+        results = await self._provider.search(request)
+        # Store a copy so mutations to the returned list don't corrupt the cache.
+        self._cache[key] = list(results)
+        return results
+
+    @property
+    def hits(self) -> int:
+        """Number of cache hits in the current validation window."""
+        return self._hits
+
+    @property
+    def misses(self) -> int:
+        """Number of cache misses in the current validation window."""
+        return self._misses
+
+    @property
+    def disabled(self) -> bool:
+        """Whether caching is entirely disabled (maxsize=0)."""
+        return self._disabled
 
 
 class McpEvidenceProvider:
@@ -1300,6 +1392,58 @@ def _read_evidence_budget(env_var: str, default: int) -> int:
     return value
 
 
+def _read_cache_ttl() -> int:
+    """Read ``SENTINEL_EVIDENCE_CACHE_TTL`` with validation and default fallback.
+
+    Returns the TTL in seconds (default 300).  Invalid values log a warning and
+    fall back to the default.  Non-positive values also fall back to the default.
+    """
+    raw = os.environ.get("SENTINEL_EVIDENCE_CACHE_TTL", "300")
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "invalid_evidence_cache_ttl_non_numeric",
+            raw=raw,
+            fallback=300,
+        )
+        return 300
+    if value <= 0:
+        logger.warning(
+            "invalid_evidence_cache_ttl_non_positive",
+            value=value,
+            fallback=300,
+        )
+        return 300
+    return value
+
+
+def _read_cache_maxsize() -> int:
+    """Read ``SENTINEL_EVIDENCE_CACHE_MAXSIZE`` with validation and default fallback.
+
+    Returns the max cache entries (default 256).  0 disables caching entirely.
+    Negative values log a warning and fall back to the default.
+    """
+    raw = os.environ.get("SENTINEL_EVIDENCE_CACHE_MAXSIZE", "256")
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "invalid_evidence_cache_maxsize_non_numeric",
+            raw=raw,
+            fallback=256,
+        )
+        return 256
+    if value < 0:
+        logger.warning(
+            "invalid_evidence_cache_maxsize_negative",
+            value=value,
+            fallback=256,
+        )
+        return 256
+    return value
+
+
 def _float_env(name: str, default: float) -> float:
     """Parse a float environment variable with fail-closed fallback."""
     raw_value = os.environ.get(name)
@@ -1756,11 +1900,7 @@ def _exa_mcp_highlights(block: str) -> str | None:
     if marker not in block:
         return None
     raw = block.split(marker, 1)[1]
-    lines = [
-        line.strip()
-        for line in raw.splitlines()
-        if line.strip() and line.strip() != "[...]"
-    ]
+    lines = [line.strip() for line in raw.splitlines() if line.strip() and line.strip() != "[...]"]
     return "\n".join(lines) or None
 
 
