@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-const VALID_TOKEN = "operator-secret-token-abc";
+const VALID_TOKEN = "op-test-fixture-value-abc";
 const WRONG_TOKEN = "wrong-token-xyz";
 const TRADER_URL = "http://localhost:3201";
 
@@ -679,9 +679,9 @@ describe("VAL-AUDIT-006: Actor field populated correctly", () => {
   });
 
   it("actor never contains any env var ending with _TOKEN, _KEY, or _SECRET", async () => {
-    process.env.OPERATOR_ADMIN_TOKEN = "my-secret-op-token";
-    process.env.CONNECTOR_ADMIN_TOKEN = "conn-secret-xyz";
-    process.env.SOME_API_KEY = "sk-deadbeef";
+    process.env.OPERATOR_ADMIN_TOKEN = "op-test-value-for-audit-check";
+    process.env.CONNECTOR_ADMIN_TOKEN = "conn-test-value-for-audit-check";
+    process.env.SOME_API_KEY = "sk-test-dummy-key-for-audit-check";
 
     const { POST } = await import("@/api/admin/schedule/start/route");
     // Unauthorized request
@@ -690,9 +690,9 @@ describe("VAL-AUDIT-006: Actor field populated correctly", () => {
     const insertCalls = auditInsertCalls();
     const params = insertCalls[0][1] as unknown[];
     const serialized = JSON.stringify(params);
-    expect(serialized).not.toContain("my-secret-op-token");
-    expect(serialized).not.toContain("conn-secret-xyz");
-    expect(serialized).not.toContain("sk-deadbeef");
+    expect(serialized).not.toContain("op-test-value-for-audit-check");
+    expect(serialized).not.toContain("conn-test-value-for-audit-check");
+    expect(serialized).not.toContain("sk-test-dummy-key-for-audit-check");
 
     delete (process.env as Record<string, string | undefined>).CONNECTOR_ADMIN_TOKEN;
     delete (process.env as Record<string, string | undefined>).SOME_API_KEY;
@@ -984,7 +984,7 @@ describe("VAL-AUDIT-009: Error field behavior", () => {
   });
 
   it("error field never contains secrets or tokens", async () => {
-    process.env.OPERATOR_ADMIN_TOKEN = "a-secret-token-12345";
+    process.env.OPERATOR_ADMIN_TOKEN = "op-test-value-for-error-check";
 
     const { POST } = await import("@/api/admin/schedule/start/route");
     await POST(adminRequest("/api/admin/schedule/start") as never);
@@ -993,7 +993,7 @@ describe("VAL-AUDIT-009: Error field behavior", () => {
     const params = insertCalls[0][1] as unknown[];
     const errorValue = params[5] as string;
     expect(errorValue).toBeTruthy();
-    expect(errorValue).not.toContain("a-secret-token-12345");
+    expect(errorValue).not.toContain("op-test-value-for-error-check");
     expect(errorValue).not.toContain("Bearer");
     expect(errorValue).not.toContain("sk-");
   });

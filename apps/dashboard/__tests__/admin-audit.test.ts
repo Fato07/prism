@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-const VALID_TOKEN = "operator-secret-token-abc";
+const VALID_TOKEN = "op-test-fixture-value-abc";
 const WRONG_TOKEN = "wrong-token-xyz";
 
 /** Module-level mock pool.  query() returns mock rows so tests can inspect. */
