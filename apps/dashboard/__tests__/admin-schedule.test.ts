@@ -603,6 +603,578 @@ describe("POST /api/admin/schedule/stop", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-006: Actor field populated correctly
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-006: Actor field populated correctly", () => {
+  beforeEach(() => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+    mockPoolQuery.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+  });
+
+  it("actor is 'operator_admin' for authenticated requests, never the token value", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    // Also import stop to test both operations
+    const { POST: startPost } = await import("@/api/admin/schedule/start/route");
+    const { POST: stopPost } = await import("@/api/admin/schedule/stop/route");
+    await startPost(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    // Check start audit
+    const startCalls = auditInsertCalls();
+    const startParams = startCalls[startCalls.length - 1][1] as unknown[];
+    expect(startParams[0]).toBe("operator_admin");
+    expect(startParams[0]).not.toContain(VALID_TOKEN);
+    expect(typeof startParams[0]).toBe("string");
+    expect((startParams[0] as string).length).toBeGreaterThan(0);
+
+    // Reset mocks for stop test
+    mockPoolQuery.mockClear();
+    mockFetch.mockClear();
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "stopped" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }));
+
+    await stopPost(adminRequest("/api/admin/schedule/stop", VALID_TOKEN) as never);
+
+    const stopCalls = auditInsertCalls();
+    const stopParams = stopCalls[stopCalls.length - 1][1] as unknown[];
+    expect(stopParams[0]).toBe("operator_admin");
+    expect(stopParams[0]).not.toContain(VALID_TOKEN);
+  });
+
+  it("actor is 'unknown' for unauthorized requests, never the attempted token", async () => {
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    // Send request with a specific wrong token
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      authorization: `Bearer ${WRONG_TOKEN}`,
+    };
+    const request = new Request(
+      "http://localhost:3200/api/admin/schedule/start",
+      { method: "POST", headers },
+    );
+    await POST(request as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[0]).toBe("unknown");
+    // Actor field must NEVER contain the token value
+    expect(params[0]).not.toBe(WRONG_TOKEN);
+    expect(JSON.stringify(params)).not.toContain(WRONG_TOKEN);
+  });
+
+  it("actor never contains any env var ending with _TOKEN, _KEY, or _SECRET", async () => {
+    process.env.OPERATOR_ADMIN_TOKEN = "my-secret-op-token";
+    process.env.CONNECTOR_ADMIN_TOKEN = "conn-secret-xyz";
+    process.env.SOME_API_KEY = "sk-deadbeef";
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    // Unauthorized request
+    await POST(adminRequest("/api/admin/schedule/start") as never);
+
+    const insertCalls = auditInsertCalls();
+    const params = insertCalls[0][1] as unknown[];
+    const serialized = JSON.stringify(params);
+    expect(serialized).not.toContain("my-secret-op-token");
+    expect(serialized).not.toContain("conn-secret-xyz");
+    expect(serialized).not.toContain("sk-deadbeef");
+
+    delete (process.env as Record<string, string | undefined>).CONNECTOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).SOME_API_KEY;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-007: Action field matches operation type
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-007: Action field matches operation type", () => {
+  beforeEach(() => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+    mockPoolQuery.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+  });
+
+  it("action is 'start_scheduler' for start operations", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[1]).toBe("start_scheduler");
+    expect(params[1]).not.toBe("stop_scheduler");
+    expect(params[1]).not.toBe("update_interval");
+  });
+
+  it("action is 'stop_scheduler' for stop operations", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "stopped" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/stop/route");
+    await POST(adminRequest("/api/admin/schedule/stop", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[1]).toBe("stop_scheduler");
+    expect(params[1]).not.toBe("start_scheduler");
+    expect(params[1]).not.toBe("update_interval");
+  });
+
+  it("action is 'start_scheduler' even on unauthorized start attempt", async () => {
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start") as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[1]).toBe("start_scheduler");
+  });
+
+  it("action is 'stop_scheduler' even on unauthorized stop attempt", async () => {
+    const { POST } = await import("@/api/admin/schedule/stop/route");
+    await POST(adminRequest("/api/admin/schedule/stop") as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[1]).toBe("stop_scheduler");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-008: Result field values are constrained
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-008: Result field values constrained", () => {
+  const VALID_RESULTS = new Set(["success", "failure", "unauthorized"]);
+
+  beforeEach(() => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+    mockPoolQuery.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+  });
+
+  it("result is 'success' on successful start", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("success");
+    expect(VALID_RESULTS.has(params[4] as string)).toBe(true);
+  });
+
+  it("result is 'success' on successful stop", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "stopped" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/stop/route");
+    await POST(adminRequest("/api/admin/schedule/stop", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("success");
+    expect(VALID_RESULTS.has(params[4] as string)).toBe(true);
+  });
+
+  it("result is 'failure' when trader unreachable", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("failure");
+    expect(VALID_RESULTS.has(params[4] as string)).toBe(true);
+  });
+
+  it("result is 'unauthorized' when no token provided", async () => {
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start") as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("unauthorized");
+    expect(VALID_RESULTS.has(params[4] as string)).toBe(true);
+  });
+
+  it("result is never a value outside {success, failure, unauthorized}", async () => {
+    // Test unauthorized (start)
+    let { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start") as never);
+
+    // Test unauthorized (stop)
+    mockPoolQuery.mockClear();
+    const { POST: stopPost } = await import("@/api/admin/schedule/stop/route");
+    await stopPost(adminRequest("/api/admin/schedule/stop") as never);
+
+    // Test failure (no TRADER_INTERNAL_URL)
+    mockPoolQuery.mockClear();
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+    const { POST: startPost2 } = await import("@/api/admin/schedule/start/route");
+    await startPost2(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    // Collect all result values across all audit inserts
+    const allCalls = auditInsertCalls();
+    for (const call of allCalls) {
+      const params = call[1] as unknown[];
+      const result = params[4] as string;
+      expect(VALID_RESULTS.has(result)).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-009: Error field populated on failure, null on success
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-009: Error field behavior", () => {
+  beforeEach(() => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+    mockPoolQuery.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+  });
+
+  it("error is null on successful start", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[5]).toBeNull();
+  });
+
+  it("error is null on successful stop", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "stopped" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/stop/route");
+    await POST(adminRequest("/api/admin/schedule/stop", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[5]).toBeNull();
+  });
+
+  it("error is non-null string on trader fetch failure", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("failure");
+    expect(params[5]).toBeTruthy();
+    expect(typeof params[5]).toBe("string");
+    expect((params[5] as string).length).toBeGreaterThan(0);
+  });
+
+  it("error is non-null string on trader non-2xx response", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response("Internal error", { status: 500 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("failure");
+    expect(params[5]).toBeTruthy();
+    expect(typeof params[5]).toBe("string");
+    expect((params[5] as string).length).toBeGreaterThan(0);
+    expect(params[5]).toContain("500");
+  });
+
+  it("error is non-null string on unauthorized attempt", async () => {
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start") as never);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+    expect(params[4]).toBe("unauthorized");
+    expect(params[5]).toBeTruthy();
+    expect(typeof params[5]).toBe("string");
+  });
+
+  it("error field never contains secrets or tokens", async () => {
+    process.env.OPERATOR_ADMIN_TOKEN = "a-secret-token-12345";
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start") as never);
+
+    const insertCalls = auditInsertCalls();
+    const params = insertCalls[0][1] as unknown[];
+    const errorValue = params[5] as string;
+    expect(errorValue).toBeTruthy();
+    expect(errorValue).not.toContain("a-secret-token-12345");
+    expect(errorValue).not.toContain("Bearer");
+    expect(errorValue).not.toContain("sk-");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-014: Audit log is append-only
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-014: Audit log is append-only", () => {
+  it("route source files contain no UPDATE or DELETE on operator_events", async () => {
+    // Read the actual source files to verify no UPDATE/DELETE operations
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const routeDir = path.resolve(__dirname, "../app/api/admin/schedule");
+    const files = [
+      path.join(routeDir, "start", "route.ts"),
+      path.join(routeDir, "stop", "route.ts"),
+    ];
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, "utf-8");
+      // SQL UPDATE or DELETE on operator_events must not appear
+      expect(content).not.toMatch(/UPDATE\s+operator_events/i);
+      expect(content).not.toMatch(/DELETE\s+FROM\s+operator_events/i);
+      // Only INSERT should appear when operator_events is mentioned
+      if (content.includes("operator_events")) {
+        // Use dotAll pattern for multi-line template literals
+        expect(content).toMatch(/INSERT\s+INTO\s+operator_events/im);
+      }
+    }
+  });
+
+  it("running the same mutation twice creates two distinct audit rows", async () => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      // Second call: already running scenario
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "already_running", interval_minutes: 5 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    // First start — creates one audit row
+    mockPoolQuery.mockClear();
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+    const firstCallCount = auditInsertCalls().length;
+    expect(firstCallCount).toBe(1);
+
+    // Second start (simulating a separate operator action) — creates another row
+    // Re-import to get fresh module state
+    vi.resetModules();
+    mockPoolQuery.mockClear();
+    const { POST: POST2 } = await import("@/api/admin/schedule/start/route");
+    await POST2(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+    const secondCallCount = auditInsertCalls().length;
+    expect(secondCallCount).toBe(1);
+
+    // Each mutation writes exactly one INSERT row — no updates
+    expect(firstCallCount + secondCallCount).toBe(2);
+
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-016: Already-running start has old_state == new_state
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-016: Already-running start writes audit with old_state == new_state", () => {
+  beforeEach(() => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    process.env.TRADER_INTERNAL_URL = TRADER_URL;
+    mockPoolQuery.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+    delete (process.env as Record<string, string | undefined>).TRADER_INTERNAL_URL;
+  });
+
+  it("when trader returns 'already_running', old_state equals new_state", async () => {
+    // Simulate scheduler already running:
+    // 1. oldStatus → STATUS_RUNNING (scheduler_running: true)
+    // 2. Trader returns 200 with status: "already_running"
+    // 3. newStatus → STATUS_RUNNING (scheduler_running: true)
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "already_running", interval_minutes: 5 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    const response = await POST(
+      adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never,
+    );
+    // Trader returns 200 for already_running — dashboard treats as success
+    expect(response.status).toBe(200);
+
+    const insertCalls = auditInsertCalls();
+    expect(insertCalls.length).toBe(1);
+    const params = insertCalls[0][1] as unknown[];
+
+    // Result should be success (trader returned 200)
+    expect(params[4]).toBe("success");
+    // Error should be null (it's a success case)
+    expect(params[5]).toBeNull();
+
+    // old_state and new_state should both reflect running
+    let oldState = params[2];
+    let newState = params[3];
+    if (typeof oldState === "string") oldState = JSON.parse(oldState);
+    if (typeof newState === "string") newState = JSON.parse(newState);
+
+    expect((oldState as Record<string, unknown>).scheduler_running).toBe(true);
+    expect((newState as Record<string, unknown>).scheduler_running).toBe(true);
+
+    // old_state equals new_state — no state transition occurred
+    expect(JSON.stringify(oldState)).toBe(JSON.stringify(newState));
+  });
+
+  it("old_state and new_state differ on actual state transition (start)", async () => {
+    // Normal start from stopped to running
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "started", interval_minutes: 5 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/start/route");
+    await POST(adminRequest("/api/admin/schedule/start", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    const params = insertCalls[0][1] as unknown[];
+
+    let oldState = params[2];
+    let newState = params[3];
+    if (typeof oldState === "string") oldState = JSON.parse(oldState);
+    if (typeof newState === "string") newState = JSON.parse(newState);
+
+    expect((oldState as Record<string, unknown>).scheduler_running).toBe(false);
+    expect((newState as Record<string, unknown>).scheduler_running).toBe(true);
+    // States should differ on actual transition
+    expect(JSON.stringify(oldState)).not.toBe(JSON.stringify(newState));
+  });
+
+  it("old_state and new_state differ on actual state transition (stop)", async () => {
+    // Normal stop from running to stopped
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_RUNNING), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "stopped", interval_minutes: 5 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(STATUS_STOPPED), { status: 200 }));
+    globalThis.fetch = mockFetch;
+
+    const { POST } = await import("@/api/admin/schedule/stop/route");
+    await POST(adminRequest("/api/admin/schedule/stop", VALID_TOKEN) as never);
+
+    const insertCalls = auditInsertCalls();
+    const params = insertCalls[0][1] as unknown[];
+
+    let oldState = params[2];
+    let newState = params[3];
+    if (typeof oldState === "string") oldState = JSON.parse(oldState);
+    if (typeof newState === "string") newState = JSON.parse(newState);
+
+    expect((oldState as Record<string, unknown>).scheduler_running).toBe(true);
+    expect((newState as Record<string, unknown>).scheduler_running).toBe(false);
+    expect(JSON.stringify(oldState)).not.toBe(JSON.stringify(newState));
+  });
+});
+
 // VAL-AUDIT-012: actor field always populated
 describe("VAL-AUDIT-012: actor field is always populated", () => {
   beforeEach(() => {

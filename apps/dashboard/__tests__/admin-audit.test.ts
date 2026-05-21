@@ -245,3 +245,113 @@ describe("GET /api/admin/audit", () => {
     expect(JSON.stringify(body)).not.toContain(VALID_TOKEN);
   });
 });
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-014: Audit log is append-only
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-014: Audit log is append-only", () => {
+  it("audit route source contains no UPDATE or DELETE on operator_events", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const auditRoutePath = path.resolve(__dirname, "../app/api/admin/audit/route.ts");
+    const content = fs.readFileSync(auditRoutePath, "utf-8");
+
+    // No UPDATE or DELETE queries on operator_events
+    expect(content).not.toMatch(/UPDATE\s+operator_events/i);
+    expect(content).not.toMatch(/DELETE\s+FROM\s+operator_events/i);
+
+    // Only SELECT should appear when operator_events is referenced
+    if (content.includes("operator_events")) {
+      // Use dotAll (s flag) to match across newlines in template literals
+      expect(content).toMatch(/SELECT[\s\S]*FROM\s+operator_events/im);
+    }
+  });
+
+  it("audit route only performs SELECT queries, never modifies rows", () => {
+    // Verify through mock: GET /api/admin/audit only calls query() for SELECT
+    const selectQueries = auditSelectCalls();
+    for (const call of selectQueries) {
+      const sql = call[0] as string;
+      expect(sql).toMatch(/^SELECT/i);
+      expect(sql).not.toMatch(/^UPDATE/i);
+      expect(sql).not.toMatch(/^DELETE/i);
+      expect(sql).not.toMatch(/^INSERT/i);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VAL-AUDIT-017: Unauthorized reads do not produce audit events
+// ---------------------------------------------------------------------------
+describe("VAL-AUDIT-017: Unauthorized reads do not produce audit events", () => {
+  beforeEach(() => {
+    process.env.OPERATOR_ADMIN_TOKEN = VALID_TOKEN;
+    mockPoolQuery.mockClear();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (process.env as Record<string, string | undefined>).OPERATOR_ADMIN_TOKEN;
+  });
+
+  it("GET /api/admin/runtime unauthorized does not write audit events", async () => {
+    const { GET } = await import("@/api/admin/runtime/route");
+
+    mockPoolQuery.mockClear();
+    const request = new Request("http://localhost:3200/api/admin/runtime");
+    const response = await GET(request as never);
+    expect(response.status).toBe(401);
+
+    // Check that no INSERT INTO operator_events was issued
+    const insertCalls = mockPoolQuery.mock.calls.filter(
+      (call: unknown[]) =>
+        typeof call[0] === "string" &&
+        (call[0] as string).toLowerCase().includes("insert"),
+    );
+    expect(insertCalls.length).toBe(0);
+  });
+
+  it("GET /api/admin/audit unauthorized does not write audit events", async () => {
+    const { GET } = await import("@/api/admin/audit/route");
+
+    mockPoolQuery.mockClear();
+    const request = new Request("http://localhost:3200/api/admin/audit");
+    const response = await GET(request as never);
+    expect(response.status).toBe(401);
+
+    // Check that no INSERT INTO operator_events was issued
+    // The route returns 401 before reaching any pool query
+    const insertCalls = mockPoolQuery.mock.calls.filter(
+      (call: unknown[]) =>
+        typeof call[0] === "string" &&
+        (call[0] as string).toLowerCase().includes("insert"),
+    );
+    expect(insertCalls.length).toBe(0);
+  });
+
+  it("GET /api/admin/runtime source does not reference writeAuditEvent or INSERT", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const runtimePath = path.resolve(__dirname, "../app/api/admin/runtime/route.ts");
+    const content = fs.readFileSync(runtimePath, "utf-8");
+
+    // Runtime route must not write audit events
+    expect(content).not.toContain("writeAuditEvent");
+    expect(content).not.toMatch(/INSERT\s+INTO\s+operator_events/i);
+    expect(content).not.toContain("operator_events");
+  });
+
+  it("GET /api/admin/audit source does not reference writeAuditEvent or INSERT", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const auditPath = path.resolve(__dirname, "../app/api/admin/audit/route.ts");
+    const content = fs.readFileSync(auditPath, "utf-8");
+
+    // Audit route must not write audit events (it's read-only)
+    expect(content).not.toContain("writeAuditEvent");
+    expect(content).not.toMatch(/INSERT\s+INTO\s+operator_events/i);
+  });
+});
