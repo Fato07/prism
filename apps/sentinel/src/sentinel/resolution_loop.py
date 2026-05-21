@@ -42,6 +42,7 @@ from sentinel.evidence_extraction import (
     source_url_is_public_http,
 )
 from sentinel.evidence_tools import (
+    BudgetAwareEvidenceProvider,
     EvidenceProvider,
     EvidenceSearchRequest,
     EvidenceSearchResult,
@@ -110,6 +111,7 @@ async def generate_verdict_with_resolution(
     evidence_provider: EvidenceProvider | None = None,
     evidence_extractor: EvidenceExtractorProvider | None = None,
     require_evidence_extraction: bool | None = None,
+    evidence_budget: int | None = None,
 ) -> SentinelVerdict:
     """Generate a verdict and run bounded issue-resolution rounds if enabled."""
     rounds = _resolve_max_rounds(max_rounds)
@@ -125,6 +127,8 @@ async def generate_verdict_with_resolution(
 
     trace = _parse_trace(trace_json)
     provider = evidence_provider or evidence_provider_from_runtime()
+    if evidence_budget is not None:
+        provider = BudgetAwareEvidenceProvider(provider, evidence_budget)
     extractor = evidence_extractor or evidence_extractor_from_env()
     require_extraction = _resolve_require_evidence_extraction(require_evidence_extraction)
     challenge_resolutions = list(verdict.challenge_resolutions)

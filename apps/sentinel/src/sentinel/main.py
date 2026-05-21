@@ -39,6 +39,7 @@ from prism_schemas.verdict import SentinelVerdict
 from pydantic import BaseModel, Field
 
 from sentinel.demo_evidence_mcp import build_demo_evidence_mcp_server
+from sentinel.evidence_tools import _read_evidence_budget
 from sentinel.ipfs import PinataClient
 from sentinel.market_evidence_mcp import build_market_evidence_mcp_server
 from sentinel.persistence import (
@@ -220,6 +221,16 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
     payment_tx_hash: str | None = getattr(http_request.state, "x402_payment_tx_hash", None)
     requester_address: str | None = getattr(http_request.state, "x402_payer_address", None)
 
+    # Determine evidence budget: internal (bypass) vs paid (x402) callers
+    if payment_tx_hash or requester_address:
+        evidence_budget = _read_evidence_budget(
+            "SENTINEL_EVIDENCE_BUDGET_PAID", default=10
+        )
+    else:
+        evidence_budget = _read_evidence_budget(
+            "SENTINEL_EVIDENCE_BUDGET_INTERNAL", default=3
+        )
+
     # Compute request_hash from the trace_uri and trace_hash
     request_hash = hashlib.sha256(f"{body.trace_uri}:{body.trace_hash}".encode()).hexdigest()
 
@@ -256,6 +267,7 @@ async def validate(body: ValidateRequest, http_request: Request) -> ValidateResp
             trace_id=trace_id,
             sentinel_agent_id=sentinel_agent_id,
             max_rounds=_internal_resolution_max_rounds(http_request),
+            evidence_budget=evidence_budget,
         )
     except Exception as exc:
         logger.error("verdict_generation_failed", error=str(exc))

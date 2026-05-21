@@ -125,6 +125,46 @@ class StaticEvidenceProvider:
         return self._results_by_challenge_id.get(request.challenge.id, [])
 
 
+class BudgetAwareEvidenceProvider:
+    """Wraps any EvidenceProvider with per-invocation call budgeting.
+
+    Each ``search()`` call counts as one budget unit regardless of the result
+    count.  When the budget is exhausted remaining calls are skipped, a
+    ``budget_exhausted`` log is emitted, and an empty list is returned.  The
+    wrapper implements the EvidenceProvider protocol and is composable with
+    other wrappers (cache, circuit breaker).
+    """
+
+    def __init__(self, provider: EvidenceProvider, budget: int) -> None:
+        """Wrap *provider* with a per-invocation call cap of *budget*."""
+        self._provider = provider
+        self._budget = budget
+        self._remaining = budget
+
+    async def search(self, request: EvidenceSearchRequest) -> list[EvidenceSearchResult]:
+        """Return evidence if budget remains, otherwise skip with empty list."""
+        if self._remaining <= 0:
+            logger.info(
+                "budget_exhausted",
+                budget=self._budget,
+                challenge_id=request.challenge.id,
+                query=request.query,
+            )
+            return []
+        self._remaining -= 1
+        return await self._provider.search(request)
+
+    @property
+    def remaining(self) -> int:
+        """Number of calls still available in the current budget window."""
+        return self._remaining
+
+    @property
+    def budget(self) -> int:
+        """Immutable per-invocation call cap."""
+        return self._budget
+
+
 class McpEvidenceProvider:
     """Evidence provider that calls an MCP tool and maps its output explicitly."""
 
@@ -1230,6 +1270,34 @@ def _int_env_or_none(name: str) -> int | None:
         )
         return None
     return parsed
+
+
+def _read_evidence_budget(env_var: str, default: int) -> int:
+    """Read a non-negative integer evidence budget from *env_var*.
+
+    Returns *default* when the variable is unset.  Zero, negative, and
+    non-numeric values are treated as 0 (no evidence calls) with a warning.
+    """
+    raw = os.environ.get(env_var, str(default))
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "invalid_evidence_budget_non_numeric",
+            env_var=env_var,
+            raw=raw,
+            fallback=0,
+        )
+        return 0
+    if value < 0:
+        logger.warning(
+            "invalid_evidence_budget_negative",
+            env_var=env_var,
+            value=value,
+            fallback=0,
+        )
+        return 0
+    return value
 
 
 def _float_env(name: str, default: float) -> float:
