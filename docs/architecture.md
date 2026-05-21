@@ -878,8 +878,8 @@ And crucially: who started or stopped the pipeline, and when?
 | Component | Location | Role |
 |---|---|---|
 | Trader `GET /status` | `apps/trader/src/trader/main.py` | Read-only runtime status: scheduler state (running/stopped), interval, auto-pipeline flag, trade mode, last/next tick, last error, version. No side effects. |
-| Dashboard admin auth | `apps/dashboard/app/lib/admin-auth.ts` | All operator mutation routes require `OPERATOR_ADMIN_TOKEN` via `Authorization: Bearer` header. Verified with `timingSafeEqual` to prevent timing attacks. |
-| Dashboard proxy routes | `apps/dashboard/app/api/operator/runtime/route.ts`, `apps/dashboard/app/api/operator/schedule/route.ts` | Server-side proxy from dashboard API to trader API. Adds admin auth check; forwards authenticated start/stop to trader. |
+| Dashboard admin auth | `apps/dashboard/app/lib/operator-auth.ts` | All operator mutation routes require `OPERATOR_ADMIN_TOKEN` via `Authorization: Bearer` header. Verified with `timingSafeEqual` to prevent timing attacks. |
+| Dashboard proxy routes | `apps/dashboard/app/api/admin/runtime/route.ts`, `apps/dashboard/app/api/admin/schedule/start/route.ts`, `apps/dashboard/app/api/admin/schedule/stop/route.ts` | Server-side proxy from dashboard API to trader API. Adds admin auth check; forwards authenticated start/stop to trader. |
 | `/operator` page | `apps/dashboard/app/operator/page.tsx` | Read-only status card + start/stop mutation controls with confirmation dialog + audit events table. Client component with admin token in session. |
 | `operator_events` audit log | `infra/db/migrations/005_operator_events.sql`, Neon table | Every mutation attempt (start, stop, interval change) records actor, action, old state, new state, timestamp, result, and error. Includes unauthorized attempts. |
 
@@ -908,7 +908,7 @@ And crucially: who started or stopped the pipeline, and when?
 ```mermaid
 flowchart LR
     Op["Operator<br/>(browser)"]
-    DashAPI["Dashboard API<br/>/api/operator/*"]
+    DashAPI["Dashboard API<br/>/api/admin/*"]
     TraderAPI["Trader API<br/>GET /status, POST /start, DELETE /stop"]
     Neon[("Neon<br/>operator_events")]
 
