@@ -261,7 +261,7 @@ class TestPayerThreadingToPersist:
         import httpx
 
         payer_address = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
-        expected_lower = payer_address.lower()
+        payer_address.lower()
 
         async def fake_post(
             self: httpx.AsyncClient,
@@ -494,7 +494,7 @@ class TestPayerCaptureUnit:
             from sentinel.x402_middleware import _settle_payment
 
             payment_payload = _encode_payment_payload({"signature": "0xabc", "payload": {}})
-            success, tx_hash, error_code, returned_payer = await _settle_payment(
+            success, _tx_hash, _error_code, returned_payer = await _settle_payment(
                 payment_payload,
                 request_context={"path": "/validate"},
             )
@@ -512,7 +512,7 @@ class TestPayerCaptureUnit:
         with patch.dict(os.environ, env, clear=False):
             from sentinel.x402_middleware import _settle_payment
 
-            success, tx_hash, error_code, returned_payer = await _settle_payment(
+            success, _tx_hash, error_code, returned_payer = await _settle_payment(
                 "not-valid-base64!!!",
                 request_context={"path": "/validate"},
             )

@@ -138,7 +138,7 @@ class TestCircuitStartsClosed:
         """New circuit breaker is in CLOSED state."""
         inner = CountingProvider([_make_result()])
         cb = CircuitBreakerAwareEvidenceProvider(inner, provider_id="test_p")
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
     @pytest.mark.asyncio
     async def test_closed_delegates_to_provider(self) -> None:
@@ -149,7 +149,7 @@ class TestCircuitStartsClosed:
         results = await cb.search(_request())
         assert len(results) == 1
         assert inner.calls == 1
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
     @pytest.mark.asyncio
     async def test_closed_with_empty_results_is_not_failure(self) -> None:
@@ -162,7 +162,7 @@ class TestCircuitStartsClosed:
             assert results == []
 
         # Circuit should still be CLOSED — empty results are NOT failures
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         assert cb.consecutive_failures == 0
 
 
@@ -181,19 +181,19 @@ class TestConsecutiveFailuresOpenCircuit:
         # 1st failure
         r1 = await cb.search(_request())
         assert r1 == []
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         assert cb.consecutive_failures == 1
 
         # 2nd failure
         r2 = await cb.search(_request())
         assert r2 == []
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         assert cb.consecutive_failures == 2
 
         # 3rd failure → OPEN
         r3 = await cb.search(_request())
         assert r3 == []
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
         assert cb.consecutive_failures == 3
 
     @pytest.mark.asyncio
@@ -203,9 +203,9 @@ class TestConsecutiveFailuresOpenCircuit:
         cb = CircuitBreakerAwareEvidenceProvider(inner, provider_id="test_p", failure_threshold=2)
 
         await cb.search(_request())
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     @pytest.mark.asyncio
     async def test_logs_failure_count(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -245,7 +245,7 @@ class TestOpenCircuitReturnsEmpty:
         # Force circuit open
         for _ in range(3):
             await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         calls_before = inner.calls
         results = await cb.search(_request())
@@ -287,14 +287,14 @@ class TestOpenToHalfOpen:
         # Open the circuit
         for _ in range(3):
             await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         # Wait for cooldown
         time.sleep(0.1)
 
         # Next call should transition to HALF_OPEN
         await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN  # Still fails, re-opens
+        assert cb.state == CircuitBreakerState.OPEN  # Still fails, re-opens
 
     @pytest.mark.asyncio
     async def test_stays_open_before_cooldown(self) -> None:
@@ -305,12 +305,12 @@ class TestOpenToHalfOpen:
         # Open the circuit
         for _ in range(3):
             await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         # Immediately call — still OPEN
         results = await cb.search(_request())
         assert results == []
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     @pytest.mark.asyncio
     async def test_half_open_logs_transition(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -348,14 +348,14 @@ class TestHalfOpenSuccessCloses:
         )
 
         await cb.search(_request())  # fail → OPEN
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         time.sleep(0.05)
 
         # Second call should succeed → closes
         results = await cb.search(_request())
         assert len(results) == 1
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         assert cb.consecutive_failures == 0
 
     @pytest.mark.asyncio
@@ -368,7 +368,7 @@ class TestHalfOpenSuccessCloses:
 
         await cb.search(_request())  # fail
         assert cb.consecutive_failures == 1
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         time.sleep(0.05)
 
@@ -391,13 +391,13 @@ class TestHalfOpenFailureReopens:
         )
 
         await cb.search(_request())  # fail → OPEN
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         time.sleep(0.05)
 
         # Second call: HALF_OPEN trial, fails → re-OPEN
         await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     @pytest.mark.asyncio
     async def test_half_open_failure_logged(self, capsys: pytest.CaptureFixture[str]) -> None:
@@ -436,12 +436,12 @@ class TestPerProviderIsolation:
         for _ in range(3):
             await cb_a.search(_request())
 
-        assert cb_a.state is CircuitBreakerState.OPEN
+        assert cb_a.state == CircuitBreakerState.OPEN
 
         # Provider B should still work
         results = await cb_b.search(_request())
         assert len(results) == 1
-        assert cb_b.state is CircuitBreakerState.CLOSED
+        assert cb_b.state == CircuitBreakerState.CLOSED
         assert inner_b.calls == 1
 
     @pytest.mark.asyncio
@@ -574,7 +574,7 @@ class TestExceptionsCountAsFailures:
             await cb.search(_request())
 
         assert cb.consecutive_failures == 0
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
 
 # -- VAL-SENREL-027: Non-consecutive failures do not open circuit -------------
@@ -602,7 +602,7 @@ class TestNonConsecutiveFailures:
         await cb.search(_request())
         await cb.search(_request())
         assert cb.consecutive_failures == 2
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
     @pytest.mark.asyncio
     async def test_need_full_threshold_consecutive_failures_to_open(self) -> None:
@@ -613,7 +613,7 @@ class TestNonConsecutiveFailures:
         # Fail, fail (2 consecutive)
         await cb.search(_request())
         await cb.search(_request())
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
         # Succeed (resets)
         await cb.search(_request())
@@ -623,4 +623,4 @@ class TestNonConsecutiveFailures:
         await cb.search(_request())
         await cb.search(_request())
         await cb.search(_request())
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN

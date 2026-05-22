@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 
 from prism_schemas.trace import Evidence, ThesisStep, TradingR1Trace

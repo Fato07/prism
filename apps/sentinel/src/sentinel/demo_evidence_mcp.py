@@ -37,9 +37,9 @@ def build_demo_evidence_mcp_server() -> FastMCP:
                     "url": "https://prism-docs-production.up.railway.app",
                     "snippet": (
                         "Demo MCP evidence server is reachable and returned a "
-                        f"generic_search-compatible result for {min(max(limit, 1), 20)} requested item(s). "
-                        "Replace this connector with a production MCP research tool before relying on it "
-                        "for capital-moving validation."
+                        f"generic_search-compatible result for {min(max(limit, 1), 20)} "
+                        "requested item(s). Replace this connector with a production MCP "
+                        "research tool before relying on it for capital-moving validation."
                     ),
                     "provider": "prism_demo_evidence_mcp.search",
                     "published_at": now,

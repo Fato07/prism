@@ -18,7 +18,7 @@ from prism_schemas.verdict import EvidenceToolReceipt
 from pydantic import ValidationError
 
 if TYPE_CHECKING:
-    from sentinel.evidence_tools import EvidenceSearchResult
+    from sentinel.evidence_tools import EvidenceSearchResult  # type: ignore[import-untyped]
 
 logger = structlog.get_logger("prism.trader.evidence_search")
 

@@ -111,7 +111,8 @@ def persist_verdict(
             "ON CONFLICT (request_hash) DO UPDATE "
             "SET verdict_score = EXCLUDED.verdict_score, "
             "response_uri = EXCLUDED.response_uri, "
-            "requester_address = COALESCE(validations.requester_address, EXCLUDED.requester_address)",
+            "requester_address = COALESCE(validations.requester_address, "
+            "EXCLUDED.requester_address)",
             (
                 request_hash,
                 verdict.trace_id,

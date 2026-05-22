@@ -32,7 +32,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
-from prism_mcp.server import build_mcp_server
+from prism_mcp.server import build_mcp_server  # type: ignore[import-untyped]
 from prism_schemas.db import run_migration
 from prism_schemas.startup import startup_check
 from prism_schemas.verdict import AdversarialChallenge, SentinelVerdict

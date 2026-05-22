@@ -217,7 +217,7 @@ class TestPublicModeUnchanged:
 
     def test_public_mode_facilitator_name_defaults_to_x402(self) -> None:
         """Public mode facilitator name defaults to 'x402'."""
-        with patch.dict(os.environ, {"X402_FACILITATOR_MODE": "", "X402_FACILITATOR_NAME": ""}, clear=False):
+        with patch.dict(os.environ, {"X402_FACILITATOR_MODE": "", "X402_FACILITATOR_NAME": ""}, clear=False):  # noqa: E501
             assert get_x402_facilitator_name() == "x402"
 
     def test_public_mode_mock_settlement_works(self) -> None:

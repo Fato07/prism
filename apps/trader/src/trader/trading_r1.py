@@ -12,14 +12,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
-from mirascope import llm
+from mirascope import llm  # type: ignore[import-untyped]
 from prism_schemas.trace import TradingR1Trace
 
 from trader.prompts import TRADING_R1_SYSTEM, build_evidence_context
 
 if TYPE_CHECKING:
     from prism_schemas.verdict import EvidenceToolReceipt
-    from sentinel.evidence_tools import EvidenceSearchResult
+    from sentinel.evidence_tools import EvidenceSearchResult  # type: ignore[import-untyped]
 
 logger = structlog.get_logger("prism.trader.trading_r1")
 
@@ -96,7 +96,7 @@ def evidence_all_stale(
     return all((created - _as_utc(item.timestamp)).days > stale_days for item in trace.evidence)
 
 
-@llm.call(_model_id(), format=TradingR1Trace)
+@llm.call(_model_id(), format=TradingR1Trace)  # type: ignore[untyped-decorator]
 def generate_trace(
     market_id: str,
     market_question: str,

@@ -177,7 +177,7 @@ class TestLayeringOrder:
         )
 
         await cb.search(_request(query=f"q1-{uid}"))
-        assert cb.state is CircuitBreakerState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
         assert budget.remaining == 9
 
         budget_before = budget.remaining
@@ -291,7 +291,7 @@ class TestSuccessfulCallsPopulateCache:
         assert len(r2) == 1
         assert inner.calls == 1
         assert cache.hits == 1
-        assert cb.state is CircuitBreakerState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
 
 # -- VAL-SENREL-032: Failed provider calls do NOT populate cache ----------------
@@ -379,11 +379,11 @@ class TestCircuitBreakerPersistsAcrossValidations:
         _circuit_breaker_registry[provider_id] = cb1
 
         await cb1.search(_request())
-        assert cb1.state is CircuitBreakerState.OPEN
+        assert cb1.state == CircuitBreakerState.OPEN
 
         cb2 = _get_or_create_circuit_breaker(CountingProvider([_make_result()]), provider_id)
         assert cb2 is cb1
-        assert cb2.state is CircuitBreakerState.OPEN
+        assert cb2.state == CircuitBreakerState.OPEN
 
 
 # -- VAL-SENREL-035: Budget exhaustion produces structurally valid verdict ------
@@ -548,7 +548,7 @@ class TestBuildEvidenceProviderStack:
             assert r == []
 
         assert isinstance(stack, CircuitBreakerAwareEvidenceProvider)
-        assert stack.state is CircuitBreakerState.OPEN
+        assert stack.state == CircuitBreakerState.OPEN
 
         calls_before = inner.calls
         r4 = await stack.search(_request(query=f"fq-{uid}-4"))

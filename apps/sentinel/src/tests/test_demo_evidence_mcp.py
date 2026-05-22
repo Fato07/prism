@@ -15,7 +15,7 @@ async def test_demo_evidence_mcp_returns_smoke_proof_only_for_smoke_query() -> N
     async with Client(server) as client:
         smoke = await client.call_tool(
             "search",
-            {"query": "Prism connector smoke test: latest public evidence for a prediction market claim", "limit": 5},
+            {"query": "Prism connector smoke test: latest public evidence for a prediction market claim", "limit": 5},  # noqa: E501
         )
         regular = await client.call_tool(
             "search",

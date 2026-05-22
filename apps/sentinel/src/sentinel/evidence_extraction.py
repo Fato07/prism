@@ -478,6 +478,10 @@ def _parse_generic_extract(
     body: Any,
     request: EvidencePageExtractRequest,
 ) -> EvidencePageExtractResult | None:
+    text: str | None
+    title: str | None
+    final_url: str | None
+    published_at: str | None
     if isinstance(body, str):
         text = body
         title = None
@@ -495,7 +499,7 @@ def _parse_generic_extract(
             "summary",
         )
         if text is None:
-            excerpts = data.get("excerpts")
+            excerpts = data.get("excerpts")  # type: ignore[union-attr]
             if isinstance(excerpts, list):
                 cleaned = [item for item in excerpts if isinstance(item, str) and item]
                 text = "\n\n".join(cleaned)
@@ -598,7 +602,7 @@ def _parse_firecrawl_extract(
     text = _first_string(data, "markdown", "text", "content")
     if not isinstance(text, str) or not text.strip():
         return None
-    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}  # type: ignore[union-attr]
     return EvidencePageExtractResult(
         url=request.url,
         final_url=_first_string(data, "url") or _first_string(metadata, "sourceURL", "url"),
