@@ -13,10 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from prism_calibration.braintrust_sync import BRAINTRUST_PROJECT, braintrust_project
-
-CALIBRATION_LOG_PROJECT = BRAINTRUST_PROJECT  # default: "Prism"
-TRADER_LOG_PROJECT = "prism-trader"
+from prism_calibration.braintrust_sync import braintrust_project
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _BRAINTRUST_CONFIG = _REPO_ROOT / ".bt" / "config.json"
