@@ -27,4 +27,7 @@ COPY apps/trader/src/ apps/trader/src/
 RUN uv sync --frozen --no-dev --package prism-trader
 
 EXPOSE 3201
-CMD ["uv", "run", "--no-dev", "--package", "prism-trader", "uvicorn", "trader.main:app", "--host", "0.0.0.0", "--port", "3201"]
+# Run the already-synced production venv directly. Using `uv run` here
+# re-parses the pruned workspace at container startup and fails if dev-only
+# workspace members (for example apps/sentinel) were not copied into the image.
+CMD ["/app/.venv/bin/uvicorn", "trader.main:app", "--host", "0.0.0.0", "--port", "3201"]
