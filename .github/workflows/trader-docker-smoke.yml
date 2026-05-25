@@ -1,0 +1,42 @@
+name: Trader Docker Smoke
+
+on:
+  pull_request:
+    paths:
+      - "apps/trader/**"
+      - "packages/schemas-python/**"
+      - "packages/calibration-python/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".dockerignore"
+      - "scripts/smoke-trader-docker.sh"
+      - ".github/workflows/trader-docker-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/trader/**"
+      - "packages/schemas-python/**"
+      - "packages/calibration-python/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".dockerignore"
+      - "scripts/smoke-trader-docker.sh"
+      - ".github/workflows/trader-docker-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trader-docker-smoke:
+    name: Build and boot prism-trader image
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DOCKER_BUILDKIT: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Smoke test trader Docker image
+        run: scripts/smoke-trader-docker.sh
